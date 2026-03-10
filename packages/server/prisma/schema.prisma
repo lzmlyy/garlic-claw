@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("user")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+  memories      Memory[]
+  automations   Automation[]
+
+  @@map("users")
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  title     String    @default("New Chat")
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String   // system | user | assistant | tool
+  content        String?
+  toolCalls      String?  @map("tool_calls") // 工具调用的 JSON 字符串
+  toolResults    String?  @map("tool_results") // 工具结果的 JSON 字符串
+  model          String?  // 使用的 AI 模型
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("messages")
+}
+
+model Plugin {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  deviceType   String   @default("pc") @map("device_type")
+  status       String   @default("offline") // online | offline | error
+  capabilities String?  // PluginCapability[] 的 JSON 字符串
+  lastSeenAt   DateTime? @map("last_seen_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("plugins")
+}
+
+model Memory {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String   // 记忆内容
+  category  String   @default("general") // preference, fact, instruction, general
+  keywords  String?  // 逗号分隔的搜索关键词
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("memories")
+}
+
+model Automation {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  trigger   String   // JSON: { type: "cron" | "event" | "manual", cron?: string, event?: string }
+  actions   String   // JSON: [{ type: "device_command" | "ai_message", plugin?: string, capability?: string, params?: {}, message?: string }]
+  enabled   Boolean  @default(true)
+  lastRunAt DateTime? @map("last_run_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  logs AutomationLog[]
+
+  @@map("automations")
+}
+
+model AutomationLog {
+  id           String   @id @default(uuid())
+  automationId String   @map("automation_id")
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  status       String   // success | error
+  result       String?  // JSON 结果或错误消息
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("automation_logs")
+}

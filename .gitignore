@@ -1,0 +1,28 @@
+# Git 忽略文件
+
+# Node.js 相关
+node_modules/
+package-lock.json
+dist/
+
+# TypeScript 编译产物
+**/*.js.map
+**/*.d.ts.map
+
+# 防止编译产物混入 src（shared 包曾经误生成）
+packages/shared/src/**/*.js
+packages/shared/src/**/*.d.ts
+
+.env
+.run.pid
+*.log
+coverage/
+.turbo/
+*.db
+*.db-journal
+
+# 系统自带
+.DS_Store
+
+# 其他
+other/

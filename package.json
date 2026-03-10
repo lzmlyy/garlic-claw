@@ -1,0 +1,24 @@
+{
+  "name": "garlic-claw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "具备设备控制和自动化功能的AI秘书系统",
+  "workspaces": [
+    "packages/*",
+    "packages/plugins/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w packages/server",
+    "dev:web": "npm run dev -w packages/web",
+    "build:server": "npm run build -w packages/server",
+    "build:web": "npm run build -w packages/web",
+    "build:shared": "npm run build -w packages/shared",
+    "lint": "eslint packages/*/src --ext .ts,.vue"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "effect": "^3.19.19"
+  }
+}

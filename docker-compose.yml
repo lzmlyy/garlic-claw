@@ -1,0 +1,28 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "23330:23330"
+      - "23331:23331"
+    env_file: .env
+    environment:
+      - DATABASE_URL=file:./dev.db
+      - NODE_ENV=production
+    volumes:
+      - server_data:/app/packages/server
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  server_data:

@@ -1,0 +1,19 @@
+{
+  "name": "@garlic-claw/plugin-pc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PC device plugin for Garlic Claw",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "@garlic-claw/plugin-sdk": "*",
+    "@garlic-claw/shared": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
