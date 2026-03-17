@@ -1,0 +1,33 @@
+# MCP 配置目录
+
+此目录包含 Model Context Protocol (MCP) 服务器的配置文件。
+
+## 配置文件说明
+
+### mcp.json
+MCP 服务器配置文件，定义了可用的 MCP 服务器及其启动参数。
+
+## 配置的服务器
+
+### 1. Tavily 搜索服务器
+- **名称**: tavily-search
+- **用途**: 联网搜索功能
+- **配置**: 需要在环境变量中设置 TAVILY_API_KEY
+- **获取 API Key**: https://tavily.com/
+
+### 2. 天气服务器
+- **名称**: weather-server
+- **用途**: 免费天气查询
+- **配置**: 无需 API 密钥
+- **包**: @iflow-mcp/alchaincyf-mcp
+
+## 使用方法
+
+1. 在项目根目录的 `.env` 文件中添加 Tavily API Key：
+   ```
+   TAVILY_API_KEY=your_tavily_api_key_here
+   ```
+
+2. MCP 服务器会自动在启动时加载并注册到系统中
+
+3. AI 可以调用这些 MCP 服务器提供的工具进行联网搜索和天气查询

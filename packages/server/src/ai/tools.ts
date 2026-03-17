@@ -15,7 +15,12 @@ export function getBuiltinTools() {
       description: '获取当前日期和时间',
       inputSchema: z.object({}),
       execute: async () => {
-        return { time: new Date().toISOString() };
+        const startTime = Date.now();
+        console.log(`[工具调用] getCurrentTime 开始执行`);
+        const result = { time: new Date().toISOString() };
+        const duration = Date.now() - startTime;
+        console.log(`[工具调用] getCurrentTime 完成，耗时: ${duration}ms`);
+        return result;
       },
     }),
 
@@ -23,7 +28,9 @@ export function getBuiltinTools() {
       description: '获取服务器的基本系统信息',
       inputSchema: z.object({}),
       execute: async () => {
-        return {
+        const startTime = Date.now();
+        console.log(`[工具调用] getSystemInfo 开始执行`);
+        const result = {
           platform: process.platform,
           nodeVersion: process.version,
           uptime: Math.floor(process.uptime()),
@@ -31,6 +38,9 @@ export function getBuiltinTools() {
             process.memoryUsage().heapUsed / 1024 / 1024,
           ),
         };
+        const duration = Date.now() - startTime;
+        console.log(`[工具调用] getSystemInfo 完成，耗时: ${duration}ms`);
+        return result;
       },
     }),
 
@@ -42,16 +52,25 @@ export function getBuiltinTools() {
           .describe('一个简单的数学表达式，例如 "2 + 3 * 4"'),
       }),
       execute: async ({ expression }: { expression: string }) => {
+        const startTime = Date.now();
+        console.log(`[工具调用] calculate 开始执行，表达式: ${expression}`);
         // 只允许安全的数学字符
         if (!/^[\d\s+\-*/().]+$/.test(expression)) {
-          return { error: '无效的表达式。只允许数字和 +, -, *, /, (, )。' };
+          const result = { error: '无效的表达式。只允许数字和 +, -, *, /, (, )。' };
+          const duration = Date.now() - startTime;
+          console.log(`[工具调用] calculate 完成（失败），耗时: ${duration}ms`);
+          return result;
         }
         try {
           // 使用 Function 构造函数进行安全的数学计算
           const fn = new Function(`"use strict"; return (${expression});`);
           const result = fn();
+          const duration = Date.now() - startTime;
+          console.log(`[工具调用] calculate 完成，结果: ${result}，耗时: ${duration}ms`);
           return { expression, result: Number(result) };
         } catch {
+          const duration = Date.now() - startTime;
+          console.log(`[工具调用] calculate 完成（计算失败），耗时: ${duration}ms`);
           return { error: '表达式计算失败' };
         }
       },
@@ -109,9 +128,16 @@ export function getPluginTools(gateway: PluginGateway) {
         description: `[设备：${pluginName}] ${cap.description}`,
         inputSchema: paramSchemaToZod(cap.parameters),
         execute: async (args: Record<string, unknown>) => {
+          const startTime = Date.now();
+          console.log(`[工具调用] ${toolName} 开始执行，参数: ${JSON.stringify(args)}`);
           try {
-            return await gateway.executeCommand(pluginName, cap.name, args);
+            const result = await gateway.executeCommand(pluginName, cap.name, args);
+            const duration = Date.now() - startTime;
+            console.log(`[工具调用] ${toolName} 完成，耗时: ${duration}ms`);
+            return result;
           } catch (err) {
+            const duration = Date.now() - startTime;
+            console.log(`[工具调用] ${toolName} 失败，耗时: ${duration}ms，错误: ${err instanceof Error ? err.message : String(err)}`);
             return { error: err instanceof Error ? err.message : String(err) };
           }
         },
@@ -149,12 +175,16 @@ export function getMemoryTools(memoryService: MemoryService, userId: string) {
         category: string;
         keywords?: string;
       }) => {
+        const startTime = Date.now();
+        console.log(`[工具调用] save_memory 开始执行，内容: ${content.substring(0, 50)}...`);
         const memory = await memoryService.saveMemory(
           userId,
           content,
           category,
           keywords,
         );
+        const duration = Date.now() - startTime;
+        console.log(`[工具调用] save_memory 完成，耗时: ${duration}ms`);
         return { saved: true, id: memory.id };
       },
     }),
@@ -166,7 +196,11 @@ export function getMemoryTools(memoryService: MemoryService, userId: string) {
         query: z.string().describe('搜索查询，用于查找相关记忆'),
       }),
       execute: async ({ query }: { query: string }) => {
+        const startTime = Date.now();
+        console.log(`[工具调用] recall_memory 开始执行，查询: ${query}`);
         const memories = await memoryService.searchMemories(userId, query, 10);
+        const duration = Date.now() - startTime;
+        console.log(`[工具调用] recall_memory 完成，找到 ${memories.length} 条记忆，耗时: ${duration}ms`);
         return {
           count: memories.length,
           memories: memories.map((m) => ({
@@ -215,8 +249,12 @@ export function getAutomationTools(automationService: AutomationService, userId:
         actions,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }: any) => {
+        const startTime = Date.now();
+        console.log(`[工具调用] create_automation 开始执行，名称: ${name}`);
         const trigger = { type: triggerType, cron: cronInterval };
         const result = await automationService.create(userId, name, trigger, actions);
+        const duration = Date.now() - startTime;
+        console.log(`[工具调用] create_automation 完成，耗时: ${duration}ms`);
         return { created: true, id: result.id, name: result.name };
       },
     }),
@@ -225,7 +263,11 @@ export function getAutomationTools(automationService: AutomationService, userId:
       description: '列出当前用户的所有自动化。',
       inputSchema: z.object({}),
       execute: async () => {
+        const startTime = Date.now();
+        console.log(`[工具调用] list_automations 开始执行`);
         const automations = await automationService.findAllByUser(userId);
+        const duration = Date.now() - startTime;
+        console.log(`[工具调用] list_automations 完成，找到 ${automations.length} 条，耗时: ${duration}ms`);
         return automations.map((a) => ({
           id: a.id,
           name: a.name,
@@ -242,8 +284,15 @@ export function getAutomationTools(automationService: AutomationService, userId:
         automationId: z.string().describe('要切换的自动化 ID'),
       }),
       execute: async ({ automationId }: { automationId: string }) => {
+        const startTime = Date.now();
+        console.log(`[工具调用] toggle_automation 开始执行，ID: ${automationId}`);
         const result = await automationService.toggle(automationId, userId);
-        if (!result) return { error: '未找到自动化' };
+        const duration = Date.now() - startTime;
+        if (!result) {
+          console.log(`[工具调用] toggle_automation 失败，耗时: ${duration}ms`);
+          return { error: '未找到自动化' };
+        }
+        console.log(`[工具调用] toggle_automation 完成，耗时: ${duration}ms`);
         return { id: result.id, enabled: result.enabled };
       },
     }),
@@ -254,11 +303,163 @@ export function getAutomationTools(automationService: AutomationService, userId:
         automationId: z.string().describe('要运行的自动化 ID'),
       }),
       execute: async ({ automationId }: { automationId: string }) => {
+        const startTime = Date.now();
+        console.log(`[工具调用] run_automation 开始执行，ID: ${automationId}`);
         const result = await automationService.executeAutomation(automationId);
+        const duration = Date.now() - startTime;
+        console.log(`[工具调用] run_automation 完成，耗时: ${duration}ms`);
         return result ?? { error: '未找到自动化或已禁用' };
       },
     }),
   };
+}
+
+/**
+ * 将 JSON Schema 转换为 Zod schema
+ */
+function jsonSchemaToZod(schema: any): z.ZodTypeAny {
+  if (!schema) {
+    return z.object({});
+  }
+
+  // 如果已经是 Zod schema，直接返回
+  if (schema && typeof schema.parse === 'function') {
+    return schema;
+  }
+
+  const type = schema.type;
+
+  switch (type) {
+    case 'string':
+      return z.string();
+    case 'number':
+      return z.number();
+    case 'integer':
+      return z.number().int();
+    case 'boolean':
+      return z.boolean();
+    case 'array':
+      return z.array(jsonSchemaToZod(schema.items || {}));
+    case 'object':
+      if (!schema.properties) {
+        return z.record(z.string(), z.unknown());
+      }
+      const shape: Record<string, z.ZodTypeAny> = {};
+      for (const [key, propSchema] of Object.entries(schema.properties)) {
+        const isRequired = schema.required?.includes(key);
+        let zType = jsonSchemaToZod(propSchema);
+        if (!isRequired) {
+          zType = zType.optional();
+        }
+        shape[key] = zType;
+      }
+      return z.object(shape);
+    default:
+      return z.unknown();
+  }
+}
+
+/**
+ * 构建 MCP 工具的 AI 工具。
+ * @param mcpService MCP 服务实例
+ * @param cacheService 缓存服务实例
+ */
+export async function getMcpTools(mcpService: any, cacheService?: any) {
+  try {
+    const mcpTools = await mcpService.getTools();
+    const tools: Record<string, any> = {};
+
+    for (const [name, toolConfig] of Object.entries(mcpTools)) {
+      const config = toolConfig as {
+        description: string;
+        inputSchema: any;
+        execute: (args: any) => Promise<any>;
+      };
+      const originalExecute = config.execute;
+
+      tools[name] = tool({
+        description: config.description,
+        inputSchema: jsonSchemaToZod(config.inputSchema),
+        execute: async (args: any) => {
+          const startTime = Date.now();
+          console.log(`[工具调用] MCP工具 ${name} 开始执行，参数: ${JSON.stringify(args)}`);
+
+          try {
+            // 生成缓存键（工具名 + 参数的哈希）
+            const cacheKey = `mcp:${name}:${JSON.stringify(args)}`;
+
+            // 检查缓存
+            if (cacheService) {
+              try {
+                const cachedResult = await cacheService.get(cacheKey);
+                if (cachedResult !== null) {
+                  const duration = Date.now() - startTime;
+                  console.log(`[工具调用] MCP工具 ${name} 缓存命中，耗时: ${duration}ms`);
+                  return cachedResult;
+                }
+              } catch (cacheError) {
+                console.warn(`[工具调用] MCP工具 ${name} 缓存读取失败: ${cacheError instanceof Error ? cacheError.message : String(cacheError)}`);
+              }
+            }
+
+            // 执行工具调用（带有超时保护）
+            const result = await Promise.race([
+              originalExecute(args),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`工具调用超时: ${name}`)), 10000)
+              ),
+            ]);
+
+            const duration = Date.now() - startTime;
+            console.log(`[工具调用] MCP工具 ${name} 完成，耗时: ${duration}ms`);
+
+            // 缓存结果（如果成功）
+            if (cacheService && !result.error) {
+              try {
+                // 根据工具类型设置不同的缓存时间
+                // 搜索类工具缓存 5 分钟，其他工具缓存 10 分钟
+                const cacheTTL = name.includes('search') ? 300 : 600;
+                await cacheService.set(cacheKey, result, cacheTTL);
+                console.log(`[工具调用] MCP工具 ${name} 结果已缓存，TTL: ${cacheTTL}s`);
+              } catch (cacheError) {
+                console.warn(`[工具调用] MCP工具 ${name} 缓存写入失败: ${cacheError instanceof Error ? cacheError.message : String(cacheError)}`);
+              }
+            }
+
+            return result;
+          } catch (err) {
+            const duration = Date.now() - startTime;
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            console.log(`[工具调用] MCP工具 ${name} 失败，耗时: ${duration}ms，错误: ${errorMessage}`);
+
+            // 降级策略：返回友好的错误信息
+            if (errorMessage.includes('超时')) {
+              return {
+                error: '工具调用超时，请稍后重试',
+                fallback: '由于服务响应较慢，暂时无法完成此操作'
+              };
+            } else if (errorMessage.includes('连接') || errorMessage.includes('网络')) {
+              return {
+                error: '网络连接失败',
+                fallback: '无法连接到外部服务，请检查网络连接'
+              };
+            } else {
+              return {
+                error: errorMessage,
+                fallback: '工具执行失败，请稍后重试或使用其他方式'
+              };
+            }
+          }
+        },
+      });
+    }
+
+    return tools;
+  } catch (error) {
+    console.error('获取 MCP 工具失败:', error);
+    // 降级策略：返回空对象而不是抛出错误
+    return {};
+  }
 }
 
 export type BuiltinTools = ReturnType<typeof getBuiltinTools>;

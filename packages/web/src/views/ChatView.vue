@@ -36,14 +36,15 @@
           v-model="inputText"
           @keydown.enter.exact.prevent="send"
           placeholder="输入消息... (Enter 发送)"
-          :disabled="chat.streaming"
+          :disabled="chat.streaming || chat.loading"
           rows="1"
         ></textarea>
         <button v-if="chat.streaming" @click="chat.stopStreaming()" class="btn-stop">
           停止
         </button>
-        <button v-else @click="send" :disabled="!inputText.trim()" class="btn-send">
-          发送
+        <button v-else @click="send" :disabled="!inputText.trim() || chat.loading" class="btn-send">
+          <el-icon v-if="chat.loading" class="is-loading"><Loading /></el-icon>
+          <span v-else>发送</span>
         </button>
       </div>
     </template>
@@ -56,6 +57,8 @@
 <script setup lang="ts">
 import { marked } from 'marked'
 import { nextTick, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { useChatStore } from '../stores/chat'
 
 const chat = useChatStore()
@@ -71,7 +74,12 @@ async function send() {
   const text = inputText.value.trim()
   if (!text) return
   inputText.value = ''
-  await chat.sendMessage(text)
+  try {
+    await chat.sendMessage(text)
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '发送消息失败'
+    ElMessage.error(errorMsg)
+  }
 }
 
 // 消息变化时自动滚动

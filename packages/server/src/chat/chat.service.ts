@@ -6,9 +6,11 @@ import {
 import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText } from 'ai';
 import { AiProviderService } from '../ai/ai-provider.service';
-import { getAutomationTools, getBuiltinTools, getMemoryTools, getPluginTools } from '../ai/tools';
+import { getAutomationTools, getBuiltinTools, getMemoryTools, getMcpTools, getPluginTools } from '../ai/tools';
 import { AutomationService } from '../automation/automation.service';
+import { CacheService } from '../cache/cache.service';
 import { MemoryService } from '../memory/memory.service';
+import { McpService } from '../mcp/mcp.service';
 import { PluginGateway } from '../plugin/plugin.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConversationDto, SendMessageDto } from './dto/chat.dto';
@@ -29,6 +31,8 @@ export class ChatService {
     private pluginGateway: PluginGateway,
     private memoryService: MemoryService,
     private automationService: AutomationService,
+    private mcpService: McpService,
+    private cacheService: CacheService,
   ) {}
 
   async createConversation(userId: string, dto: CreateConversationDto) {
@@ -133,7 +137,8 @@ export class ChatService {
     const pluginTools = getPluginTools(this.pluginGateway);
     const memoryTools = getMemoryTools(this.memoryService, userId);
     const automationTools = getAutomationTools(this.automationService, userId);
-    const tools = { ...builtinTools, ...pluginTools, ...memoryTools, ...automationTools };
+    const mcpTools = await getMcpTools(this.mcpService, this.cacheService);
+    const tools = { ...builtinTools, ...pluginTools, ...memoryTools, ...automationTools, ...mcpTools };
 
     // 流式 AI 响应，最多 5 轮工具调用
     const result = streamText({

@@ -349,6 +349,19 @@ input:focus, textarea:focus {
   50% { opacity: 0; }
 }
 
+/* Element Plus Loading Icon */
+.is-loading {
+  animation: rotating 2s linear infinite;
+}
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .input-area {
   padding: 1rem 1.5rem;
   border-top: 1px solid var(--border);
@@ -405,16 +418,5 @@ input:focus, textarea:focus {
   }
   .message-body {
     max-width: 85%;
-  }
-}
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
   }
 }

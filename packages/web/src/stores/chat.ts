@@ -67,6 +67,7 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.push(assistantMsg)
 
     streaming.value = true
+    loading.value = true
     abortController.value = new AbortController()
 
     try {
@@ -77,18 +78,21 @@ export const useChatStore = defineStore('chat', () => {
           switch (event.type) {
             case 'text-delta':
               assistantMsg.content += event.text
+              loading.value = false
               break
             case 'tool-call':
               assistantMsg.toolCalls!.push({
                 toolName: event.toolName,
                 input: event.input,
               })
+              loading.value = false
               break
             case 'tool-result':
               assistantMsg.toolResults!.push({
                 toolName: event.toolName,
                 output: event.output,
               })
+              loading.value = false
               break
             case 'finish':
               assistantMsg.streaming = false
@@ -96,7 +100,7 @@ export const useChatStore = defineStore('chat', () => {
             case 'error':
               assistantMsg.content += `\n\n**错误:** ${event.error}`
               assistantMsg.streaming = false
-              break
+              throw new Error(event.error)
           }
         },
         abortController.value.signal,
@@ -104,10 +108,13 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         assistantMsg.content += `\n\n**错误:** ${(e as Error).message}`
+        assistantMsg.streaming = false
+        throw e // 重新抛出错误，让组件层处理
       }
     } finally {
       assistantMsg.streaming = false
       streaming.value = false
+      loading.value = false
       abortController.value = null
     }
   }
