@@ -1,12 +1,20 @@
 import {
-    ForbiddenException,
-    Injectable,
-    NotFoundException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText } from 'ai';
 import { AiProviderService } from '../ai/ai-provider.service';
-import { getAutomationTools, getBuiltinTools, getMemoryTools, getMcpTools, getPluginTools } from '../ai/tools';
+import {
+  getAutomationTools,
+  getBuiltinTools,
+  getDirectApiTools,
+  getMemoryTools,
+  getMcpTools,
+  getPluginTools,
+} from '../ai/tools';
 import { AutomationService } from '../automation/automation.service';
 import { CacheService } from '../cache/cache.service';
 import { MemoryService } from '../memory/memory.service';
@@ -15,19 +23,29 @@ import { PluginGateway } from '../plugin/plugin.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConversationDto, SendMessageDto } from './dto/chat.dto';
 
-const SYSTEM_PROMPT = `你是一个乐于助人的 AI 助手，名为 Garlic Claw（蒜蓉龙虾）。你可以帮助用户完成各种任务。
-你可以使用工具来获取信息和执行操作。
-一些工具让你可以控制连接的设备（PC、手机、IoT）。设备工具以设备名称为前缀。
-你可以使用 save_memory 将重要信息保存到长期记忆中，并使用 recall_memory 回忆过去的信息。
-你可以使用 create_automation 创建自动化任务（支持计划间隔如 "5m"、"1h"）。
-当用户分享个人偏好或重要事实时，主动将它们保存到记忆中。
-始终保持乐于助人、简洁和友好的态度。使用用户使用的语言回复。`;
+const SYSTEM_PROMPT = `你是一个乐于助人的 AI 助手，名字叫 Garlic Claw。
+
+你可以帮助用户完成各种任务，并在需要时调用工具获取信息或执行操作。
+你可用的工具可能包括：
+- 联网搜索
+- 天气查询
+- 设备控制
+- 长期记忆读写
+- 自动化任务创建和执行
+
+工作要求：
+- 优先用工具获取事实性信息，不要编造搜索结果、天气数据或设备状态。
+- 当用户的问题明显需要实时信息时，优先调用对应工具。
+- 当用户分享稳定偏好、个人事实或长期有效的指令时，可以使用 save_memory 保存。
+- 回答要简洁、直接、友好。
+- 始终使用用户当前使用的语言回复。`;
 
 @Injectable()
 export class ChatService {
   constructor(
     private prisma: PrismaService,
     private aiProvider: AiProviderService,
+    private configService: ConfigService,
     private pluginGateway: PluginGateway,
     private memoryService: MemoryService,
     private automationService: AutomationService,
@@ -98,10 +116,8 @@ export class ChatService {
     dto: SendMessageDto,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
-    // 验证所有权
     const conversation = await this.getConversation(userId, conversationId);
 
-    // 保存用户消息
     await this.prisma.message.create({
       data: {
         conversationId,
@@ -110,14 +126,12 @@ export class ChatService {
       },
     });
 
-    // 为 AI 构建消息历史
     const messages: ModelMessage[] = conversation.messages.map((m) => ({
       role: m.role as 'user' | 'assistant' | 'system',
       content: m.content || '',
     }));
     messages.push({ role: 'user', content: dto.content });
 
-    // 将相关记忆注入到上下文中
     const memories = await this.memoryService.searchMemories(
       userId,
       dto.content,
@@ -131,25 +145,39 @@ export class ChatService {
       systemPrompt += `\n\n与此用户相关的记忆：\n${memoryContext}`;
     }
 
-    // 获取 AI 模型
     const model = this.aiProvider.getModel(dto.provider, dto.model);
     const builtinTools = getBuiltinTools();
+    const directApiTools = getDirectApiTools(
+      this.configService,
+      this.cacheService,
+    );
     const pluginTools = getPluginTools(this.pluginGateway);
     const memoryTools = getMemoryTools(this.memoryService, userId);
     const automationTools = getAutomationTools(this.automationService, userId);
     const mcpTools = await getMcpTools(this.mcpService, this.cacheService);
-    const tools = { ...builtinTools, ...pluginTools, ...memoryTools, ...automationTools, ...mcpTools };
+    const filteredMcpTools = Object.fromEntries(
+      Object.entries(mcpTools).filter(
+        ([name]) =>
+          !name.startsWith('tavily-mcp__') &&
+          !name.startsWith('weather-server__'),
+      ),
+    );
+    const tools = {
+      ...builtinTools,
+      ...directApiTools,
+      ...pluginTools,
+      ...memoryTools,
+      ...automationTools,
+      ...filteredMcpTools,
+    };
 
-    // 流式 AI 响应，最多 5 轮工具调用
-    const result = streamText({
+    return streamText({
       model,
       system: systemPrompt,
       messages,
       tools,
       stopWhen: stepCountIs(5),
     });
-
-    return result;
   }
 
   async saveAssistantMessage(

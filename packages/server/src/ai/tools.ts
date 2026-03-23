@@ -1,6 +1,8 @@
 import type { PluginParamSchema } from '@garlic-claw/shared';
+import type { ConfigService } from '@nestjs/config';
 import { tool } from 'ai';
 import { z } from 'zod';
+import type { CacheService } from '../cache/cache.service';
 import type { AutomationService } from '../automation/automation.service';
 import type { MemoryService } from '../memory/memory.service';
 import type { PluginGateway } from '../plugin/plugin.gateway';
@@ -74,6 +76,400 @@ export function getBuiltinTools() {
           return { error: '表达式计算失败' };
         }
       },
+    }),
+  };
+}
+
+type DirectToolDeps = {
+  cacheService: CacheService;
+  configService: ConfigService;
+};
+
+type AmapGeocodeResponse = {
+  geocodes?: Array<{
+    adcode?: string;
+    city?: string | string[];
+    district?: string;
+    formatted_address?: string;
+    location?: string;
+    province?: string;
+  }>;
+  info?: string;
+  status?: string;
+};
+
+type AmapWeatherLiveResponse = {
+  lives?: Array<{
+    adcode?: string;
+    city?: string;
+    humidity?: string;
+    province?: string;
+    reporttime?: string;
+    temperature?: string;
+    weather?: string;
+    winddirection?: string;
+    windpower?: string;
+  }>;
+  info?: string;
+  status?: string;
+};
+
+type AmapWeatherForecastResponse = {
+  forecasts?: Array<{
+    casts?: Array<{
+      date?: string;
+      daypower?: string;
+      daytemp?: string;
+      dayweather?: string;
+      daywind?: string;
+      nighttemp?: string;
+      nightweather?: string;
+      nightwind?: string;
+      nightpower?: string;
+      week?: string;
+    }>;
+    city?: string;
+    province?: string;
+    reporttime?: string;
+  }>;
+  info?: string;
+  status?: string;
+};
+
+type QWeatherGeoResponse = {
+  code?: string;
+  location?: Array<{
+    adm1?: string;
+    adm2?: string;
+    country?: string;
+    id?: string;
+    lat?: string;
+    lon?: string;
+    name?: string;
+  }>;
+};
+
+type QWeatherNowResponse = {
+  code?: string;
+  now?: {
+    feelsLike?: string;
+    humidity?: string;
+    obsTime?: string;
+    temp?: string;
+    text?: string;
+    wind360?: string;
+    windDir?: string;
+    windScale?: string;
+    windSpeed?: string;
+  };
+};
+
+type QWeatherDailyResponse = {
+  code?: string;
+  daily?: Array<{
+    fxDate?: string;
+    humidity?: string;
+    tempMax?: string;
+    tempMin?: string;
+    textDay?: string;
+    textNight?: string;
+    windDirDay?: string;
+    windScaleDay?: string;
+  }>;
+};
+
+type TavilySearchResponse = {
+  answer?: string;
+  query?: string;
+  response_time?: number;
+  results?: Array<{
+    content?: string;
+    score?: number;
+    title?: string;
+    url?: string;
+  }>;
+};
+
+async function fetchJson<T>(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchWithTavily(
+  query: string,
+  maxResults: number,
+  deps: DirectToolDeps,
+) {
+  const apiKey = deps.configService.get<string>('TAVILY_API_KEY');
+  if (!apiKey || apiKey === 'your_tavily_api_key_here') {
+    return {
+      error: 'TAVILY_API_KEY not configured',
+    };
+  }
+
+  const cacheKey = `direct:tavily:${query}:${maxResults}`;
+  return deps.cacheService.getOrSet(
+    cacheKey,
+    async () => {
+      const data = await fetchJson<TavilySearchResponse>(
+        'https://api.tavily.com/search',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            api_key: apiKey,
+            query,
+            max_results: maxResults,
+            search_depth: 'advanced',
+            include_answer: true,
+          }),
+        },
+        20000,
+      );
+
+      return {
+        answer: data.answer || null,
+        query: data.query || query,
+        responseTime: data.response_time || null,
+        results: (data.results || []).map((item) => ({
+          title: item.title || '',
+          url: item.url || '',
+          score: item.score ?? null,
+          content: item.content || '',
+        })),
+      };
+    },
+    300,
+  );
+}
+
+async function getWeatherFromAmap(location: string, deps: DirectToolDeps) {
+  const apiKey = deps.configService.get<string>('AMAP_API_KEY');
+  if (!apiKey) {
+    return null;
+  }
+
+  const geocodeParams = new URLSearchParams({
+    address: location,
+    key: apiKey,
+  });
+  const geocode = await fetchJson<AmapGeocodeResponse>(
+    `https://restapi.amap.com/v3/geocode/geo?${geocodeParams.toString()}`,
+    { method: 'GET' },
+    12000,
+  );
+
+  const match = geocode.geocodes?.[0];
+  if (!match?.adcode) {
+    throw new Error(`AMap could not geocode "${location}"`);
+  }
+
+  const liveParams = new URLSearchParams({
+    city: match.adcode,
+    extensions: 'base',
+    key: apiKey,
+  });
+  const forecastParams = new URLSearchParams({
+    city: match.adcode,
+    extensions: 'all',
+    key: apiKey,
+  });
+
+  const [live, forecast] = await Promise.all([
+    fetchJson<AmapWeatherLiveResponse>(
+      `https://restapi.amap.com/v3/weather/weatherInfo?${liveParams.toString()}`,
+      { method: 'GET' },
+      12000,
+    ),
+    fetchJson<AmapWeatherForecastResponse>(
+      `https://restapi.amap.com/v3/weather/weatherInfo?${forecastParams.toString()}`,
+      { method: 'GET' },
+      12000,
+    ),
+  ]);
+
+  const liveInfo = live.lives?.[0];
+  const daily = forecast.forecasts?.[0]?.casts?.slice(0, 3) || [];
+
+  return {
+    provider: 'amap',
+    location: liveInfo?.city || match.formatted_address || location,
+    province: liveInfo?.province || match.province || null,
+    current: liveInfo
+      ? {
+          condition: liveInfo.weather || null,
+          humidity: liveInfo.humidity || null,
+          observedAt: liveInfo.reporttime || null,
+          temperatureC: liveInfo.temperature || null,
+          windDirection: liveInfo.winddirection || null,
+          windPower: liveInfo.windpower || null,
+        }
+      : null,
+    forecast: daily.map((item) => ({
+      date: item.date || null,
+      dayCondition: item.dayweather || null,
+      dayTempC: item.daytemp || null,
+      dayWind: item.daywind || null,
+      dayWindPower: item.daypower || null,
+      nightCondition: item.nightweather || null,
+      nightTempC: item.nighttemp || null,
+      nightWind: item.nightwind || null,
+      nightWindPower: item.nightpower || null,
+      week: item.week || null,
+    })),
+  };
+}
+
+async function getWeatherFromQWeather(location: string, deps: DirectToolDeps) {
+  const apiKey = deps.configService.get<string>('QWEATHER_API_KEY');
+  if (!apiKey) {
+    return null;
+  }
+
+  const geoParams = new URLSearchParams({
+    location,
+    key: apiKey,
+  });
+  const geo = await fetchJson<QWeatherGeoResponse>(
+    `https://geoapi.qweather.com/v2/city/lookup?${geoParams.toString()}`,
+    { method: 'GET' },
+    12000,
+  );
+
+  const match = geo.location?.[0];
+  if (!match?.id) {
+    throw new Error(`QWeather could not geocode "${location}"`);
+  }
+
+  const nowParams = new URLSearchParams({
+    location: match.id,
+    key: apiKey,
+  });
+
+  const [now, daily] = await Promise.all([
+    fetchJson<QWeatherNowResponse>(
+      `https://devapi.qweather.com/v7/weather/now?${nowParams.toString()}`,
+      { method: 'GET' },
+      12000,
+    ),
+    fetchJson<QWeatherDailyResponse>(
+      `https://devapi.qweather.com/v7/weather/3d?${nowParams.toString()}`,
+      { method: 'GET' },
+      12000,
+    ),
+  ]);
+
+  return {
+    provider: 'qweather',
+    location: [match.country, match.adm1, match.adm2, match.name]
+      .filter(Boolean)
+      .join(' '),
+    current: now.now
+      ? {
+          condition: now.now.text || null,
+          feelsLikeC: now.now.feelsLike || null,
+          humidity: now.now.humidity || null,
+          observedAt: now.now.obsTime || null,
+          temperatureC: now.now.temp || null,
+          windDirection: now.now.windDir || now.now.wind360 || null,
+          windScale: now.now.windScale || null,
+          windSpeed: now.now.windSpeed || null,
+        }
+      : null,
+    forecast: (daily.daily || []).map((item) => ({
+      date: item.fxDate || null,
+      dayCondition: item.textDay || null,
+      dayTempC: item.tempMax || null,
+      dayWind: item.windDirDay || null,
+      dayWindScale: item.windScaleDay || null,
+      humidity: item.humidity || null,
+      nightCondition: item.textNight || null,
+      nightTempC: item.tempMin || null,
+    })),
+  };
+}
+
+async function getDirectWeather(location: string, deps: DirectToolDeps) {
+  const cacheKey = `direct:weather:${location}`;
+  return deps.cacheService.getOrSet(
+    cacheKey,
+    async () => {
+      const providers = [getWeatherFromAmap, getWeatherFromQWeather];
+      const errors: string[] = [];
+
+      for (const provider of providers) {
+        try {
+          const result = await provider(location, deps);
+          if (result) {
+            return result;
+          }
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+
+      return {
+        error: errors.length
+          ? errors.join('; ')
+          : 'No weather provider configured. Set AMAP_API_KEY or QWEATHER_API_KEY.',
+      };
+    },
+    600,
+  );
+}
+
+export function getDirectApiTools(
+  configService: ConfigService,
+  cacheService: CacheService,
+) {
+  const deps: DirectToolDeps = {
+    cacheService,
+    configService,
+  };
+
+  return {
+    tavily_search: tool({
+      description: 'Search the web using the Tavily HTTP API and return concise source snippets.',
+      inputSchema: z.object({
+        query: z.string().describe('Search query'),
+        maxResults: z.number().int().min(1).max(10).optional().describe('Maximum results'),
+      }),
+      execute: async ({
+        query,
+        maxResults = 5,
+      }: {
+        maxResults?: number;
+        query: string;
+      }) => searchWithTavily(query, maxResults, deps),
+    }),
+    get_weather: tool({
+      description: 'Get weather by calling AMap or QWeather directly. Prefer city or district names in Chinese.',
+      inputSchema: z.object({
+        location: z.string().describe('City or district name, for example 北京 or 上海浦东'),
+      }),
+      execute: async ({ location }: { location: string }) =>
+        getDirectWeather(location, deps),
     }),
   };
 }
