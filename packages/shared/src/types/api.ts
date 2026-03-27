@@ -1,4 +1,6 @@
-export interface ApiResponse<T = unknown> {
+import type { JsonValue } from './json';
+
+export interface ApiResponse<T = JsonValue> {
   success: boolean;
   data?: T;
   message?: string;

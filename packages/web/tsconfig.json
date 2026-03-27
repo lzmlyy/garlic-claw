@@ -18,7 +18,9 @@
     "jsxImportSource": "vue",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@garlic-claw/shared": ["../shared/src/index.ts"],
+      "@garlic-claw/shared/*": ["../shared/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"]

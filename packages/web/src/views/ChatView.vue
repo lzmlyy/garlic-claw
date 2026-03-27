@@ -1,52 +1,43 @@
 <template>
   <div class="chat-view">
     <template v-if="chat.currentConversationId">
-      <div class="messages" ref="messagesEl">
-        <div v-if="chat.loading" class="loading">加载中...</div>
-        <div
-          v-for="(msg, i) in chat.messages"
-          :key="i"
-          class="message"
-          :class="msg.role"
-        >
-          <div class="message-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
-          <div class="message-body">
-            <!-- 工具调用 -->
-            <div v-if="msg.toolCalls?.length" class="tool-calls">
-              <div v-for="(tc, j) in msg.toolCalls" :key="j" class="tool-call">
-                🔧 <strong>{{ tc.toolName }}</strong>
-                <code>{{ JSON.stringify(tc.input) }}</code>
-              </div>
-            </div>
-            <!-- 工具结果 -->
-            <div v-if="msg.toolResults?.length" class="tool-results">
-              <div v-for="(tr, j) in msg.toolResults" :key="j" class="tool-result">
-                ✅ <strong>{{ tr.toolName }}</strong>
-                <code>{{ JSON.stringify(tr.output) }}</code>
-              </div>
-            </div>
-            <!-- 消息内容 -->
-            <div class="message-content" v-html="renderMarkdown(msg.content)"></div>
-            <span v-if="msg.streaming" class="cursor">▌</span>
-          </div>
+      <div class="chat-toolbar">
+        <ModelQuickInput
+          :model="chat.selectedModel"
+          :provider="chat.selectedProvider"
+          placeholder="选择 provider/model"
+          @change="handleModelChange"
+        />
+        <div v-if="selectedCapabilities" class="capability-row">
+          <span v-if="selectedCapabilities.reasoning" class="capability-chip">推理</span>
+          <span v-if="selectedCapabilities.toolCall" class="capability-chip">工具</span>
+          <span v-if="selectedCapabilities.input.image" class="capability-chip">支持图片</span>
         </div>
       </div>
-      <div class="input-area">
-        <textarea
-          v-model="inputText"
-          @keydown.enter.exact.prevent="send"
-          placeholder="输入消息... (Enter 发送)"
-          :disabled="chat.streaming"
-          rows="1"
-        ></textarea>
-        <button v-if="chat.streaming" @click="chat.stopStreaming()" class="btn-stop">
-          停止
-        </button>
-        <button v-else @click="send" :disabled="!inputText.trim()" class="btn-send">
-          发送
-        </button>
-      </div>
+
+      <ChatMessageList
+        :loading="chat.loading"
+        :messages="chat.messages"
+        @delete-message="deleteMessage"
+        @update-message="updateMessage"
+      />
+
+      <ChatComposer
+        v-model="inputText"
+        :can-send="canSend"
+        :can-trigger-retry="canTriggerRetryAction"
+        :pending-images="pendingImages"
+        :retry-label="retryActionLabel"
+        :streaming="chat.streaming"
+        :upload-notices="uploadNotices"
+        @file-change="handleFileChange"
+        @remove-image="removeImage"
+        @retry="triggerRetryAction"
+        @send="send"
+        @stop="chat.stopStreaming()"
+      />
     </template>
+
     <div v-else class="no-conversation">
       <p>👈 选择一个对话或创建新对话</p>
     </div>
@@ -54,35 +45,65 @@
 </template>
 
 <script setup lang="ts">
-import { marked } from 'marked'
-import { nextTick, ref, watch } from 'vue'
+import ChatComposer from '../components/chat/ChatComposer.vue'
+import ChatMessageList from '../components/chat/ChatMessageList.vue'
+import ModelQuickInput from '../components/ModelQuickInput.vue'
+import { useChatView } from '../composables/use-chat-view'
 import { useChatStore } from '../stores/chat'
 
 const chat = useChatStore()
-const inputText = ref('')
-const messagesEl = ref<HTMLElement | null>(null)
-
-function renderMarkdown(text: string): string {
-  if (!text) return ''
-  return marked.parse(text, { async: false }) as string
-}
-
-async function send() {
-  const text = inputText.value.trim()
-  if (!text) return
-  inputText.value = ''
-  await chat.sendMessage(text)
-}
-
-// 消息变化时自动滚动
-watch(
-  () => chat.messages[chat.messages.length - 1]?.content,
-  () => {
-    nextTick(() => {
-      if (messagesEl.value) {
-        messagesEl.value.scrollTop = messagesEl.value.scrollHeight
-      }
-    })
-  },
-)
+const {
+  inputText,
+  pendingImages,
+  selectedCapabilities,
+  uploadNotices,
+  canSend,
+  canTriggerRetryAction,
+  handleModelChange,
+  send,
+  handleFileChange,
+  removeImage,
+  updateMessage,
+  deleteMessage,
+  retryActionLabel,
+  triggerRetryAction,
+} = useChatView(chat)
 </script>
+
+<style scoped>
+.chat-view {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 16px;
+}
+
+.chat-toolbar {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+}
+
+.capability-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.capability-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(68, 204, 136, 0.14);
+  color: var(--success);
+  font-size: 12px;
+}
+
+.no-conversation {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--text-muted);
+}
+</style>

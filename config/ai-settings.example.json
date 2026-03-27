@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "updatedAt": "2026-03-26T00:00:00.000Z",
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "mode": "official",
+      "driver": "openai",
+      "apiKey": "YOUR_OPENAI_API_KEY",
+      "baseUrl": "https://api.openai.com/v1",
+      "defaultModel": "gpt-4o-mini",
+      "models": [
+        "gpt-4o-mini"
+      ]
+    },
+    {
+      "id": "team-gemini",
+      "name": "Team Gemini Compatible",
+      "mode": "compatible",
+      "driver": "gemini",
+      "apiKey": "YOUR_COMPATIBLE_API_KEY",
+      "baseUrl": "https://your-compatible-endpoint.example.com/v1beta",
+      "defaultModel": "gemini-2.0-flash",
+      "models": [
+        "gemini-2.0-flash"
+      ]
+    }
+  ],
+  "visionFallback": {
+    "enabled": false,
+    "providerId": "openai",
+    "modelId": "gpt-4o-mini",
+    "prompt": "Please describe the uploaded image clearly for a text-only model.",
+    "maxDescriptionLength": 400
+  }
+}

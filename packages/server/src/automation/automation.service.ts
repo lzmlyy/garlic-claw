@@ -1,21 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import type { ActionConfig, TriggerConfig } from '@garlic-claw/shared';
+import type { JsonValue } from '../common/types/json-value';
 import { PluginGateway } from '../plugin/plugin.gateway';
 import { PrismaService } from '../prisma/prisma.service';
-
-export interface TriggerConfig {
-  type: 'cron' | 'event' | 'manual';
-  cron?: string;
-  [key: string]: unknown;
-}
-
-export interface ActionConfig {
-  type: 'device_command' | 'ai_message';
-  plugin?: string;
-  capability?: string;
-  params?: Record<string, unknown>;
-  message?: string;
-  [key: string]: unknown;
-}
 
 interface CronEntry {
   automationId: string;
@@ -90,25 +77,29 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
       include: {
         logs: { orderBy: { createdAt: 'desc' }, take: 20 },
       },
-    });
-    if (!automation) return null;
+    })
+    if (!automation) {
+      return null
+    }
     return {
       ...automation,
       trigger: JSON.parse(automation.trigger) as TriggerConfig,
       actions: JSON.parse(automation.actions) as ActionConfig[],
-    };
+    }
   }
 
   async toggle(id: string, userId: string) {
     const automation = await this.prisma.automation.findFirst({
       where: { id, userId },
-    });
-    if (!automation) return null;
+    })
+    if (!automation) {
+      return null
+    }
 
     const updated = await this.prisma.automation.update({
       where: { id },
       data: { enabled: !automation.enabled },
-    });
+    })
 
     const trigger = JSON.parse(automation.trigger) as TriggerConfig;
     if (trigger.type === 'cron') {
@@ -130,10 +121,12 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
   // --- 执行 ---
 
   async executeAutomation(automationId: string) {
-    const automation = await this.findById(automationId);
-    if (!automation || !automation.enabled) return;
+    const automation = await this.findById(automationId)
+    if (!automation || !automation.enabled) {
+      return
+    }
 
-    const results: unknown[] = [];
+    const results: JsonValue[] = [];
     let status = 'success';
 
     for (const action of automation.actions) {
@@ -143,8 +136,8 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
             action.plugin,
             action.capability,
             action.params || {},
-          );
-          results.push({ action: action.type, plugin: action.plugin, capability: action.capability, result });
+          )
+          results.push({ action: action.type, plugin: action.plugin, capability: action.capability, result })
         }
         // ai_message 类型由注入 ChatService 处理，此处留空
       } catch (err) {
@@ -152,7 +145,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
         results.push({
           action: action.type,
           error: err instanceof Error ? err.message : String(err),
-        });
+        })
       }
     }
 
@@ -163,19 +156,19 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
         status,
         result: JSON.stringify(results),
       },
-    });
+    })
 
     // 更新 lastRunAt
     await this.prisma.automation.update({
       where: { id: automationId },
       data: { lastRunAt: new Date() },
-    });
+    })
 
     this.logger.log(
       `自动化 "${automation.name}" 已执行：${status}`,
-    );
+    )
 
-    return { status, results };
+    return { status, results }
   }
 
   // --- Cron 计划 ---
@@ -236,8 +229,10 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
    * 无效则返回 null。最小值 10 秒。
    */
   private parseCronInterval(expr: string): number | null {
-    const match = expr.trim().match(/^(\d+)\s*(s|m|h)$/i);
-    if (!match) return null;
+    const match = expr.trim().match(/^(\d+)\s*(s|m|h)$/i)
+    if (!match) {
+      return null
+    }
 
     const value = parseInt(match[1], 10);
     const unit = match[2].toLowerCase();
@@ -254,7 +249,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
         ms = value * 60 * 60 * 1000;
         break;
       default:
-        return null;
+        return null
     }
 
     // 最小 10 秒以防止滥用

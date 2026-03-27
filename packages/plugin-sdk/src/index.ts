@@ -1,9 +1,15 @@
 import {
+  type AuthPayload,
   WS_ACTION,
   WS_TYPE,
   type DeviceType,
+  type ExecuteErrorPayload,
   type ExecutePayload,
+  type ExecuteResultPayload,
+  type JsonObject,
+  type JsonValue,
   type PluginCapability,
+  type RegisterPayload,
   type WsMessage,
 } from '@garlic-claw/shared';
 import WebSocket from 'ws';
@@ -28,8 +34,25 @@ export interface PluginClientOptions {
 }
 
 type CommandHandler = (
-  params: Record<string, unknown>,
-) => Promise<unknown> | unknown;
+  params: JsonObject,
+) => Promise<JsonValue> | JsonValue;
+
+type PluginClientPayload =
+  | AuthPayload
+  | RegisterPayload
+  | ExecutePayload
+  | ExecuteResultPayload
+  | ExecuteErrorPayload
+  | JsonValue;
+
+/**
+ * 输出插件 SDK 的普通运行日志。
+ * @param message 完整日志文本
+ * @returns 无返回值
+ */
+function writePluginSdkLog(message: string): void {
+  process.stdout.write(`${message}\n`);
+}
 
 export class PluginClient {
   private ws: WebSocket | null = null;
@@ -56,18 +79,20 @@ export class PluginClient {
 
   /** 连接到服务器 */
   connect() {
-    if (this.ws) return;
+    if (this.ws) {
+      return;
+    }
 
     this.ws = new WebSocket(this.options.serverUrl);
 
     this.ws.on('open', () => {
-      console.log(`[plugin-sdk] 已连接到 ${this.options.serverUrl}`);
+      writePluginSdkLog(`[plugin-sdk] 已连接到 ${this.options.serverUrl}`);
       this.authenticate();
     });
 
     this.ws.on('message', (raw: Buffer) => {
       try {
-        const msg: WsMessage = JSON.parse(raw.toString());
+        const msg: WsMessage<PluginClientPayload> = JSON.parse(raw.toString());
         this.handleMessage(msg);
       } catch (e) {
         console.error('[plugin-sdk] 消息解析失败:', e);
@@ -75,7 +100,7 @@ export class PluginClient {
     });
 
     this.ws.on('close', () => {
-      console.log('[plugin-sdk] 已断开连接');
+      writePluginSdkLog('[plugin-sdk] 已断开连接');
       this.connected = false;
       this.stopHeartbeat();
       if (this.options.autoReconnect) {
@@ -114,11 +139,11 @@ export class PluginClient {
     });
   }
 
-  private handleMessage(msg: WsMessage) {
+  private handleMessage(msg: WsMessage<PluginClientPayload>) {
     switch (msg.type) {
       case WS_TYPE.AUTH:
         if (msg.action === WS_ACTION.AUTH_OK) {
-          console.log('[plugin-sdk] 认证通过');
+          writePluginSdkLog('[plugin-sdk] 认证通过');
           this.connected = true;
           this.registerCapabilities();
           this.startHeartbeat();
@@ -131,7 +156,7 @@ export class PluginClient {
 
       case WS_TYPE.PLUGIN:
         if (msg.action === WS_ACTION.REGISTER_OK) {
-          console.log('[plugin-sdk] 能力已注册');
+          writePluginSdkLog('[plugin-sdk] 能力已注册');
         }
         break;
 
@@ -147,7 +172,7 @@ export class PluginClient {
     }
   }
 
-  private async handleExecute(msg: WsMessage) {
+  private async handleExecute(msg: WsMessage<PluginClientPayload>) {
     const payload = msg.payload as ExecutePayload;
     const handler = this.handlers.get(payload.capability);
 
@@ -194,8 +219,10 @@ export class PluginClient {
   }
 
   private scheduleReconnect() {
-    if (this.reconnectTimer) return;
-    console.log(
+    if (this.reconnectTimer) {
+      return;
+    }
+    writePluginSdkLog(
       `[plugin-sdk] 将在 ${this.options.reconnectInterval}ms 后重连...`,
     );
     this.reconnectTimer = setTimeout(() => {
@@ -208,11 +235,11 @@ export class PluginClient {
   private send(
     type: string,
     action: string,
-    payload: unknown,
+    payload: PluginClientPayload,
     requestId?: string,
   ) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      const msg: WsMessage = { type, action, payload, requestId };
+      const msg: WsMessage<PluginClientPayload> = { type, action, payload, requestId };
       this.ws.send(JSON.stringify(msg));
     }
   }

@@ -14,6 +14,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { IncomingMessage } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
+import type { JsonObject, JsonValue } from '../common/types/json-value';
+import { toJsonValue } from '../common/utils/json-value';
 import { PluginService } from './plugin.service';
 
 interface PluginConnection {
@@ -25,10 +27,20 @@ interface PluginConnection {
 }
 
 interface PendingCommand {
-  resolve: (value: unknown) => void;
+  resolve: (value: JsonValue) => void;
   reject: (reason: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
+
+type PluginGatewayPayload =
+  | AuthPayload
+  | RegisterPayload
+  | ExecutePayload
+  | ExecuteResultPayload
+  | ExecuteErrorPayload
+  | JsonValue;
+
+type PluginGatewayMessage = WsMessage<PluginGatewayPayload>;
 
 @Injectable()
 export class PluginGateway implements OnModuleInit, OnModuleDestroy {
@@ -89,7 +101,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
     ws.on('message', (raw: Buffer) => {
       try {
-        const msg: WsMessage = JSON.parse(raw.toString());
+        const msg: PluginGatewayMessage = JSON.parse(raw.toString());
         this.handleMessage(ws, conn, msg);
       } catch {
         this.send(ws, WS_TYPE.ERROR, 'parse_error', { error: '无效的 JSON' });
@@ -109,7 +121,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private async handleMessage(
     ws: WebSocket,
     conn: PluginConnection,
-    msg: WsMessage,
+    msg: PluginGatewayMessage,
   ) {
     // 必须先认证
     if (!conn.authenticated && !(msg.type === WS_TYPE.AUTH && msg.action === WS_ACTION.AUTHENTICATE)) {
@@ -132,9 +144,15 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
       case WS_TYPE.COMMAND:
         if (msg.action === WS_ACTION.EXECUTE_RESULT) {
-          this.handleExecuteResult(msg.requestId!, msg.payload as ExecuteResultPayload);
+          const requestId = this.readRequestId(msg);
+          if (requestId) {
+            this.handleExecuteResult(requestId, msg.payload as ExecuteResultPayload);
+          }
         } else if (msg.action === WS_ACTION.EXECUTE_ERROR) {
-          this.handleExecuteError(msg.requestId!, msg.payload as ExecuteErrorPayload);
+          const requestId = this.readRequestId(msg);
+          if (requestId) {
+            this.handleExecuteError(requestId, msg.payload as ExecuteErrorPayload);
+          }
         }
         break;
 
@@ -180,7 +198,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     if (pending) {
       clearTimeout(pending.timer);
       this.pendingCommands.delete(requestId);
-      pending.resolve(payload.data);
+      pending.resolve(toJsonValue(payload.data));
     }
   }
 
@@ -191,6 +209,20 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
       this.pendingCommands.delete(requestId);
       pending.reject(new Error(payload.error));
     }
+  }
+
+  /**
+   * 读取插件回包中的 requestId。
+   * @param msg 插件消息
+   * @returns requestId；缺失时返回 null 并记录日志
+   */
+  private readRequestId(msg: PluginGatewayMessage): string | null {
+    if (msg.requestId) {
+      return msg.requestId;
+    }
+
+    this.logger.warn(`收到缺少 requestId 的插件消息: ${msg.type}/${msg.action}`);
+    return null;
   }
 
   private async handleDisconnect(conn: PluginConnection) {
@@ -211,9 +243,9 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   async executeCommand(
     pluginName: string,
     capability: string,
-    params: Record<string, unknown>,
+    params: JsonObject,
     timeoutMs = 30000,
-  ): Promise<unknown> {
+  ): Promise<JsonValue> {
     const conn = this.pluginByName.get(pluginName);
     if (!conn || conn.ws.readyState !== WebSocket.OPEN) {
       throw new Error(`插件 "${pluginName}" 未连接`);
@@ -264,11 +296,11 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     ws: WebSocket,
     type: string,
     action: string,
-    payload: unknown,
+    payload: PluginGatewayPayload,
     requestId?: string,
   ) {
     if (ws.readyState === WebSocket.OPEN) {
-      const msg: WsMessage = { type, action, payload, requestId };
+      const msg: PluginGatewayMessage = { type, action, payload, requestId };
       ws.send(JSON.stringify(msg));
     }
   }

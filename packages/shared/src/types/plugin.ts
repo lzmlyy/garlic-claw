@@ -1,5 +1,7 @@
+import type { JsonObject, JsonValue } from './json';
+
 /** WebSocket 消息信封 */
-export interface WsMessage<T = unknown> {
+export interface WsMessage<T = JsonValue> {
   type: string;
   action: string;
   payload: T;
@@ -48,11 +50,11 @@ export interface RegisterPayload {
 
 export interface ExecutePayload {
   capability: string;
-  params: Record<string, unknown>;
+  params: JsonObject;
 }
 
 export interface ExecuteResultPayload {
-  data: unknown;
+  data: JsonValue;
 }
 
 export interface ExecuteErrorPayload {
@@ -64,6 +66,19 @@ export interface PluginCapability {
   name: string;
   description: string;
   parameters: Record<string, PluginParamSchema>;
+}
+
+/** 插件/设备信息 */
+export interface PluginInfo {
+  id: string;
+  name: string;
+  deviceType: string;
+  status: string;
+  capabilities: PluginCapability[];
+  connected: boolean;
+  lastSeenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PluginParamSchema {

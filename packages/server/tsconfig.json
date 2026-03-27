@@ -2,7 +2,46 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "baseUrl": ".",
+    "paths": {
+      "ai": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/openai": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/anthropic": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/google": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/groq": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/xai": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/mistral": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/cohere": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/cerebras": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/deepinfra": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/togetherai": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/perplexity": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/gateway": ["src/types/ai-sdk-stubs"],
+      "@ai-sdk/vercel": ["src/types/ai-sdk-stubs"],
+      "@openrouter/ai-sdk-provider": ["src/types/ai-sdk-stubs"]
+    }
   },
-  "include": ["src"]
+  "files": ["src/main.ts"],
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/ai/constants/**/*",
+    "src/ai/discovery/**/*",
+    "src/ai/factory/**/*",
+    "src/ai/loaders/**/*",
+    "src/ai/provider-initializer.ts",
+    "src/ai/llm.service.ts",
+    "src/ai/providers/*.provider.ts",
+    "src/ai/providers/index.ts",
+    "src/ai/registry/provider.state.ts",
+    "src/ai/transform/**/*",
+    "src/ai/utils/**/*",
+    "src/ai/config/config.loader.ts",
+    "src/ai/config/config.validator.ts",
+    "src/ai/config/env.provider-config.ts"
+  ]
 }

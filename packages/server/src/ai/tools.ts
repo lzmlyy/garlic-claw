@@ -1,9 +1,35 @@
-import type { PluginParamSchema } from '@garlic-claw/shared';
-import { tool } from 'ai';
+import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 import type { AutomationService } from '../automation/automation.service';
+import type { JsonObject, JsonValue } from '../common/types/json-value';
 import type { MemoryService } from '../memory/memory.service';
 import type { PluginGateway } from '../plugin/plugin.gateway';
+
+/**
+ * 插件参数 schema 的最小形状。
+ */
+interface PluginParameterSchema {
+  /** 参数类型。 */
+  type: string;
+  /** 参数描述。 */
+  description?: string;
+  /** 是否必填。 */
+  required?: boolean;
+}
+
+/**
+ * 任意 JSON 值 schema。
+ */
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
 
 /**
  * AI 可调用工具（函数调用）的注册表。
@@ -56,13 +82,13 @@ export function getBuiltinTools() {
         }
       },
     }),
-  };
+  } satisfies Record<string, Tool>;
 }
 
 /**
  * 将 PluginParamSchema 记录转换为 Zod 对象模式。
  */
-function paramSchemaToZod(params: Record<string, PluginParamSchema>) {
+function paramSchemaToZod(params: Record<string, PluginParameterSchema>) {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [key, schema] of Object.entries(params)) {
     let zType: z.ZodTypeAny;
@@ -74,10 +100,10 @@ function paramSchemaToZod(params: Record<string, PluginParamSchema>) {
         zType = z.boolean();
         break;
       case 'array':
-        zType = z.array(z.unknown());
+        zType = z.array(jsonValueSchema);
         break;
       case 'object':
-        zType = z.record(z.string(), z.unknown());
+        zType = z.record(z.string(), jsonValueSchema);
         break;
       default:
         zType = z.string();
@@ -99,8 +125,7 @@ function paramSchemaToZod(params: Record<string, PluginParamSchema>) {
  */
 export function getPluginTools(gateway: PluginGateway) {
   const allCaps = gateway.getAllCapabilities();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tools: Record<string, any> = {};
+  const tools: Record<string, Tool> = {};
 
   for (const [pluginName, caps] of allCaps) {
     for (const cap of caps) {
@@ -108,7 +133,7 @@ export function getPluginTools(gateway: PluginGateway) {
       tools[toolName] = tool({
         description: `[设备：${pluginName}] ${cap.description}`,
         inputSchema: paramSchemaToZod(cap.parameters),
-        execute: async (args: Record<string, unknown>) => {
+        execute: async (args: JsonObject) => {
           try {
             return await gateway.executeCommand(pluginName, cap.name, args);
           } catch (err) {
@@ -177,13 +202,41 @@ export function getMemoryTools(memoryService: MemoryService, userId: string) {
         };
       },
     }),
-  };
+  } satisfies Record<string, Tool>;
 }
 
 /**
  * 构建自动化管理的 AI 工具。
  */
 export function getAutomationTools(automationService: AutomationService, userId: string) {
+  /**
+   * 自动化动作输入。
+   */
+  interface AutomationActionInput {
+    /** 动作类型。 */
+    type: 'device_command';
+    /** 目标插件。 */
+    plugin: string;
+    /** 能力名。 */
+    capability: string;
+    /** 动作参数。 */
+    params?: JsonObject;
+  }
+
+  /**
+   * 创建自动化工具输入。
+   */
+  interface CreateAutomationInput {
+    /** 自动化名称。 */
+    name: string;
+    /** 触发类型。 */
+    triggerType: 'cron' | 'manual';
+    /** cron 间隔。 */
+    cronInterval?: string;
+    /** 动作列表。 */
+    actions: AutomationActionInput[];
+  }
+
   return {
     create_automation: tool({
       description:
@@ -203,7 +256,7 @@ export function getAutomationTools(automationService: AutomationService, userId:
               type: z.enum(['device_command']).describe('动作类型'),
               plugin: z.string().describe('目标插件名称'),
               capability: z.string().describe('要调用的能力'),
-              params: z.record(z.string(), z.unknown()).optional().describe('能力的参数'),
+              params: z.record(z.string(), jsonValueSchema).optional().describe('能力的参数'),
             }),
           )
           .describe('要执行的动作列表'),
@@ -213,8 +266,7 @@ export function getAutomationTools(automationService: AutomationService, userId:
         triggerType,
         cronInterval,
         actions,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }: any) => {
+      }: CreateAutomationInput) => {
         const trigger = { type: triggerType, cron: cronInterval };
         const result = await automationService.create(userId, name, trigger, actions);
         return { created: true, id: result.id, name: result.name };
@@ -242,9 +294,11 @@ export function getAutomationTools(automationService: AutomationService, userId:
         automationId: z.string().describe('要切换的自动化 ID'),
       }),
       execute: async ({ automationId }: { automationId: string }) => {
-        const result = await automationService.toggle(automationId, userId);
-        if (!result) return { error: '未找到自动化' };
-        return { id: result.id, enabled: result.enabled };
+        const result = await automationService.toggle(automationId, userId)
+        if (!result) {
+          return { error: '未找到自动化' }
+        }
+        return { id: result.id, enabled: result.enabled }
       },
     }),
 
@@ -258,7 +312,7 @@ export function getAutomationTools(automationService: AutomationService, userId:
         return result ?? { error: '未找到自动化或已禁用' };
       },
     }),
-  };
+  } satisfies Record<string, Tool>;
 }
 
 export type BuiltinTools = ReturnType<typeof getBuiltinTools>;

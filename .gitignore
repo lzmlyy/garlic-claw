@@ -4,10 +4,16 @@
 node_modules/
 package-lock.json
 dist/
+packages/*/dist/
+packages/server/tmp/
+packages/*/node_modules/.cache/
+packages/web/node_modules/.vite/
+packages/web/node_modules/.vite-temp/
 
 # TypeScript 编译产物
 **/*.js.map
 **/*.d.ts.map
+**/*.tsbuildinfo
 
 # 防止编译产物混入 src（shared 包曾经误生成）
 packages/shared/src/**/*.js
@@ -20,6 +26,13 @@ coverage/
 .turbo/
 *.db
 *.db-journal
+config/ai-settings.json
+config/model-capabilities.json
+task_plan.md
+progress.md
+findings.md
+tmp/
+docs/superpowers/
 
 # 系统自带
 .DS_Store

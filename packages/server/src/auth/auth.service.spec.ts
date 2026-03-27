@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminIdentityService } from './admin-identity.service';
 import { AuthService } from './auth.service';
 
 jest.mock('bcrypt');
@@ -12,6 +13,7 @@ describe('AuthService', () => {
   let service: AuthService;
   let prisma: { user: { findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock } };
   let jwt: { sign: jest.Mock; verify: jest.Mock };
+  let adminIdentity: { resolveRole: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -22,12 +24,16 @@ describe('AuthService', () => {
       },
     };
     jwt = { sign: jest.fn().mockReturnValue('mock-token'), verify: jest.fn() };
+    adminIdentity = {
+      resolveRole: jest.fn((user: { role: string }) => user.role),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: jwt },
+        { provide: AdminIdentityService, useValue: adminIdentity },
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('test-secret') },
@@ -44,6 +50,7 @@ describe('AuthService', () => {
       prisma.user.create.mockResolvedValue({
         id: 'uid-1',
         username: 'alice',
+        email: 'alice@test.com',
         role: 'user',
       });
       (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-pw');
@@ -81,6 +88,7 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'uid-1',
         username: 'alice',
+        email: 'alice@test.com',
         passwordHash: 'hashed',
         role: 'user',
       });
@@ -95,10 +103,35 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('refreshToken');
     });
 
+    it('should sign tokens with the env-overridden role', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'uid-1',
+        username: 'admin',
+        email: 'admin@bootstrap.local',
+        passwordHash: 'hashed',
+        role: 'user',
+      });
+      adminIdentity.resolveRole.mockReturnValue('super_admin');
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await service.login({
+        username: 'admin',
+        password: 'admin123',
+      });
+
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'super_admin',
+        }),
+        expect.any(Object),
+      );
+    });
+
     it('should throw UnauthorizedException for wrong password', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'uid-1',
         username: 'alice',
+        email: 'alice@test.com',
         passwordHash: 'hashed',
         role: 'user',
       });
@@ -109,7 +142,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should throw UnauthorizedException for unknown user', async () => {
+  it('should throw UnauthorizedException for missing user', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -124,6 +157,7 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'uid-1',
         username: 'alice',
+        email: 'alice@test.com',
         role: 'user',
       });
 

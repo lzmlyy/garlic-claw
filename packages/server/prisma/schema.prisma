@@ -31,23 +31,43 @@ model Conversation {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  messages Message[]
+  messages            Message[]
+  imageTranscriptions ConversationImageTranscription[]
 
   @@map("conversations")
 }
 
 model Message {
-  id             String   @id @default(uuid())
-  conversationId String   @map("conversation_id")
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String   // system | user | assistant | tool
+  role           String       // system | user | assistant | tool
   content        String?
-  toolCalls      String?  @map("tool_calls") // 工具调用的 JSON 字符串
-  toolResults    String?  @map("tool_results") // 工具结果的 JSON 字符串
-  model          String?  // 使用的 AI 模型
-  createdAt      DateTime @default(now()) @map("created_at")
+  partsJson      String?      @map("parts_json") // 原始消息 parts 的 JSON 字符串
+  toolCalls      String?      @map("tool_calls") // 工具调用的 JSON 字符串
+  toolResults    String?      @map("tool_results") // 工具结果的 JSON 字符串
+  provider       String?      // 使用的 AI provider
+  model          String?      // 使用的 AI 模型
+  status         String       @default("completed") // pending | streaming | completed | stopped | error
+  error          String?      // 生成失败时的原始错误文本
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
   @@map("messages")
+}
+
+model ConversationImageTranscription {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  imageHash      String       @map("image_hash")
+  mimeType       String?      @map("mime_type")
+  transcription  String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@unique([conversationId, imageHash])
+  @@map("conversation_image_transcriptions")
 }
 
 model Plugin {

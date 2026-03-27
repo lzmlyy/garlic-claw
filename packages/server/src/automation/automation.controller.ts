@@ -12,18 +12,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AutomationService } from './automation.service';
-
-class CreateAutomationDto {
-  name!: string;
-  trigger!: { type: 'cron' | 'event' | 'manual'; cron?: string; event?: string };
-  actions!: {
-    type: 'device_command' | 'ai_message';
-    plugin?: string;
-    capability?: string;
-    params?: Record<string, unknown>;
-    message?: string;
-  }[];
-}
+import { CreateAutomationDto } from './dto/automation.dto';
 
 @ApiTags('Automations')
 @ApiBearerAuth()

@@ -4,6 +4,15 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+/**
+ * 输出插件运行日志到标准输出。
+ * @param message 完整日志文本
+ * @returns 无返回值
+ */
+function writePluginPcLog(message: string): void {
+  process.stdout.write(`${message}\n`);
+}
+
 // --- 配置 ---
 const SERVER_URL = process.env.WS_URL ?? 'ws://localhost:23331';
 const TOKEN = process.env.PLUGIN_TOKEN ?? '';
@@ -73,7 +82,7 @@ client.onCommand('get_pc_info', async () => {
     platform: os.platform(),
     arch: os.arch(),
     release: os.release(),
-    cpuModel: cpus[0]?.model ?? 'unknown',
+    cpuModel: cpus[0]?.model ?? 'unavailable',
     cpuCores: cpus.length,
     totalMemoryGB: (os.totalmem() / 1024 / 1024 / 1024).toFixed(2),
     freeMemoryGB: (os.freemem() / 1024 / 1024 / 1024).toFixed(2),
@@ -122,7 +131,10 @@ client.onCommand('get_running_processes', async () => {
     const raw = execSync('ps aux --sort=-%mem | head -31', { timeout: 10000 }).toString();
     return { raw };
   } catch (e) {
-    throw new Error(`获取进程失败：${e instanceof Error ? e.message : e}`);
+    throw new Error(
+      `获取进程失败：${e instanceof Error ? e.message : e}`,
+      { cause: e },
+    );
   }
 });
 
@@ -138,18 +150,21 @@ client.onCommand('get_disk_usage', async () => {
     const raw = execSync('df -h', { timeout: 10000 }).toString();
     return { raw };
   } catch (e) {
-    throw new Error(`获取磁盘使用失败：${e instanceof Error ? e.message : e}`);
+    throw new Error(
+      `获取磁盘使用失败：${e instanceof Error ? e.message : e}`,
+      { cause: e },
+    );
   }
 });
 
 // --- 启动 ---
-console.log(`[plugin-pc] 正在启动 PC 插件，主机名：${os.hostname()}`);
-console.log(`[plugin-pc] 正在连接到 ${SERVER_URL}...`);
+writePluginPcLog(`[plugin-pc] 正在启动 PC 插件，主机名：${os.hostname()}`);
+writePluginPcLog(`[plugin-pc] 正在连接到 ${SERVER_URL}...`);
 client.connect();
 
 // 优雅关闭
 process.on('SIGINT', () => {
-  console.log('[plugin-pc] 正在关闭...');
+  writePluginPcLog('[plugin-pc] 正在关闭...');
   client.disconnect();
   process.exit(0);
 });

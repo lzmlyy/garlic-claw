@@ -47,7 +47,8 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { listPlugins, type PluginInfo } from '../api'
+import type { PluginInfo } from '@garlic-claw/shared'
+import { listPlugins } from '../api'
 
 const plugins = ref<PluginInfo[]>([])
 const loading = ref(true)

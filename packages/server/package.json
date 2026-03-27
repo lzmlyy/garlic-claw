@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch & node --watch dist/main",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch & node --watch dist/main",
     "start": "node dist/main",
     "start:prod": "node dist/main",
     "test": "jest --passWithNoTests",

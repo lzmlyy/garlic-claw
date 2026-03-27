@@ -13,12 +13,19 @@
     "build:server": "npm run build -w packages/server",
     "build:web": "npm run build -w packages/web",
     "build:shared": "npm run build -w packages/shared",
-    "lint": "eslint packages/*/src --ext .ts,.vue"
+    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/plugins/*/src/**/*.ts\""
   },
   "engines": {
     "node": ">=22.0.0"
   },
   "dependencies": {
     "effect": "^3.19.19"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
+    "globals": "^17.4.0"
   }
 }

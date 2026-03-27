@@ -93,93 +93,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import {
-  createAutomation,
-  deleteAutomation,
-  listAutomations,
-  runAutomation,
-  toggleAutomation,
-  type AutomationInfo,
-} from '../api'
+import { useAutomations } from '../composables/use-automations'
 
-const automations = ref<AutomationInfo[]>([])
-const loading = ref(true)
-const showCreate = ref(false)
-
-const form = ref({
-  name: '',
-  triggerType: 'cron' as 'cron' | 'manual',
-  cronInterval: '5m',
-  plugin: '',
-  capability: '',
-})
-
-const canCreate = computed(
-  () => form.value.name && form.value.plugin && form.value.capability,
-)
-
-function formatTime(iso: string) {
-  const d = new Date(iso)
-  const now = Date.now()
-  const diff = now - d.getTime()
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString().slice(0, 5)
-}
-
-function truncate(s: string, max: number) {
-  return s.length > max ? s.slice(0, max) + '…' : s
-}
-
-async function load() {
-  loading.value = true
-  try {
-    automations.value = await listAutomations()
-  } catch (e) {
-    console.error('无法加载自动化程序:', e)
-  } finally {
-    loading.value = false
-  }
-}
-
-async function handleCreate() {
-  await createAutomation({
-    name: form.value.name,
-    trigger: {
-      type: form.value.triggerType,
-      cron: form.value.triggerType === 'cron' ? form.value.cronInterval : undefined,
-    },
-    actions: [
-      {
-        type: 'device_command',
-        plugin: form.value.plugin,
-        capability: form.value.capability,
-      },
-    ],
-  })
-  showCreate.value = false
-  form.value = { name: '', triggerType: 'cron', cronInterval: '5m', plugin: '', capability: '' }
-  await load()
-}
-
-async function handleToggle(id: string) {
-  await toggleAutomation(id)
-  await load()
-}
-
-async function handleRun(id: string) {
-  await runAutomation(id)
-  await load()
-}
-
-async function handleDelete(id: string) {
-  await deleteAutomation(id)
-  await load()
-}
-
-onMounted(load)
+const {
+  automations,
+  loading,
+  showCreate,
+  form,
+  canCreate,
+  handleCreate,
+  handleToggle,
+  handleRun,
+  handleDelete,
+  formatTime,
+  truncate,
+} = useAutomations()
 </script>
 
 <style scoped>

@@ -36,6 +36,11 @@ const router = createRouter({
           name: 'automations',
           component: () => import('../views/AutomationsView.vue'),
         },
+        {
+          path: 'ai',
+          name: 'ai-settings',
+          component: () => import('../views/ProviderSettings.vue'),
+        },
       ],
     },
   ],
