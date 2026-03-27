@@ -8,6 +8,7 @@ import { createMemoryContextPlugin } from './memory-context.plugin';
 import { createMemoryToolsPlugin } from './memory-tools.plugin';
 import { createProviderRouterPlugin } from './provider-router.plugin';
 import { createRouteInspectorPlugin } from './route-inspector.plugin';
+import { createSubagentDelegatePlugin } from './subagent-delegate.plugin';
 import {
   BuiltinPluginTransport,
   type BuiltinPluginDefinition,
@@ -1308,6 +1309,95 @@ describe('BuiltinPluginTransport', () => {
         description: '更偏文学润色',
         isDefault: false,
       },
+    });
+  });
+
+  it('exposes subagent helpers through the host facade', async () => {
+    hostService.call
+      .mockResolvedValueOnce({
+        targetProviderId: 'openai',
+        targetModelId: 'gpt-5.2-mini',
+        allowedToolNames: 'recall_memory',
+      })
+      .mockResolvedValueOnce({
+        providerId: 'openai',
+        modelId: 'gpt-5.2-mini',
+        text: '已完成子任务总结',
+        message: {
+          role: 'assistant',
+          content: '已完成子任务总结',
+        },
+        finishReason: 'stop',
+        toolCalls: [],
+        toolResults: [],
+      });
+
+    const transport = new BuiltinPluginTransport(
+      createSubagentDelegatePlugin(),
+      hostService as never,
+    );
+
+    const result = await transport.executeTool({
+      toolName: 'delegate_summary',
+      params: {
+        prompt: '请结合当前可用工具做一个简短总结',
+      },
+      context: {
+        source: 'plugin',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+    });
+
+    expect(hostService.call).toHaveBeenNthCalledWith(1, {
+      pluginId: 'builtin.subagent-delegate',
+      context: {
+        source: 'plugin',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+      method: 'config.get',
+      params: {},
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(2, {
+      pluginId: 'builtin.subagent-delegate',
+      context: {
+        source: 'plugin',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+      method: 'subagent.run',
+      params: {
+        providerId: 'openai',
+        modelId: 'gpt-5.2-mini',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: '请结合当前可用工具做一个简短总结',
+              },
+            ],
+          },
+        ],
+        toolNames: ['recall_memory'],
+        maxSteps: 4,
+      },
+    });
+    expect(result).toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-5.2-mini',
+      text: '已完成子任务总结',
+      toolCalls: [],
+      toolResults: [],
+      finishReason: 'stop',
     });
   });
 });

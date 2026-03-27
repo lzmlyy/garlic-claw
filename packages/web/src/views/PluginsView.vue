@@ -277,6 +277,9 @@ function pluginHighlights(plugin: PluginInfo): string[] {
   if (permissions.has('llm:generate')) {
     highlights.push('可二次调用模型')
   }
+  if (permissions.has('subagent:run')) {
+    highlights.push('可调用宿主子代理')
+  }
   if (hooks.has('chat:before-model')) {
     highlights.push('可改写模型上下文')
     highlights.push('可短路模型调用')

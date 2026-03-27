@@ -10,12 +10,14 @@ import type {
   PluginCapability,
   PluginHookName,
   PluginHostMethod,
+  PluginLlmMessage,
   PluginManifest,
   PluginPermission,
   PluginRouteDescriptor,
   PluginRouteRequest,
   PluginRouteResponse,
   PluginRuntimeKind,
+  PluginSubagentRunResult,
 } from '@garlic-claw/shared';
 import {
   BadRequestException,
@@ -23,6 +25,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AiModelExecutionService } from '../ai/ai-model-execution.service';
+import { createStepLimit } from '../ai/sdk-adapter';
+import { filterToolSet, getPluginTools } from '../ai/tools';
+import type { ChatRuntimeMessage } from '../chat/chat-message-session';
+import { toAiSdkMessages } from '../chat/sdk-message-converter';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { PluginHostService } from './plugin-host.service';
@@ -63,6 +70,7 @@ const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | nu
   'storage.get': 'storage:read',
   'storage.list': 'storage:read',
   'storage.set': 'storage:write',
+  'subagent.run': 'subagent:run',
   'state.get': 'state:read',
   'state.set': 'state:write',
   'user.get': 'user:read',
@@ -190,6 +198,7 @@ export class PluginRuntimeService {
     private readonly pluginService: PluginService,
     private readonly hostService: PluginHostService,
     private readonly cronService: PluginCronService,
+    private readonly aiModelExecution: AiModelExecutionService,
   ) {}
 
   /**
@@ -449,6 +458,13 @@ export class PluginRuntimeService {
         input.pluginId,
         this.requireString(input.params, 'jobId', 'cron.delete'),
       );
+    }
+    if (input.method === 'subagent.run') {
+      return toJsonValue(await this.runSubagent({
+        pluginId: input.pluginId,
+        context: input.context,
+        params: input.params,
+      }));
     }
 
     return this.hostService.call(input);
@@ -940,6 +956,369 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 从参数对象读取可选数字字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns 字段值；缺失时返回 undefined
+   */
+  private readOptionalNumber(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): number | undefined {
+    const value = params[key];
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    throw new BadRequestException(`${method} 的 ${key} 必须是数字`);
+  }
+
+  /**
+   * 从参数对象读取可选对象字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns 对象值；缺失时返回 undefined
+   */
+  private readOptionalObject(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): JsonObject | undefined {
+    const value = params[key];
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      return value as JsonObject;
+    }
+
+    throw new BadRequestException(`${method} 的 ${key} 必须是对象`);
+  }
+
+  /**
+   * 从参数对象读取可选字符串数组字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns 字段值；缺失时返回 undefined
+   */
+  private readOptionalStringArray(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): string[] | undefined {
+    const value = params[key];
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+      return value;
+    }
+
+    throw new BadRequestException(`${method} 的 ${key} 必须是字符串数组`);
+  }
+
+  /**
+   * 从参数对象读取可选字符串字典字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns 字段值；缺失时返回 undefined
+   */
+  private readOptionalStringRecord(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): Record<string, string> | undefined {
+    const value = this.readOptionalObject(params, key, method);
+    if (!value) {
+      return undefined;
+    }
+
+    const record: Record<string, string> = {};
+    for (const [entryKey, entryValue] of Object.entries(value)) {
+      if (typeof entryValue !== 'string') {
+        throw new BadRequestException(`${method} 的 ${key}.${entryKey} 必须是字符串`);
+      }
+      record[entryKey] = entryValue;
+    }
+
+    return record;
+  }
+
+  /**
+   * 从参数对象读取结构化消息数组。
+   * @param params 参数对象
+   * @param method 当前 Host API 方法名
+   * @returns 已校验的消息数组
+   */
+  private readLlmMessages(
+    params: JsonObject,
+    method: string,
+  ): PluginLlmMessage[] {
+    const value = params.messages;
+    if (!Array.isArray(value)) {
+      throw new BadRequestException(`${method} 的 messages 必须是数组`);
+    }
+
+    return value.map((item, index) => this.readLlmMessage(item, index, method));
+  }
+
+  /**
+   * 读取单条结构化消息。
+   * @param value 原始消息值
+   * @param index 当前消息索引
+   * @param method 当前 Host API 方法名
+   * @returns 已校验的消息
+   */
+  private readLlmMessage(
+    value: JsonValue,
+    index: number,
+    method: string,
+  ): PluginLlmMessage {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadRequestException(`${method} 的 messages[${index}] 必须是对象`);
+    }
+
+    const message = value as JsonObject;
+    if (
+      message.role !== 'user'
+      && message.role !== 'assistant'
+      && message.role !== 'system'
+      && message.role !== 'tool'
+    ) {
+      throw new BadRequestException(
+        `${method} 的 messages[${index}].role 必须是 user/assistant/system/tool`,
+      );
+    }
+
+    return {
+      role: message.role,
+      content: this.readLlmMessageContent(
+        message.content as JsonValue,
+        `${method} 的 messages[${index}].content`,
+      ),
+    };
+  }
+
+  /**
+   * 读取单条消息的 content。
+   * @param value 原始 content
+   * @param label 当前字段标签
+   * @returns 字符串或结构化 part 数组
+   */
+  private readLlmMessageContent(
+    value: JsonValue,
+    label: string,
+  ): string | Array<{ type: 'text'; text: string } | {
+    type: 'image';
+    image: string;
+    mimeType?: string;
+  }> {
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (!Array.isArray(value)) {
+      throw new BadRequestException(`${label} 必须是字符串或数组`);
+    }
+
+    return value.map((part, index) =>
+      this.readChatMessagePart(part, `${label}[${index}]`),
+    );
+  }
+
+  /**
+   * 读取单个消息 part。
+   * @param value 原始 part
+   * @param label 当前字段标签
+   * @returns 已校验的消息 part
+   */
+  private readChatMessagePart(
+    value: JsonValue,
+    label: string,
+  ): { type: 'text'; text: string } | { type: 'image'; image: string; mimeType?: string } {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadRequestException(`${label} 必须是对象`);
+    }
+
+    const part = value as JsonObject;
+    if (part.type === 'text' && typeof part.text === 'string') {
+      return {
+        type: 'text',
+        text: part.text,
+      };
+    }
+    if (part.type === 'image' && typeof part.image === 'string') {
+      return {
+        type: 'image',
+        image: part.image,
+        ...(typeof part.mimeType === 'string' ? { mimeType: part.mimeType } : {}),
+      };
+    }
+
+    throw new BadRequestException(`${label} 不是合法的消息 part`);
+  }
+
+  /**
+   * 执行一次宿主侧 subagent 调用。
+   * @param input 调用参数
+   * @returns subagent 最终结果
+   */
+  private async runSubagent(input: {
+    pluginId: string;
+    context: PluginCallContext;
+    params: JsonObject;
+  }): Promise<PluginSubagentRunResult> {
+    const providerId = this.readOptionalString(input.params, 'providerId', 'subagent.run');
+    const modelId = this.readOptionalString(input.params, 'modelId', 'subagent.run');
+    const system = this.readOptionalString(input.params, 'system', 'subagent.run');
+    const variant = this.readOptionalString(input.params, 'variant', 'subagent.run');
+    const providerOptions = this.readOptionalObject(
+      input.params,
+      'providerOptions',
+      'subagent.run',
+    );
+    const headers = this.readOptionalStringRecord(
+      input.params,
+      'headers',
+      'subagent.run',
+    );
+    const maxOutputTokens = this.readOptionalNumber(
+      input.params,
+      'maxOutputTokens',
+      'subagent.run',
+    );
+    const maxSteps = normalizePositiveInteger(
+      this.readOptionalNumber(input.params, 'maxSteps', 'subagent.run'),
+      5,
+    );
+    const toolNames = this.readOptionalStringArray(
+      input.params,
+      'toolNames',
+      'subagent.run',
+    );
+    const messages = this.readLlmMessages(input.params, 'subagent.run');
+    const modelConfig = this.aiModelExecution.resolveModelConfig(providerId, modelId);
+
+    if (hasImagePart(messages) && !modelConfig.capabilities.input.image) {
+      throw new BadRequestException('subagent.run 当前模型不支持图片输入');
+    }
+
+    const prepared = this.aiModelExecution.prepareResolved({
+      modelConfig,
+      sdkMessages: toAiSdkMessages(messages as unknown as ChatRuntimeMessage[]),
+    });
+    const tools = this.buildSubagentToolSet({
+      pluginId: input.pluginId,
+      context: input.context,
+      providerId: String(modelConfig.providerId),
+      modelId: String(modelConfig.id),
+      toolNames,
+    });
+    const executed = this.aiModelExecution.streamPrepared({
+      prepared,
+      system,
+      tools,
+      stopWhen: createStepLimit(maxSteps),
+      variant,
+      providerOptions,
+      headers,
+      maxOutputTokens,
+    });
+
+    let text = '';
+    const toolCalls: PluginSubagentRunResult['toolCalls'] = [];
+    const toolResults: PluginSubagentRunResult['toolResults'] = [];
+
+    for await (const part of executed.result.fullStream) {
+      if (part.type === 'text-delta') {
+        text += part.text;
+        continue;
+      }
+      if (part.type === 'tool-call') {
+        toolCalls.push({
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          input: toJsonValue(part.input as never),
+        });
+        continue;
+      }
+      if (part.type === 'tool-result') {
+        toolResults.push({
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          output: toJsonValue(part.output as never),
+        });
+      }
+    }
+
+    const finishReason = await executed.result.finishReason;
+
+    return {
+      providerId: String(modelConfig.providerId),
+      modelId: String(modelConfig.id),
+      text,
+      message: {
+        role: 'assistant',
+        content: text,
+      },
+      ...(finishReason !== undefined
+        ? {
+            finishReason: finishReason === null ? null : String(finishReason),
+          }
+        : {}),
+      toolCalls,
+      toolResults,
+    };
+  }
+
+  /**
+   * 构造 subagent 可见的工具集合，并默认排除调用插件自身的工具。
+   * @param input 调用参数
+   * @returns 裁剪后的工具集合
+   */
+  private buildSubagentToolSet(input: {
+    pluginId: string;
+    context: PluginCallContext;
+    providerId: string;
+    modelId: string;
+    toolNames?: string[];
+  }) {
+    if (!input.context.userId || !input.context.conversationId) {
+      return undefined;
+    }
+
+    const callerRecord = this.getRecordOrThrow(input.pluginId);
+    const ownVisibleToolNames = new Set(
+      (callerRecord.manifest.tools ?? []).map((tool) =>
+        callerRecord.runtimeKind === 'builtin'
+          ? tool.name
+          : `${input.pluginId}__${tool.name}`),
+    );
+    const visibleTools = getPluginTools(this, {
+      source: 'subagent',
+      userId: input.context.userId,
+      conversationId: input.context.conversationId,
+      activeProviderId: input.providerId,
+      activeModelId: input.modelId,
+      activePersonaId: input.context.activePersonaId,
+    });
+    const filteredSelfTools = Object.fromEntries(
+      Object.entries(visibleTools).filter(
+        ([toolName]) => !ownVisibleToolNames.has(toolName),
+      ),
+    );
+
+    return filterToolSet(filteredSelfTools, input.toolNames);
+  }
+
+  /**
    * 为插件执行包一层统一超时控制。
    * @param promise 原始执行 Promise
    * @param timeoutMs 超时毫秒数
@@ -1047,4 +1426,33 @@ function isStringRecord(value: JsonValue): value is Record<string, string> {
  */
 function normalizeRoutePath(path: string): string {
   return path.trim().replace(/^\/+|\/+$/g, '');
+}
+
+/**
+ * 把可选数字归一化成正整数；无效值时回退默认值。
+ * @param value 原始数字
+ * @param fallback 默认值
+ * @returns 归一化后的正整数
+ */
+function normalizePositiveInteger(
+  value: number | undefined,
+  fallback: number,
+): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.floor(value));
+}
+
+/**
+ * 判断消息列表中是否包含图片 part。
+ * @param messages 结构化消息数组
+ * @returns 是否包含图片
+ */
+function hasImagePart(messages: PluginLlmMessage[]): boolean {
+  return messages.some((message) =>
+    Array.isArray(message.content)
+    && message.content.some((part) => part.type === 'image'),
+  );
 }

@@ -11,6 +11,7 @@ import { createMemoryToolsPlugin } from './memory-tools.plugin';
 import { createPersonaRouterPlugin } from './persona-router.plugin';
 import { createProviderRouterPlugin } from './provider-router.plugin';
 import { createRouteInspectorPlugin } from './route-inspector.plugin';
+import { createSubagentDelegatePlugin } from './subagent-delegate.plugin';
 
 /**
  * 默认内建插件加载器。
@@ -42,6 +43,7 @@ export class BuiltinPluginLoader implements OnModuleInit {
       createMemoryContextPlugin(),
       createKbContextPlugin(),
       createConversationTitlePlugin(),
+      createSubagentDelegatePlugin(),
       createProviderRouterPlugin(),
       createPersonaRouterPlugin(),
       createCronHeartbeatPlugin(),

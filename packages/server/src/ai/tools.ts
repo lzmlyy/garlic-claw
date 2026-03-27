@@ -1,4 +1,8 @@
-import type { PluginAvailableToolSummary, PluginParamSchema } from '@garlic-claw/shared';
+import type {
+  PluginAvailableToolSummary,
+  PluginInvocationSource,
+  PluginParamSchema,
+} from '@garlic-claw/shared';
 import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 import type { AutomationService } from '../automation/automation.service';
@@ -187,6 +191,7 @@ function paramSchemaToZod(params: Record<string, PluginParameterSchema>) {
 export function getPluginTools(
   runtime: PluginRuntimeService,
   context: {
+    source?: PluginInvocationSource;
     userId: string;
     conversationId: string;
     activeProviderId: string;
@@ -195,7 +200,7 @@ export function getPluginTools(
   },
 ) {
   const toolEntries = runtime.listTools({
-    source: 'chat-tool',
+    source: context.source ?? 'chat-tool',
     userId: context.userId,
     conversationId: context.conversationId,
     activeProviderId: context.activeProviderId,
@@ -220,7 +225,7 @@ export function getPluginTools(
             toolName: entry.tool.name,
             params: args,
             context: {
-              source: 'chat-tool',
+              source: context.source ?? 'chat-tool',
               userId: context.userId,
               conversationId: context.conversationId,
               activeProviderId: context.activeProviderId,
@@ -247,6 +252,7 @@ export function getPluginTools(
 export function getPluginToolSummaries(
   runtime: PluginRuntimeService,
   context: {
+    source?: PluginInvocationSource;
     userId: string;
     conversationId: string;
     activeProviderId: string;
@@ -255,7 +261,7 @@ export function getPluginToolSummaries(
   },
 ): PluginAvailableToolSummary[] {
   return runtime.listTools({
-    source: 'chat-tool',
+    source: context.source ?? 'chat-tool',
     userId: context.userId,
     conversationId: context.conversationId,
     activeProviderId: context.activeProviderId,

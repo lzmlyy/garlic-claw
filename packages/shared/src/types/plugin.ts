@@ -29,6 +29,7 @@ export type PluginPermission =
   | 'provider:read'
   | 'storage:read'
   | 'storage:write'
+  | 'subagent:run'
   | 'state:read'
   | 'state:write'
   | 'user:read';
@@ -46,6 +47,7 @@ export type PluginInvocationSource =
   | 'cron'
   | 'automation'
   | 'http-route'
+  | 'subagent'
   | 'plugin';
 
 // ---- WebSocket 消息类型 (type 字段) ----
@@ -366,6 +368,42 @@ export interface PluginLlmGenerateResult {
   usage?: JsonValue;
 }
 
+/** 插件侧统一 Subagent 运行请求。 */
+export interface PluginSubagentRunParams {
+  providerId?: string;
+  modelId?: string;
+  system?: string;
+  messages: PluginLlmMessage[];
+  toolNames?: string[];
+  variant?: string;
+  providerOptions?: JsonObject;
+  headers?: Record<string, string>;
+  maxOutputTokens?: number;
+  maxSteps?: number;
+}
+
+/** 插件侧统一 Subagent 运行结果。 */
+export interface PluginSubagentRunResult {
+  providerId: string;
+  modelId: string;
+  text: string;
+  message: {
+    role: 'assistant';
+    content: string;
+  };
+  finishReason?: string | null;
+  toolCalls: Array<{
+    toolCallId: string;
+    toolName: string;
+    input: JsonValue;
+  }>;
+  toolResults: Array<{
+    toolCallId: string;
+    toolName: string;
+    output: JsonValue;
+  }>;
+}
+
 /** 聊天模型前 Hook 可见的工具摘要。 */
 export interface PluginAvailableToolSummary {
   name: string;
@@ -526,6 +564,7 @@ export type PluginHostMethod =
   | 'storage.get'
   | 'storage.list'
   | 'storage.set'
+  | 'subagent.run'
   | 'state.get'
   | 'state.set'
   | 'user.get';

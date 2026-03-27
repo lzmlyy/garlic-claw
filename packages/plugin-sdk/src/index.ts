@@ -27,6 +27,8 @@ import {
   type PluginRouteRequest,
   type PluginRouteResponse,
   type PluginSelfInfo,
+  type PluginSubagentRunParams,
+  type PluginSubagentRunResult,
   type RegisterPayload,
   type RouteResultPayload,
   WS_ACTION,
@@ -298,6 +300,13 @@ export interface PluginHostFacade {
    * @returns 结构化生成结果
    */
   generate(params: PluginLlmGenerateParams): Promise<PluginLlmGenerateResult>;
+
+  /**
+   * 发起一次宿主侧子代理调用。
+   * @param params 子代理消息与可选模型参数
+   * @returns 子代理执行结果
+   */
+  runSubagent(params: PluginSubagentRunParams): Promise<PluginSubagentRunResult>;
 
   /**
    * 发起一次宿主侧文本生成。
@@ -858,6 +867,34 @@ export class PluginClient {
             },
             context,
           ) as unknown as Promise<PluginLlmGenerateResult>,
+        runSubagent: ({
+          providerId,
+          modelId,
+          system,
+          messages,
+          toolNames,
+          variant,
+          providerOptions,
+          headers,
+          maxOutputTokens,
+          maxSteps,
+        }) =>
+          this.sendHostCall(
+            'subagent.run',
+            {
+              ...(providerId ? { providerId } : {}),
+              ...(modelId ? { modelId } : {}),
+              ...(system ? { system } : {}),
+              messages: messages as never,
+              ...(toolNames ? { toolNames } : {}),
+              ...(variant ? { variant } : {}),
+              ...(providerOptions ? { providerOptions } : {}),
+              ...(headers ? { headers } : {}),
+              ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+              ...(typeof maxSteps === 'number' ? { maxSteps } : {}),
+            },
+            context,
+          ) as unknown as Promise<PluginSubagentRunResult>,
         generateText: ({
           prompt,
           system,

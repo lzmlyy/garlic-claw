@@ -27,6 +27,12 @@ describe('PluginRuntimeService', () => {
     deleteCron: jest.fn(),
   };
 
+  const aiModelExecution = {
+    resolveModelConfig: jest.fn(),
+    prepareResolved: jest.fn(),
+    streamPrepared: jest.fn(),
+  };
+
   const callContext: PluginCallContext = {
     source: 'chat-tool',
     userId: 'user-1',
@@ -91,10 +97,21 @@ describe('PluginRuntimeService', () => {
     });
     cronService.onPluginRegistered.mockResolvedValue(undefined);
     cronService.onPluginUnregistered.mockResolvedValue(undefined);
+    aiModelExecution.resolveModelConfig.mockReturnValue({
+      id: 'gpt-5.2',
+      providerId: 'openai',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: true,
+        toolCall: true,
+      },
+    });
     service = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
       cronService as never,
+      aiModelExecution as never,
     );
   });
 
@@ -998,6 +1015,222 @@ describe('PluginRuntimeService', () => {
       method: 'kb.list',
       params: {
         limit: 3,
+      },
+    });
+  });
+
+  it('enforces subagent permission before subagent host calls', async () => {
+    const manifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.subagent-delegate',
+      permissions: ['config:read'],
+      tools: [],
+      hooks: [],
+    };
+
+    await service.registerPlugin({
+      manifest,
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.subagent-delegate',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        method: 'subagent.run' as never,
+        params: {
+          messages: [
+            {
+              role: 'user',
+              content: '请帮我总结',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('插件 builtin.subagent-delegate 缺少权限 subagent:run');
+  });
+
+  it('runs subagent calls through a tool loop with filtered visible tools', async () => {
+    const callerManifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.subagent-delegate',
+      permissions: ['subagent:run'],
+      tools: [
+        {
+          name: 'delegate_summary',
+          description: '委托子代理总结',
+          parameters: {
+            prompt: {
+              type: 'string',
+              required: true,
+            },
+          },
+        },
+      ],
+      hooks: [],
+    };
+    const memoryManifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.memory-tools',
+      permissions: ['memory:read'],
+      tools: [
+        {
+          name: 'recall_memory',
+          description: '读取记忆',
+          parameters: {
+            query: {
+              type: 'string',
+              required: true,
+            },
+          },
+        },
+      ],
+      hooks: [],
+    };
+    const memoryToolTransport = createTransport({
+      executeTool: jest.fn().mockResolvedValue({
+        count: 1,
+        memories: [
+          {
+            content: '用户喜欢咖啡',
+          },
+        ],
+      }),
+    });
+    aiModelExecution.prepareResolved.mockReturnValue({
+      modelConfig: {
+        id: 'gpt-5.2',
+        providerId: 'openai',
+        capabilities: {
+          input: { text: true, image: false },
+          output: { text: true, image: false },
+          reasoning: true,
+          toolCall: true,
+        },
+      },
+      model: {
+        provider: 'openai',
+        modelId: 'gpt-5.2',
+      },
+      sdkMessages: [],
+    });
+    aiModelExecution.streamPrepared.mockReturnValue({
+      result: {
+        fullStream: (async function* () {
+          yield {
+            type: 'tool-call',
+            toolCallId: 'call-1',
+            toolName: 'recall_memory',
+            input: {
+              query: '咖啡',
+            },
+          } as const;
+          yield {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'recall_memory',
+            output: {
+              count: 1,
+            },
+          } as const;
+          yield {
+            type: 'text-delta',
+            text: '已完成总结',
+          } as const;
+          yield { type: 'finish' } as const;
+        })(),
+        finishReason: Promise.resolve('stop'),
+      },
+    });
+
+    await service.registerPlugin({
+      manifest: callerManifest,
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+    await service.registerPlugin({
+      manifest: memoryManifest,
+      runtimeKind: 'builtin',
+      transport: memoryToolTransport,
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.subagent-delegate',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+          activePersonaId: 'builtin.default-assistant',
+        },
+        method: 'subagent.run' as never,
+        params: {
+          messages: [
+            {
+              role: 'user',
+              content: '请结合记忆帮我总结',
+            },
+          ],
+          toolNames: ['recall_memory'],
+          maxSteps: 4,
+        },
+      }),
+    ).resolves.toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      text: '已完成总结',
+      message: {
+        role: 'assistant',
+        content: '已完成总结',
+      },
+      finishReason: 'stop',
+      toolCalls: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'recall_memory',
+          input: {
+            query: '咖啡',
+          },
+        },
+      ],
+      toolResults: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'recall_memory',
+          output: {
+            count: 1,
+          },
+        },
+      ],
+    });
+
+    expect(Object.keys(aiModelExecution.streamPrepared.mock.calls[0][0].tools)).toEqual([
+      'recall_memory',
+    ]);
+
+    await aiModelExecution.streamPrepared.mock.calls[0][0].tools.recall_memory.execute({
+      query: '咖啡',
+    });
+
+    expect(memoryToolTransport.executeTool).toHaveBeenCalledWith({
+      toolName: 'recall_memory',
+      params: {
+        query: '咖啡',
+      },
+      context: {
+        source: 'subagent',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'builtin.default-assistant',
       },
     });
   });
