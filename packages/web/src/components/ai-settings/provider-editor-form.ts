@@ -16,7 +16,7 @@ export interface ProviderFormState {
 }
 
 /**
- * 兼容 provider 仅允许这三种请求格式。
+ * 兼容模式可选的驱动列表。
  */
 export const compatibleDrivers = [
   { id: 'openai', name: 'OpenAI 兼容' },

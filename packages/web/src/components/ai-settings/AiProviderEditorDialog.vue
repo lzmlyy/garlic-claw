@@ -4,7 +4,7 @@
       <div class="dialog-header">
         <div>
           <h2>{{ title }}</h2>
-          <p>官方 provider 走官方 SDK；兼容 provider 只支持 openai / anthropic / gemini。</p>
+          <p>按模式填写供应商信息、默认模型和连接凭据。</p>
         </div>
         <button type="button" class="close-button" @click="$emit('close')">×</button>
       </div>

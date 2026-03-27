@@ -8,14 +8,22 @@ Garlic Claw 是一个带设备控制、自动化和多提供商聊天能力的 A
 - 前端：Vue 3 + Vite + Pinia
 - 插件：WebSocket + `@garlic-claw/plugin-sdk`
 - AI provider：
-  - 官方 provider 走官方 SDK
+  - 官方 provider 目录当前包括：
     - `openai` -> `@ai-sdk/openai`
     - `anthropic` -> `@ai-sdk/anthropic`
     - `gemini` -> `@ai-sdk/google`
-  - 兼容 provider 只保留三种请求格式
-    - `openai`
-    - `anthropic`
-    - `gemini`
+    - `groq` -> `@ai-sdk/groq`
+    - `xai` -> `@ai-sdk/xai`
+    - `mistral` -> `@ai-sdk/mistral`
+    - `cohere` -> `@ai-sdk/cohere`
+    - `cerebras` -> `@ai-sdk/cerebras`
+    - `deepinfra` -> `@ai-sdk/deepinfra`
+    - `togetherai` -> `@ai-sdk/togetherai`
+    - `perplexity` -> `@ai-sdk/perplexity`
+    - `gateway` -> `@ai-sdk/gateway`
+    - `vercel` -> `@ai-sdk/vercel`
+    - `openrouter` -> `@openrouter/ai-sdk-provider`
+  - 兼容 provider 只保留三种请求格式：`openai` / `anthropic` / `gemini`
 
 ## 项目结构
 
@@ -70,8 +78,6 @@ cp config/ai-settings.example.json config/ai-settings.json
 - 默认模型
 - provider 预设模型列表
 - `visionFallback` 配置
-
-真实 `config/ai-settings.json` 已被 `.gitignore` 忽略，不会提交到仓库。
 
 ## 快速开始
 
@@ -131,6 +137,21 @@ BOOTSTRAP_ADMIN_PASSWORD=admin123
 - 直接使用官方 API Key
 - 直接使用官方 `baseUrl`
 - 通过管理 API 或前端配置模型能力
+- 当前官方 provider 目录：
+  - `openai` -> `@ai-sdk/openai`
+  - `anthropic` -> `@ai-sdk/anthropic`
+  - `gemini` -> `@ai-sdk/google`
+  - `groq` -> `@ai-sdk/groq`
+  - `xai` -> `@ai-sdk/xai`
+  - `mistral` -> `@ai-sdk/mistral`
+  - `cohere` -> `@ai-sdk/cohere`
+  - `cerebras` -> `@ai-sdk/cerebras`
+  - `deepinfra` -> `@ai-sdk/deepinfra`
+  - `togetherai` -> `@ai-sdk/togetherai`
+  - `perplexity` -> `@ai-sdk/perplexity`
+  - `gateway` -> `@ai-sdk/gateway`
+  - `vercel` -> `@ai-sdk/vercel`
+  - `openrouter` -> `@openrouter/ai-sdk-provider`
 
 ### 兼容 provider
 

@@ -3,7 +3,7 @@
     <header class="page-header">
       <div>
         <h1>AI 设置</h1>
-        <p>统一管理官方 provider、兼容 provider、模型能力和 vision fallback。</p>
+        <p>统一管理供应商、模型能力和 Vision Fallback。</p>
       </div>
     </header>
 
