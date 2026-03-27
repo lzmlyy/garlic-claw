@@ -71,16 +71,84 @@ model ConversationImageTranscription {
 }
 
 model Plugin {
-  id           String   @id @default(uuid())
-  name         String   @unique
-  deviceType   String   @default("pc") @map("device_type")
-  status       String   @default("offline") // online | offline | error
-  capabilities String?  // PluginCapability[] 的 JSON 字符串
-  lastSeenAt   DateTime? @map("last_seen_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid())
+  name               String   @unique
+  displayName        String?  @map("display_name")
+  deviceType         String   @default("pc") @map("device_type")
+  runtimeKind        String   @default("remote") @map("runtime_kind")
+  description        String?
+  status             String   @default("offline") // online | offline | error
+  capabilities       String?  // PluginCapability[] 的 JSON 字符串
+  version            String?
+  permissions        String?  // PluginPermission[] 的 JSON 字符串
+  hooks              String?  // PluginHookDescriptor[] 的 JSON 字符串
+  routes             String?  // PluginRouteDescriptor[] 的 JSON 字符串
+  configSchema       String?  @map("config_schema") // PluginConfigSchema 的 JSON 字符串
+  config             String?  // 已保存配置的 JSON 字符串
+  defaultEnabled     Boolean  @default(true) @map("default_enabled")
+  conversationScopes String?  @map("conversation_scopes") // conversationId -> enabled 的 JSON 字符串
+  healthStatus       String   @default("unknown") @map("health_status")
+  failureCount       Int      @default(0) @map("failure_count")
+  consecutiveFailures Int     @default(0) @map("consecutive_failures")
+  lastError          String?  @map("last_error")
+  lastErrorAt        DateTime? @map("last_error_at")
+  lastSuccessAt      DateTime? @map("last_success_at")
+  lastCheckedAt      DateTime? @map("last_checked_at")
+  lastSeenAt         DateTime? @map("last_seen_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  events        PluginEvent[]
+  storageEntries PluginStorage[]
+  cronJobs      PluginCronJob[]
 
   @@map("plugins")
+}
+
+model PluginCronJob {
+  id          String   @id @default(uuid())
+  pluginName  String   @map("plugin_name")
+  plugin      Plugin   @relation(fields: [pluginName], references: [name], onDelete: Cascade)
+  name        String
+  cron        String
+  description String?
+  source      String
+  enabled     Boolean  @default(true)
+  dataJson    String?  @map("data_json")
+  lastRunAt   DateTime? @map("last_run_at")
+  lastError   String?  @map("last_error")
+  lastErrorAt DateTime? @map("last_error_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([pluginName, name, source])
+  @@map("plugin_cron_jobs")
+}
+
+model PluginStorage {
+  id        String   @id @default(uuid())
+  pluginId  String   @map("plugin_id")
+  plugin    Plugin   @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  key       String
+  valueJson String   @map("value_json")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([pluginId, key])
+  @@map("plugin_storage")
+}
+
+model PluginEvent {
+  id           String   @id @default(uuid())
+  pluginId     String   @map("plugin_id")
+  plugin       Plugin   @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  type         String
+  level        String
+  message      String
+  metadataJson String?  @map("metadata_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("plugin_events")
 }
 
 model Memory {

@@ -1,9 +1,10 @@
+import type { PluginAvailableToolSummary, PluginParamSchema } from '@garlic-claw/shared';
 import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 import type { AutomationService } from '../automation/automation.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import type { MemoryService } from '../memory/memory.service';
-import type { PluginGateway } from '../plugin/plugin.gateway';
+import type { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 
 /**
  * 插件参数 schema 的最小形状。
@@ -30,6 +31,66 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
     z.record(z.string(), jsonValueSchema),
   ]),
 );
+
+/**
+ * 聊天侧自动化工具摘要。
+ * 这里只暴露可序列化的工具描述，供插件 Hook 读取上下文。
+ */
+const AUTOMATION_TOOL_SUMMARIES = [
+  {
+    name: 'create_automation',
+    description:
+      '创建自动化规则。支持 cron 计划（例如 "5m"、"1h"、"30s"）和设备命令。当用户要求设置重复任务或自动化操作时使用此工具。',
+    parameters: {
+      name: {
+        type: 'string',
+        required: true,
+        description: '此自动化的描述性名称',
+      },
+      triggerType: {
+        type: 'string',
+        required: true,
+        description: '触发类型：cron 为计划执行，manual 为手动触发',
+      },
+      cronInterval: {
+        type: 'string',
+        description: '对于 cron 触发：间隔如 "5m"、"1h"、"30s"',
+      },
+      actions: {
+        type: 'array',
+        required: true,
+        description: '要执行的动作列表',
+      },
+    },
+  },
+  {
+    name: 'list_automations',
+    description: '列出当前用户的所有自动化。',
+    parameters: {},
+  },
+  {
+    name: 'toggle_automation',
+    description: '通过 ID 启用或禁用自动化。',
+    parameters: {
+      automationId: {
+        type: 'string',
+        required: true,
+        description: '要切换的自动化 ID',
+      },
+    },
+  },
+  {
+    name: 'run_automation',
+    description: '手动触发自动化立即执行。',
+    parameters: {
+      automationId: {
+        type: 'string',
+        required: true,
+        description: '要运行的自动化 ID',
+      },
+    },
+  },
+] satisfies PluginAvailableToolSummary[];
 
 /**
  * AI 可调用工具（函数调用）的注册表。
@@ -120,31 +181,138 @@ function paramSchemaToZod(params: Record<string, PluginParameterSchema>) {
 }
 
 /**
- * 从连接的插件能力动态构建 AI 工具。
- * 每个能力变成一个名为 `<pluginName>__<capabilityName>` 的工具。
+ * 从统一插件 runtime 动态构建 AI 工具。
+ * 远程插件保留 `<pluginId>__<toolName>` 命名，内建插件直接暴露原始工具名。
  */
-export function getPluginTools(gateway: PluginGateway) {
-  const allCaps = gateway.getAllCapabilities();
+export function getPluginTools(
+  runtime: PluginRuntimeService,
+  context: {
+    userId: string;
+    conversationId: string;
+    activeProviderId: string;
+    activeModelId: string;
+  },
+) {
+  const toolEntries = runtime.listTools({
+    source: 'chat-tool',
+    userId: context.userId,
+    conversationId: context.conversationId,
+    activeProviderId: context.activeProviderId,
+    activeModelId: context.activeModelId,
+  });
   const tools: Record<string, Tool> = {};
 
-  for (const [pluginName, caps] of allCaps) {
-    for (const cap of caps) {
-      const toolName = `${pluginName}__${cap.name}`;
-      tools[toolName] = tool({
-        description: `[设备：${pluginName}] ${cap.description}`,
-        inputSchema: paramSchemaToZod(cap.parameters),
-        execute: async (args: JsonObject) => {
-          try {
-            return await gateway.executeCommand(pluginName, cap.name, args);
-          } catch (err) {
-            return { error: err instanceof Error ? err.message : String(err) };
-          }
-        },
-      });
-    }
+  for (const entry of toolEntries) {
+    const toolName = entry.runtimeKind === 'builtin'
+      ? entry.tool.name
+      : `${entry.pluginId}__${entry.tool.name}`;
+    tools[toolName] = tool({
+      description: entry.runtimeKind === 'builtin'
+        ? entry.tool.description
+        : `[插件：${entry.pluginId}] ${entry.tool.description}`,
+      inputSchema: paramSchemaToZod(entry.tool.parameters),
+      execute: async (args: JsonObject) => {
+        try {
+          return await runtime.executeTool({
+            pluginId: entry.pluginId,
+            toolName: entry.tool.name,
+            params: args,
+            context: {
+              source: 'chat-tool',
+              userId: context.userId,
+              conversationId: context.conversationId,
+              activeProviderId: context.activeProviderId,
+              activeModelId: context.activeModelId,
+            },
+          });
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    });
   }
 
   return tools;
+}
+
+/**
+ * 输出聊天侧当前可见的插件工具摘要。
+ * @param runtime 统一插件运行时
+ * @param context 当前聊天上下文
+ * @returns 可序列化工具摘要列表
+ */
+export function getPluginToolSummaries(
+  runtime: PluginRuntimeService,
+  context: {
+    userId: string;
+    conversationId: string;
+    activeProviderId: string;
+    activeModelId: string;
+  },
+): PluginAvailableToolSummary[] {
+  return runtime.listTools({
+    source: 'chat-tool',
+    userId: context.userId,
+    conversationId: context.conversationId,
+    activeProviderId: context.activeProviderId,
+    activeModelId: context.activeModelId,
+  }).map((entry) => ({
+    name: entry.runtimeKind === 'builtin'
+      ? entry.tool.name
+      : `${entry.pluginId}__${entry.tool.name}`,
+    description: entry.runtimeKind === 'builtin'
+      ? entry.tool.description
+      : `[插件：${entry.pluginId}] ${entry.tool.description}`,
+    parameters: entry.tool.parameters,
+    pluginId: entry.pluginId,
+    runtimeKind: entry.runtimeKind,
+  }));
+}
+
+/**
+ * 输出聊天侧自动化工具摘要。
+ * @returns 自动化工具摘要列表
+ */
+export function getAutomationToolSummaries(): PluginAvailableToolSummary[] {
+  return AUTOMATION_TOOL_SUMMARIES.map((tool) => ({
+    ...tool,
+    parameters: cloneToolParameters(tool.parameters as Record<string, PluginParamSchema>),
+  }));
+}
+
+/**
+ * 按允许名单裁剪工具集合。
+ * @param tools 原始工具集合
+ * @param allowedToolNames 可选允许名单
+ * @returns 裁剪后的工具集合；若为空则返回 undefined
+ */
+export function filterToolSet(
+  tools: Record<string, Tool>,
+  allowedToolNames?: string[],
+): Record<string, Tool> | undefined {
+  if (!allowedToolNames) {
+    return Object.keys(tools).length > 0 ? tools : undefined;
+  }
+
+  const allowed = new Set(allowedToolNames);
+  const filtered = Object.fromEntries(
+    Object.entries(tools).filter(([toolName]) => allowed.has(toolName)),
+  );
+
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
+}
+
+/**
+ * 复制一份工具参数 schema，避免后续代码共享同一引用。
+ * @param parameters 原始参数 schema
+ * @returns 复制后的参数 schema
+ */
+function cloneToolParameters(
+  parameters: Record<string, PluginParamSchema>,
+): Record<string, PluginParamSchema> {
+  return Object.fromEntries(
+    Object.entries(parameters).map(([key, value]) => [key, { ...value }]),
+  );
 }
 
 /**

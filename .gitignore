@@ -28,6 +28,8 @@ coverage/
 *.db-journal
 config/ai-settings.json
 config/model-capabilities.json
+
+# Skill 产物（仅本地协作使用，不提交 git）
 task_plan.md
 progress.md
 findings.md

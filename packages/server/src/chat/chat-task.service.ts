@@ -29,6 +29,32 @@ export interface StartChatTaskInput {
    * - 可迭代消费的流源
    */
   createStream: (abortSignal: AbortSignal) => ChatTaskStreamSource;
+  /**
+   * 在 assistant 成功完成后执行的回调。
+   * 输入:
+   * - 最终 assistant 内容与工具调用快照
+   * 输出:
+   * - 可选异步副作用
+   */
+  onComplete?: (result: CompletedChatTaskResult) => Promise<void> | void;
+}
+
+/** 聊天任务完成后的最终 assistant 快照。 */
+export interface CompletedChatTaskResult {
+  /** assistant 消息 ID。 */
+  assistantMessageId: string;
+  /** 所属会话 ID。 */
+  conversationId: string;
+  /** 实际使用的 provider ID。 */
+  providerId: string;
+  /** 实际使用的模型 ID。 */
+  modelId: string;
+  /** 最终完整文本。 */
+  content: string;
+  /** 累计工具调用。 */
+  toolCalls: PersistedToolCall[];
+  /** 累计工具结果。 */
+  toolResults: PersistedToolResult[];
 }
 
 type ChatTaskSubscriber = (event: ChatTaskEvent) => void;
@@ -220,6 +246,17 @@ export class ChatTaskService implements OnModuleInit {
       }
 
       await this.persistMessageState(input, state, 'completed', null);
+      if (input.onComplete) {
+        try {
+          await input.onComplete(
+            this.buildCompletedTaskResult(input, state),
+          );
+        } catch (error) {
+          this.logger.warn(
+            `聊天完成回调执行失败: ${input.assistantMessageId} - ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       this.emit(task, {
         type: 'finish',
         messageId: input.assistantMessageId,
@@ -297,5 +334,26 @@ export class ChatTaskService implements OnModuleInit {
     for (const subscriber of task.subscribers) {
       subscriber(event);
     }
+  }
+
+  /**
+   * 根据当前任务状态构造完成回调可消费的最终快照。
+   * @param input 任务启动输入
+   * @param state 当前累计状态
+   * @returns assistant 完成快照
+   */
+  private buildCompletedTaskResult(
+    input: StartChatTaskInput,
+    state: MutableTaskState,
+  ): CompletedChatTaskResult {
+    return {
+      assistantMessageId: input.assistantMessageId,
+      conversationId: input.conversationId,
+      providerId: input.providerId,
+      modelId: input.modelId,
+      content: state.content,
+      toolCalls: [...state.toolCalls],
+      toolResults: [...state.toolResults],
+    };
   }
 }

@@ -1,0 +1,127 @@
+import type { JsonValue } from '../../common/types/json-value';
+import { toJsonValue } from '../../common/utils/json-value';
+import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import {
+  asChatBeforeModelPayload,
+  createChatBeforeModelHookResult,
+} from './builtin-plugin.transport';
+
+/**
+ * 创建记忆上下文注入插件。
+ *
+ * 输入:
+ * - 无
+ *
+ * 输出:
+ * - 具备 `chat:before-model` Hook 的内建插件定义
+ *
+ * 预期行为:
+ * - 在模型调用前按当前用户消息检索长期记忆
+ * - 将命中的记忆拼接为附加系统提示词
+ */
+export function createMemoryContextPlugin(): BuiltinPluginDefinition {
+  return {
+    manifest: {
+      id: 'builtin.memory-context',
+      name: 'Memory Context',
+      version: '1.0.0',
+      runtime: 'builtin',
+      permissions: ['memory:read', 'config:read'],
+      tools: [],
+      hooks: [
+        {
+          name: 'chat:before-model',
+          description: '在模型调用前补入用户长期记忆摘要',
+        },
+      ],
+      config: {
+        fields: [
+          {
+            key: 'limit',
+            type: 'number',
+            description: '每次检索长期记忆的最大条数',
+            defaultValue: 5,
+          },
+          {
+            key: 'promptPrefix',
+            type: 'string',
+            description: '记忆摘要写入系统提示词时的前缀',
+            defaultValue: '与此用户相关的记忆',
+          },
+        ],
+      },
+    },
+    hooks: {
+      /**
+       * 在模型调用前补入记忆提示词。
+       * @param payload Hook 输入负载
+       * @param context 插件执行上下文
+       * @returns 要追加到系统提示词的文本；无命中时返回 null
+       */
+      'chat:before-model': async (payload: JsonValue, context) => {
+        const hookPayload = asChatBeforeModelPayload(payload);
+        const latestUserText = findLatestUserText(hookPayload.request.messages);
+        if (!latestUserText) {
+          return null;
+        }
+
+        const config = (await context.host.getConfig()) as {
+          limit?: number;
+          promptPrefix?: string;
+        };
+        const memories = (await context.host.searchMemories(
+          latestUserText,
+          config.limit ?? 5,
+        )) as Array<{
+          content?: string;
+          category?: string;
+        }>;
+        if (memories.length === 0) {
+          return null;
+        }
+
+        const memoryLines = memories.map((memory) =>
+          `- [${memory.category ?? 'general'}] ${memory.content ?? ''}`,
+        );
+        return toJsonValue(
+          createChatBeforeModelHookResult(
+            `${config.promptPrefix ?? '与此用户相关的记忆'}：\n${memoryLines.join('\n')}`,
+          ),
+        );
+      },
+    },
+  };
+}
+
+/**
+ * 从聊天消息中提取最近一条用户纯文本。
+ * @param messages Hook 输入中的聊天消息
+ * @returns 最近一条用户文本；没有时返回空字符串
+ */
+function findLatestUserText(
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system' | 'tool';
+    content: string | Array<{ type: string; text?: string }>;
+  }>,
+): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== 'user') {
+      continue;
+    }
+    if (typeof message.content === 'string') {
+      return message.content;
+    }
+
+    const text = message.content
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n')
+      .trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return '';
+}

@@ -1,0 +1,625 @@
+import type { ChatMessagePart } from '@garlic-claw/shared';
+import { PluginHostService } from './plugin-host.service';
+import { PluginStateService } from './plugin-state.service';
+
+describe('PluginHostService', () => {
+  const memoryService = {
+    searchMemories: jest.fn(),
+    saveMemory: jest.fn(),
+  };
+
+  const aiProviderService = {
+    getModelConfig: jest.fn(),
+  };
+
+  const aiManagementService = {
+    listProviders: jest.fn(),
+    getProvider: jest.fn(),
+  };
+
+  const modelRegistryService = {
+    getModel: jest.fn(),
+  };
+
+  const prisma = {
+    conversation: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    message: {
+      findMany: jest.fn(),
+    },
+    user: {
+      findUnique: jest.fn(),
+    },
+  };
+
+  const pluginService = {
+    getResolvedConfig: jest.fn(),
+    getPluginStorage: jest.fn(),
+    setPluginStorage: jest.fn(),
+    deletePluginStorage: jest.fn(),
+    listPluginStorage: jest.fn(),
+    getPluginSelfInfo: jest.fn(),
+  };
+
+  const aiModelExecution = {
+    generateText: jest.fn(),
+  };
+
+  let stateService: PluginStateService;
+  let service: PluginHostService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stateService = new PluginStateService();
+    service = new (PluginHostService as unknown as new (
+      ...args: unknown[]
+    ) => PluginHostService)(
+      memoryService as never,
+      prisma as never,
+      stateService,
+      pluginService as never,
+      aiModelExecution as never,
+      aiProviderService as never,
+      aiManagementService as never,
+      modelRegistryService as never,
+    );
+  });
+
+  it('searches memories with the current user context', async () => {
+    memoryService.searchMemories.mockResolvedValue([
+      {
+        id: 'memory-1',
+        content: '用户喜欢美式咖啡',
+        category: 'preference',
+        createdAt: new Date('2026-03-27T08:00:00.000Z'),
+      },
+    ]);
+
+    const result = await service.call({
+      pluginId: 'memory-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'memory.search',
+      params: {
+        query: '咖啡',
+        limit: 3,
+      },
+    });
+
+    expect(memoryService.searchMemories).toHaveBeenCalledWith('user-1', '咖啡', 3);
+    expect(result).toEqual([
+      {
+        id: 'memory-1',
+        content: '用户喜欢美式咖啡',
+        category: 'preference',
+        createdAt: '2026-03-27T08:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('stores plugin runtime state by plugin id', async () => {
+    await service.call({
+      pluginId: 'memory-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+      },
+      method: 'state.set',
+      params: {
+        key: 'last-query',
+        value: {
+          query: '咖啡',
+          count: 2,
+        },
+      },
+    });
+
+    const result = await service.call({
+      pluginId: 'memory-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+      },
+      method: 'state.get',
+      params: {
+        key: 'last-query',
+      },
+    });
+
+    expect(result).toEqual({
+      query: '咖啡',
+      count: 2,
+    });
+  });
+
+  it('returns conversation messages for the current invocation context', async () => {
+    const parts: ChatMessagePart[] = [
+      {
+        type: 'text',
+        text: '你好',
+      },
+    ];
+
+    prisma.message.findMany.mockResolvedValue([
+      {
+        id: 'message-1',
+        role: 'user',
+        content: '你好',
+        partsJson: JSON.stringify(parts),
+        toolCalls: null,
+        toolResults: null,
+        provider: null,
+        model: null,
+        status: 'completed',
+        error: null,
+        createdAt: new Date('2026-03-27T08:01:00.000Z'),
+        updatedAt: new Date('2026-03-27T08:01:00.000Z'),
+      },
+    ]);
+
+    const result = await service.call({
+      pluginId: 'memory-context',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'conversation.messages.list',
+      params: {},
+    });
+
+    expect(prisma.message.findMany).toHaveBeenCalledWith({
+      where: {
+        conversationId: 'conversation-1',
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      select: expect.any(Object),
+    });
+    expect(result).toEqual([
+      {
+        id: 'message-1',
+        role: 'user',
+        content: '你好',
+        parts: parts,
+        status: 'completed',
+        createdAt: '2026-03-27T08:01:00.000Z',
+        updatedAt: '2026-03-27T08:01:00.000Z',
+      },
+    ]);
+  });
+
+  it('returns the resolved plugin config through config.get', async () => {
+    pluginService.getResolvedConfig.mockResolvedValue({
+      limit: 8,
+      promptPrefix: '记忆摘要',
+    });
+
+    const result = await service.call({
+      pluginId: 'memory-context',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+      },
+      method: 'config.get',
+      params: {},
+    });
+
+    expect(pluginService.getResolvedConfig).toHaveBeenCalledWith('memory-context');
+    expect(result).toEqual({
+      limit: 8,
+      promptPrefix: '记忆摘要',
+    });
+  });
+
+  it('returns a single resolved plugin config value when key is provided', async () => {
+    pluginService.getResolvedConfig.mockResolvedValue({
+      limit: 8,
+      promptPrefix: '记忆摘要',
+    });
+
+    const result = await service.call({
+      pluginId: 'memory-context',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+      },
+      method: 'config.get',
+      params: {
+        key: 'limit',
+      },
+    });
+
+    expect(result).toBe(8);
+  });
+
+  it('returns the current conversation summary through conversation.get', async () => {
+    prisma.conversation.findUnique.mockResolvedValue({
+      id: 'conversation-1',
+      title: 'New Chat',
+      userId: 'user-1',
+      createdAt: new Date('2026-03-27T08:00:00.000Z'),
+      updatedAt: new Date('2026-03-27T08:05:00.000Z'),
+    });
+
+    const result = await service.call({
+      pluginId: 'conversation-title',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'conversation.get',
+      params: {},
+    });
+
+    expect(result).toEqual({
+      id: 'conversation-1',
+      title: 'New Chat',
+      createdAt: '2026-03-27T08:00:00.000Z',
+      updatedAt: '2026-03-27T08:05:00.000Z',
+    });
+  });
+
+  it('updates the current conversation title through conversation.title.set', async () => {
+    prisma.conversation.findUnique.mockResolvedValue({
+      id: 'conversation-1',
+      title: 'New Chat',
+      userId: 'user-1',
+      createdAt: new Date('2026-03-27T08:00:00.000Z'),
+      updatedAt: new Date('2026-03-27T08:05:00.000Z'),
+    });
+    prisma.conversation.update.mockResolvedValue({
+      id: 'conversation-1',
+      title: '咖啡偏好总结',
+      createdAt: new Date('2026-03-27T08:00:00.000Z'),
+      updatedAt: new Date('2026-03-27T08:06:00.000Z'),
+    });
+
+    const result = await service.call({
+      pluginId: 'conversation-title',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'conversation.title.set',
+      params: {
+        title: '咖啡偏好总结',
+      },
+    });
+
+    expect(prisma.conversation.update).toHaveBeenCalledWith({
+      where: {
+        id: 'conversation-1',
+      },
+      data: {
+        title: '咖啡偏好总结',
+      },
+    });
+    expect(result).toEqual({
+      id: 'conversation-1',
+      title: '咖啡偏好总结',
+      createdAt: '2026-03-27T08:00:00.000Z',
+      updatedAt: '2026-03-27T08:06:00.000Z',
+    });
+  });
+
+  it('generates text through llm.generate-text host api', async () => {
+    aiModelExecution.generateText.mockResolvedValue({
+      modelConfig: {
+        providerId: 'openai',
+        id: 'gpt-5.2',
+      },
+      result: {
+        text: '咖啡偏好总结',
+      },
+    });
+
+    const result = await service.call({
+      pluginId: 'conversation-title',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'llm.generate-text',
+      params: {
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+        system: '你是标题生成器',
+        prompt: '请为这段对话生成标题',
+        maxOutputTokens: 32,
+      },
+    });
+
+    expect(aiModelExecution.generateText).toHaveBeenCalledWith({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      system: '你是标题生成器',
+      maxOutputTokens: 32,
+      sdkMessages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '请为这段对话生成标题',
+            },
+          ],
+        },
+      ],
+    });
+    expect(result).toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      text: '咖啡偏好总结',
+    });
+  });
+
+  it('returns the active provider context through provider.current.get', async () => {
+    aiProviderService.getModelConfig.mockReturnValue({
+      providerId: 'openai',
+      id: 'gpt-5.2',
+    });
+
+    await expect(
+      service.call({
+        pluginId: 'builtin.provider-router',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+        } as never,
+        method: 'provider.current.get' as never,
+        params: {},
+      }),
+    ).resolves.toEqual({
+      source: 'context',
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+    });
+  });
+
+  it('generates assistant output through llm.generate host api', async () => {
+    aiModelExecution.generateText.mockResolvedValue({
+      modelConfig: {
+        providerId: 'anthropic',
+        id: 'claude-3-7-sonnet',
+      },
+      result: {
+        text: '当然可以，我来帮你总结。',
+        finishReason: 'stop',
+        usage: {
+          inputTokens: 11,
+          outputTokens: 8,
+        },
+      },
+    });
+
+    await expect(
+      service.call({
+        pluginId: 'builtin.provider-router',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'llm.generate' as never,
+        params: {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+          system: '你是一个总结助手',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: '请总结这段对话',
+                },
+              ],
+            },
+          ],
+          maxOutputTokens: 64,
+        },
+      }),
+    ).resolves.toEqual({
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      text: '当然可以，我来帮你总结。',
+      message: {
+        role: 'assistant',
+        content: '当然可以，我来帮你总结。',
+      },
+      finishReason: 'stop',
+      usage: {
+        inputTokens: 11,
+        outputTokens: 8,
+      },
+    });
+
+    expect(aiModelExecution.generateText).toHaveBeenCalledWith({
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      system: '你是一个总结助手',
+      maxOutputTokens: 64,
+      sdkMessages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '请总结这段对话',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('reads and writes persistent plugin storage through storage host api', async () => {
+    pluginService.setPluginStorage.mockResolvedValue('message-42');
+    pluginService.getPluginStorage.mockResolvedValue('message-42');
+    pluginService.listPluginStorage.mockResolvedValue([
+      {
+        key: 'cursor.lastMessageId',
+        value: 'message-42',
+      },
+    ]);
+    pluginService.deletePluginStorage.mockResolvedValue(true);
+
+    await expect(
+      service.call({
+        pluginId: 'memory-context',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+        },
+        method: 'storage.set' as never,
+        params: {
+          key: 'cursor.lastMessageId',
+          value: 'message-42',
+        },
+      }),
+    ).resolves.toBe('message-42');
+    await expect(
+      service.call({
+        pluginId: 'memory-context',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+        },
+        method: 'storage.get' as never,
+        params: {
+          key: 'cursor.lastMessageId',
+        },
+      }),
+    ).resolves.toBe('message-42');
+    await expect(
+      service.call({
+        pluginId: 'memory-context',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+        },
+        method: 'storage.list' as never,
+        params: {
+          prefix: 'cursor.',
+        },
+      }),
+    ).resolves.toEqual([
+      {
+        key: 'cursor.lastMessageId',
+        value: 'message-42',
+      },
+    ]);
+    await expect(
+      service.call({
+        pluginId: 'memory-context',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+        },
+        method: 'storage.delete' as never,
+        params: {
+          key: 'cursor.lastMessageId',
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(pluginService.setPluginStorage).toHaveBeenCalledWith(
+      'memory-context',
+      'cursor.lastMessageId',
+      'message-42',
+    );
+    expect(pluginService.getPluginStorage).toHaveBeenCalledWith(
+      'memory-context',
+      'cursor.lastMessageId',
+    );
+    expect(pluginService.listPluginStorage).toHaveBeenCalledWith(
+      'memory-context',
+      'cursor.',
+    );
+    expect(pluginService.deletePluginStorage).toHaveBeenCalledWith(
+      'memory-context',
+      'cursor.lastMessageId',
+    );
+  });
+
+  it('returns the current user summary through user.get', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      username: 'garlic',
+      email: 'garlic@example.com',
+      role: 'admin',
+      createdAt: new Date('2026-03-27T08:00:00.000Z'),
+      updatedAt: new Date('2026-03-27T08:05:00.000Z'),
+    });
+
+    await expect(
+      service.call({
+        pluginId: 'conversation-title',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        method: 'user.get' as never,
+        params: {},
+      }),
+    ).resolves.toEqual({
+      id: 'user-1',
+      username: 'garlic',
+      email: 'garlic@example.com',
+      role: 'admin',
+      createdAt: '2026-03-27T08:00:00.000Z',
+      updatedAt: '2026-03-27T08:05:00.000Z',
+    });
+  });
+
+  it('returns plugin self summary through plugin.self.get', async () => {
+    pluginService.getPluginSelfInfo.mockResolvedValue({
+      id: 'builtin.memory-context',
+      name: 'Memory Context',
+      runtimeKind: 'builtin',
+      version: '1.0.0',
+      permissions: ['config:read', 'storage:read'],
+      hooks: [
+        {
+          name: 'chat:before-model',
+        },
+      ],
+    });
+
+    await expect(
+      service.call({
+        pluginId: 'memory-context',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+        },
+        method: 'plugin.self.get' as never,
+        params: {},
+      }),
+    ).resolves.toEqual({
+      id: 'builtin.memory-context',
+      name: 'Memory Context',
+      runtimeKind: 'builtin',
+      version: '1.0.0',
+      permissions: ['config:read', 'storage:read'],
+      hooks: [
+        {
+          name: 'chat:before-model',
+        },
+      ],
+    });
+  });
+});

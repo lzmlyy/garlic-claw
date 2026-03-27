@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { ActionConfig, TriggerConfig } from '@garlic-claw/shared';
 import type { JsonValue } from '../common/types/json-value';
-import { PluginGateway } from '../plugin/plugin.gateway';
+import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface CronEntry {
@@ -16,7 +16,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private prisma: PrismaService,
-    private pluginGateway: PluginGateway,
+    private pluginRuntime: PluginRuntimeService,
   ) {}
 
   async onModuleInit() {
@@ -132,11 +132,16 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     for (const action of automation.actions) {
       try {
         if (action.type === 'device_command' && action.plugin && action.capability) {
-          const result = await this.pluginGateway.executeCommand(
-            action.plugin,
-            action.capability,
-            action.params || {},
-          )
+          const result = await this.pluginRuntime.executeTool({
+            pluginId: action.plugin,
+            toolName: action.capability,
+            params: action.params || {},
+            context: {
+              source: 'automation',
+              userId: automation.userId,
+              automationId,
+            },
+          })
           results.push({ action: action.type, plugin: action.plugin, capability: action.capability, result })
         }
         // ai_message 类型由注入 ChatService 处理，此处留空

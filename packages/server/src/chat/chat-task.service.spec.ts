@@ -113,6 +113,43 @@ describe('ChatTaskService', () => {
     );
   });
 
+  it('runs the completion callback with the final assistant snapshot', async () => {
+    const onComplete = jest.fn().mockResolvedValue(undefined);
+
+    service.startTask({
+      assistantMessageId: 'assistant-1',
+      conversationId: 'conversation-1',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+      createStream: () => ({
+        fullStream: createStream([
+          { type: 'text-delta', text: '你' },
+          { type: 'text-delta', text: '好' },
+          { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
+          { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
+          { type: 'finish' },
+        ]),
+      }),
+      onComplete,
+    });
+
+    await service.waitForTask('assistant-1');
+
+    expect(onComplete).toHaveBeenCalledWith({
+      assistantMessageId: 'assistant-1',
+      conversationId: 'conversation-1',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+      content: '你好',
+      toolCalls: [
+        { toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
+      ],
+      toolResults: [
+        { toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
+      ],
+    });
+  });
+
   it('marks the task as stopped when stopTask is called', async () => {
     const events: ChatTaskEvent[] = [];
 

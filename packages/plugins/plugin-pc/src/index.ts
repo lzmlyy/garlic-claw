@@ -18,8 +18,8 @@ const SERVER_URL = process.env.WS_URL ?? 'ws://localhost:23331';
 const TOKEN = process.env.PLUGIN_TOKEN ?? '';
 
 if (!TOKEN) {
-  console.error('错误：PLUGIN_TOKEN 环境变量是必需的。');
-  console.error('从服务器获取 JWT 令牌（登录）并设置 PLUGIN_TOKEN=<token>');
+  process.stderr.write('错误：PLUGIN_TOKEN 环境变量是必需的。\n');
+  process.stderr.write('从服务器获取 JWT 令牌（登录）并设置 PLUGIN_TOKEN=<token>\n');
   process.exit(1);
 }
 
@@ -70,7 +70,14 @@ const client = new PluginClient({
   token: TOKEN,
   pluginName: `pc-${os.hostname()}`,
   deviceType: DeviceType.PC,
-  capabilities,
+  manifest: {
+    name: 'PC Host',
+    version: '1.0.0',
+    description: '暴露当前 PC 的文件、系统信息与进程能力',
+    permissions: [],
+    tools: capabilities,
+    hooks: [],
+  },
 });
 
 // --- 注册命令处理器 ---
@@ -98,11 +105,17 @@ client.onCommand('list_directory', async (params) => {
   }
 
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  return entries.slice(0, 100).map((e) => ({
-    name: e.name,
-    type: e.isDirectory() ? 'directory' : e.isFile() ? 'file' : 'other',
-    size: e.isFile() ? fs.statSync(path.join(dirPath, e.name)).size : undefined,
-  }));
+  return entries.slice(0, 100).map((e) => {
+    const size = e.isFile()
+      ? fs.statSync(path.join(dirPath, e.name)).size
+      : null;
+
+    return {
+      name: e.name,
+      type: e.isDirectory() ? 'directory' : e.isFile() ? 'file' : 'other',
+      size,
+    };
+  });
 });
 
 client.onCommand('read_text_file', async (params) => {

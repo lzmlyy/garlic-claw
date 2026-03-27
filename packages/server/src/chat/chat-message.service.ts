@@ -1,20 +1,61 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { ChatBeforeModelRequest } from '@garlic-claw/shared';
 import { AiProviderService } from '../ai/ai-provider.service';
 import { createStepLimit } from '../ai/sdk-adapter';
+import type { ModelConfig } from '../ai/types/provider.types';
 import { AutomationService } from '../automation/automation.service';
-import { MemoryService } from '../memory/memory.service';
-import { PluginGateway } from '../plugin/plugin.gateway';
+import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { buildChatToolSet, CHAT_SYSTEM_PROMPT, findLatestUserContent, hasActiveAssistantMessage, mapDtoParts, toRuntimeMessages, toUserMessageInput } from './chat-message.helpers';
+import {
+  buildChatToolSet,
+  CHAT_SYSTEM_PROMPT,
+  hasActiveAssistantMessage,
+  listChatAvailableTools,
+  mapDtoParts,
+  toRuntimeMessages,
+  toUserMessageInput,
+} from './chat-message.helpers';
 import {
   ChatModelInvocationService,
   type PreparedChatModelInvocation,
 } from './chat-model-invocation.service';
+import type { ChatRuntimeMessage } from './chat-message-session';
 import { prepareSendMessagePayload } from './chat-message-session';
 import { ChatService } from './chat.service';
 import { type RetryMessageDto, type SendMessageDto, type UpdateMessageDto } from './dto/chat.dto';
 import { normalizeUserMessageInput, serializeMessageParts } from './message-parts';
-import { ChatTaskService } from './chat-task.service';
+import {
+  ChatTaskService,
+  type CompletedChatTaskResult,
+} from './chat-task.service';
+
+/**
+ * 聊天模型前 Hook 归一化后的继续执行结果。
+ */
+interface AppliedChatBeforeModelContinueResult {
+  action: 'continue';
+  modelConfig: ModelConfig;
+  request: ChatBeforeModelRequest;
+}
+
+/**
+ * 聊天模型前 Hook 归一化后的短路结果。
+ */
+interface AppliedChatBeforeModelShortCircuitResult {
+  action: 'short-circuit';
+  request: ChatBeforeModelRequest;
+  assistantContent: string;
+  providerId: string;
+  modelId: string;
+  reason?: string;
+}
+
+/**
+ * 聊天模型前 Hook 的服务内结果联合。
+ */
+type AppliedChatBeforeModelResult =
+  | AppliedChatBeforeModelContinueResult
+  | AppliedChatBeforeModelShortCircuitResult;
 
 @Injectable()
 export class ChatMessageService {
@@ -22,8 +63,7 @@ export class ChatMessageService {
     private readonly prisma: PrismaService,
     private readonly chatService: ChatService,
     private readonly aiProvider: AiProviderService,
-    private readonly pluginGateway: PluginGateway,
-    private readonly memoryService: MemoryService,
+    private readonly pluginRuntime: PluginRuntimeService,
     private readonly automationService: AutomationService,
     private readonly modelInvocation: ChatModelInvocationService,
     private readonly chatTaskService: ChatTaskService,
@@ -64,24 +104,55 @@ export class ChatMessageService {
     await this.touchConversation(conversationId);
 
     try {
-      const systemPrompt = await this.buildSystemPrompt(userId, payload.searchableContent);
-      const preparedInvocation = await this.modelInvocation.prepareResolved({
+      const systemPrompt = await this.buildSystemPrompt();
+      const beforeModelResult = await this.applyChatBeforeModelHooks({
+        userId,
         conversationId,
+        systemPrompt,
         modelConfig,
         messages: payload.modelMessages,
+      });
+      if (beforeModelResult.action === 'short-circuit') {
+        const completedAssistantMessage = await this.completeShortCircuitedAssistant({
+          assistantMessageId: assistantMessage.id,
+          userId,
+          conversationId,
+          providerId: beforeModelResult.providerId,
+          modelId: beforeModelResult.modelId,
+          assistantContent: beforeModelResult.assistantContent,
+        });
+        return {
+          userMessage,
+          assistantMessage: completedAssistantMessage,
+        };
+      }
+
+      const preparedInvocation = await this.modelInvocation.prepareResolved({
+        conversationId,
+        modelConfig: beforeModelResult.modelConfig,
+        messages: beforeModelResult.request.messages,
       });
 
       this.chatTaskService.startTask({
         assistantMessageId: assistantMessage.id,
         conversationId,
-        providerId: modelConfig.providerId,
-        modelId: modelConfig.id,
-        createStream: this.buildStreamFactory(
+        providerId: beforeModelResult.modelConfig.providerId,
+        modelId: beforeModelResult.modelConfig.id,
+        createStream: this.buildStreamFactory({
           userId,
-          systemPrompt,
+          conversationId,
+          request: beforeModelResult.request,
           preparedInvocation,
-          modelConfig.capabilities.toolCall,
-        ),
+          activeProviderId: beforeModelResult.modelConfig.providerId,
+          activeModelId: beforeModelResult.modelConfig.id,
+          supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
+        }),
+        onComplete: (result) =>
+          this.applyChatAfterModelHooks({
+            userId,
+            conversationId,
+            result,
+          }),
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
@@ -154,28 +225,52 @@ export class ChatMessageService {
     await this.touchConversation(conversationId);
 
     try {
-      const searchableContent = findLatestUserContent(historyMessages);
-      const systemPrompt = await this.buildSystemPrompt(
+      const runtimeMessages = toRuntimeMessages(historyMessages);
+      const systemPrompt = await this.buildSystemPrompt();
+      const beforeModelResult = await this.applyChatBeforeModelHooks({
         userId,
-        searchableContent,
-      );
+        conversationId,
+        systemPrompt,
+        modelConfig,
+        messages: runtimeMessages,
+      });
+      if (beforeModelResult.action === 'short-circuit') {
+        return this.completeShortCircuitedAssistant({
+          assistantMessageId: messageId,
+          userId,
+          conversationId,
+          providerId: beforeModelResult.providerId,
+          modelId: beforeModelResult.modelId,
+          assistantContent: beforeModelResult.assistantContent,
+        });
+      }
+
       const preparedInvocation = await this.modelInvocation.prepareResolved({
         conversationId,
-        modelConfig,
-        messages: toRuntimeMessages(historyMessages),
+        modelConfig: beforeModelResult.modelConfig,
+        messages: beforeModelResult.request.messages,
       });
 
       this.chatTaskService.startTask({
         assistantMessageId: messageId,
         conversationId,
-        providerId: modelConfig.providerId,
-        modelId: modelConfig.id,
-        createStream: this.buildStreamFactory(
+        providerId: beforeModelResult.modelConfig.providerId,
+        modelId: beforeModelResult.modelConfig.id,
+        createStream: this.buildStreamFactory({
           userId,
-          systemPrompt,
+          conversationId,
+          request: beforeModelResult.request,
           preparedInvocation,
-          modelConfig.capabilities.toolCall,
-        ),
+          activeProviderId: beforeModelResult.modelConfig.providerId,
+          activeModelId: beforeModelResult.modelConfig.id,
+          supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
+        }),
+        onComplete: (result) =>
+          this.applyChatAfterModelHooks({
+            userId,
+            conversationId,
+            result,
+          }),
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
@@ -244,18 +339,9 @@ export class ChatMessageService {
     return { conversation, message };
   }
 
-  /** 构建带记忆注入的系统提示词。 */
-  private async buildSystemPrompt(userId: string, searchableContent: string) {
-    const memories = await this.memoryService.searchMemories(userId, searchableContent, 5);
-    if (memories.length === 0) {
-      return CHAT_SYSTEM_PROMPT;
-    }
-
-    const memoryContext = memories
-      .map((memory) => `- [${memory.category}] ${memory.content}`)
-      .join('\n');
-
-    return `${CHAT_SYSTEM_PROMPT}\n\n与此用户相关的记忆：\n${memoryContext}`;
+  /** 构建基础系统提示词。 */
+  private async buildSystemPrompt() {
+    return CHAT_SYSTEM_PROMPT;
   }
 
   /** 触发会话更新时间，保证列表排序能跟上最新消息状态。 */
@@ -269,25 +355,168 @@ export class ChatMessageService {
   }
 
   /** 统一构造聊天流工厂，供 send/retry 复用。 */
-  private buildStreamFactory(
-    userId: string,
-    systemPrompt: string,
-    preparedInvocation: PreparedChatModelInvocation,
-    supportsToolCall: boolean,
-  ) {
+  private buildStreamFactory(input: {
+    userId: string;
+    conversationId: string;
+    request: ChatBeforeModelRequest;
+    preparedInvocation: PreparedChatModelInvocation;
+    activeProviderId: string;
+    activeModelId: string;
+    supportsToolCall: boolean;
+  }) {
     return (abortSignal: AbortSignal) =>
       this.modelInvocation.streamPrepared({
-        prepared: preparedInvocation,
-        system: systemPrompt,
+        prepared: input.preparedInvocation,
+        system: input.request.systemPrompt,
         tools: buildChatToolSet({
-          supportsToolCall,
-          pluginGateway: this.pluginGateway,
-          memoryService: this.memoryService,
+          supportsToolCall: input.supportsToolCall,
+          pluginRuntime: this.pluginRuntime,
           automationService: this.automationService,
-          userId,
+          userId: input.userId,
+          conversationId: input.conversationId,
+          activeProviderId: input.activeProviderId,
+          activeModelId: input.activeModelId,
+          allowedToolNames: input.request.availableTools.map(
+            (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
+          ),
         }),
+        variant: input.request.variant,
+        providerOptions: input.request.providerOptions,
+        headers: input.request.headers,
+        maxOutputTokens: input.request.maxOutputTokens,
         stopWhen: createStepLimit(5),
         abortSignal,
       }).result;
+  }
+
+  /**
+   * 在模型调用前运行统一插件 Hook，并得到最终请求快照。
+   * @param input 当前调用的用户、对话、模型和消息上下文
+   * @returns 最终请求快照或短路结果
+   */
+  private async applyChatBeforeModelHooks(input: {
+    userId: string;
+    conversationId: string;
+    systemPrompt: string;
+    modelConfig: { providerId: string; id: string };
+    messages: ChatRuntimeMessage[];
+  }): Promise<AppliedChatBeforeModelResult> {
+    const hookContext = {
+      source: 'chat-hook' as const,
+      userId: input.userId,
+      conversationId: input.conversationId,
+      activeProviderId: input.modelConfig.providerId,
+      activeModelId: input.modelConfig.id,
+    };
+    const hookResult = await this.pluginRuntime.runChatBeforeModelHooks({
+      context: hookContext,
+      payload: {
+        context: hookContext,
+        request: {
+          providerId: input.modelConfig.providerId,
+          modelId: input.modelConfig.id,
+          systemPrompt: input.systemPrompt,
+          messages: input.messages,
+          availableTools: listChatAvailableTools({
+            pluginRuntime: this.pluginRuntime,
+            userId: input.userId,
+            conversationId: input.conversationId,
+            activeProviderId: input.modelConfig.providerId,
+            activeModelId: input.modelConfig.id,
+          }),
+        },
+      },
+    });
+
+    if (hookResult.action === 'short-circuit') {
+      return {
+        action: 'short-circuit',
+        request: hookResult.request,
+        assistantContent: hookResult.assistantContent,
+        providerId: hookResult.providerId,
+        modelId: hookResult.modelId,
+        ...(hookResult.reason ? { reason: hookResult.reason } : {}),
+      };
+    }
+
+    return {
+      action: 'continue',
+      request: hookResult.request,
+      modelConfig: this.aiProvider.getModelConfig(
+        hookResult.request.providerId,
+        hookResult.request.modelId,
+      ),
+    };
+  }
+
+  /**
+   * 在 assistant 成功完成后运行统一插件 Hook。
+   * @param input 当前用户、会话与最终 assistant 快照
+   * @returns 无返回值
+   */
+  private async applyChatAfterModelHooks(input: {
+    userId: string;
+    conversationId: string;
+    result: CompletedChatTaskResult;
+  }): Promise<void> {
+    await this.pluginRuntime.runChatAfterModelHooks({
+      context: {
+        source: 'chat-hook',
+        userId: input.userId,
+        conversationId: input.conversationId,
+        activeProviderId: input.result.providerId,
+        activeModelId: input.result.modelId,
+      },
+      payload: {
+        providerId: input.result.providerId,
+        modelId: input.result.modelId,
+        assistantMessageId: input.result.assistantMessageId,
+        assistantContent: input.result.content,
+        toolCalls: input.result.toolCalls,
+        toolResults: input.result.toolResults,
+      },
+    });
+  }
+
+  /**
+   * 将短路结果直接写回 assistant 消息，并触发模型后 Hook。
+   * @param input assistant 消息、上下文和最终回复
+   * @returns 已更新完成态的 assistant 消息
+   */
+  private async completeShortCircuitedAssistant(input: {
+    assistantMessageId: string;
+    userId: string;
+    conversationId: string;
+    providerId: string;
+    modelId: string;
+    assistantContent: string;
+  }) {
+    const assistantMessage = await this.prisma.message.update({
+      where: { id: input.assistantMessageId },
+      data: {
+        content: input.assistantContent,
+        provider: input.providerId,
+        model: input.modelId,
+        status: 'completed',
+        error: null,
+        toolCalls: null,
+        toolResults: null,
+      },
+    });
+    await this.touchConversation(input.conversationId);
+    await this.applyChatAfterModelHooks({
+      userId: input.userId,
+      conversationId: input.conversationId,
+      result: {
+        assistantMessageId: input.assistantMessageId,
+        conversationId: input.conversationId,
+        providerId: input.providerId,
+        modelId: input.modelId,
+        content: input.assistantContent,
+        toolCalls: [],
+        toolResults: [],
+      },
+    });
+    return assistantMessage;
   }
 }
