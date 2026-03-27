@@ -7,7 +7,6 @@ import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 import type { AutomationService } from '../automation/automation.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
-import type { MemoryService } from '../memory/memory.service';
 import type { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 
 /**
@@ -95,60 +94,6 @@ const AUTOMATION_TOOL_SUMMARIES = [
     },
   },
 ] satisfies PluginAvailableToolSummary[];
-
-/**
- * AI 可调用工具（函数调用）的注册表。
- * 工具使用 Vercel AI SDK 的 `tool()` 辅助函数定义。
- */
-export function getBuiltinTools() {
-  return {
-    getCurrentTime: tool({
-      description: '获取当前日期和时间',
-      inputSchema: z.object({}),
-      execute: async () => {
-        return { time: new Date().toISOString() };
-      },
-    }),
-
-    getSystemInfo: tool({
-      description: '获取服务器的基本系统信息',
-      inputSchema: z.object({}),
-      execute: async () => {
-        return {
-          platform: process.platform,
-          nodeVersion: process.version,
-          uptime: Math.floor(process.uptime()),
-          memoryUsage: Math.floor(
-            process.memoryUsage().heapUsed / 1024 / 1024,
-          ),
-        };
-      },
-    }),
-
-    calculate: tool({
-      description: '执行数学计算',
-      inputSchema: z.object({
-        expression: z
-          .string()
-          .describe('一个简单的数学表达式，例如 "2 + 3 * 4"'),
-      }),
-      execute: async ({ expression }: { expression: string }) => {
-        // 只允许安全的数学字符
-        if (!/^[\d\s+\-*/().]+$/.test(expression)) {
-          return { error: '无效的表达式。只允许数字和 +, -, *, /, (, )。' };
-        }
-        try {
-          // 使用 Function 构造函数进行安全的数学计算
-          const fn = new Function(`"use strict"; return (${expression});`);
-          const result = fn();
-          return { expression, result: Number(result) };
-        } catch {
-          return { error: '表达式计算失败' };
-        }
-      },
-    }),
-  } satisfies Record<string, Tool>;
-}
 
 /**
  * 将 PluginParamSchema 记录转换为 Zod 对象模式。
@@ -327,64 +272,6 @@ function cloneToolParameters(
 }
 
 /**
- * 构建长期记忆（保存/回忆）的 AI 工具。
- */
-export function getMemoryTools(memoryService: MemoryService, userId: string) {
-  return {
-    save_memory: tool({
-      description:
-        '将重要信息保存到长期记忆中，以便将来对话时使用。当用户分享偏好、个人事实、指令或任何值得记住的内容时使用此工具。',
-      inputSchema: z.object({
-        content: z.string().describe('要记住的信息'),
-        category: z
-          .enum(['preference', 'fact', 'instruction', 'general'])
-          .describe('记忆类别'),
-        keywords: z
-          .string()
-          .optional()
-          .describe('逗号分隔的关键词，便于检索'),
-      }),
-      execute: async ({
-        content,
-        category,
-        keywords,
-      }: {
-        content: string;
-        category: string;
-        keywords?: string;
-      }) => {
-        const memory = await memoryService.saveMemory(
-          userId,
-          content,
-          category,
-          keywords,
-        );
-        return { saved: true, id: memory.id };
-      },
-    }),
-
-    recall_memory: tool({
-      description:
-        '搜索长期记忆中之前保存的关于用户的信息。当用户引用过去的对话或需要之前会话的上下文时使用此工具。',
-      inputSchema: z.object({
-        query: z.string().describe('搜索查询，用于查找相关记忆'),
-      }),
-      execute: async ({ query }: { query: string }) => {
-        const memories = await memoryService.searchMemories(userId, query, 10);
-        return {
-          count: memories.length,
-          memories: memories.map((m) => ({
-            content: m.content,
-            category: m.category,
-            date: m.createdAt.toISOString().split('T')[0],
-          })),
-        };
-      },
-    }),
-  } satisfies Record<string, Tool>;
-}
-
-/**
  * 构建自动化管理的 AI 工具。
  */
 export function getAutomationTools(automationService: AutomationService, userId: string) {
@@ -493,5 +380,3 @@ export function getAutomationTools(automationService: AutomationService, userId:
     }),
   } satisfies Record<string, Tool>;
 }
-
-export type BuiltinTools = ReturnType<typeof getBuiltinTools>;

@@ -46,7 +46,7 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
         'config:read',
         'conversation:read',
         'conversation:write',
-        'llm:generate',
+        'subagent:run',
       ],
       tools: [],
       hooks: [
@@ -100,16 +100,25 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const generated = (await context.host.generateText({
+        const generated = await context.host.runSubagent({
           providerId: hookPayload.providerId,
           modelId: hookPayload.modelId,
           system:
             '你是一个对话标题生成器。请基于给定对话生成一个简短、准确、自然的中文标题。',
-          prompt,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: prompt,
+                },
+              ],
+            },
+          ],
           maxOutputTokens: 32,
-        })) as {
-          text?: string;
-        };
+          maxSteps: 1,
+        });
         const title = sanitizeConversationTitle(generated.text);
         if (!title || title === conversation.title) {
           return null;

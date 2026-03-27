@@ -300,9 +300,16 @@ describe('BuiltinPluginTransport', () => {
         },
       ])
       .mockResolvedValueOnce({
-        text: '咖啡偏好总结',
         providerId: 'openai',
         modelId: 'gpt-5.2',
+        text: '咖啡偏好总结',
+        message: {
+          role: 'assistant',
+          content: '咖啡偏好总结',
+        },
+        finishReason: 'stop',
+        toolCalls: [],
+        toolResults: [],
       })
       .mockResolvedValueOnce({
         id: 'conversation-1',
@@ -370,10 +377,11 @@ describe('BuiltinPluginTransport', () => {
         userId: 'user-1',
         conversationId: 'conversation-1',
       },
-      method: 'llm.generate-text',
+      method: 'subagent.run',
       params: expect.objectContaining({
         providerId: 'openai',
         modelId: 'gpt-5.2',
+        maxSteps: 1,
       }),
     });
     expect(hostService.call).toHaveBeenNthCalledWith(5, {
