@@ -80,6 +80,7 @@ packages/: server(NestJS) | web(Vue) | shared | plugin-sdk | plugins
 ## Git Commit
 格式：`<type>(<scope>): <subject>`
 type: feat/fix/docs/style/refactor/test/chore
+- `subject` 必须使用中文，简洁描述本次改动，不要写英文提交说明
 
 ## 代码格式
 2空格缩进，单引号优先，多行尾随逗号

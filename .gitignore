@@ -27,6 +27,7 @@ coverage/
 *.db
 *.db-journal
 config/ai-settings.json
+config/model-capabilities.json
 task_plan.md
 progress.md
 findings.md
