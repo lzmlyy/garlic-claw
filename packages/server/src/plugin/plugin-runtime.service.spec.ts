@@ -33,6 +33,17 @@ describe('PluginRuntimeService', () => {
     streamPrepared: jest.fn(),
   };
 
+  const automationService = {
+    create: jest.fn(),
+    findAllByUser: jest.fn(),
+    toggle: jest.fn(),
+    executeAutomation: jest.fn(),
+  };
+
+  const moduleRef = {
+    get: jest.fn(),
+  };
+
   const callContext: PluginCallContext = {
     source: 'chat-tool',
     userId: 'user-1',
@@ -107,11 +118,13 @@ describe('PluginRuntimeService', () => {
         toolCall: true,
       },
     });
+    moduleRef.get.mockReturnValue(automationService);
     service = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
       cronService as never,
       aiModelExecution as never,
+      moduleRef as never,
     );
   });
 
@@ -1451,6 +1464,205 @@ describe('PluginRuntimeService', () => {
       'builtin.cron-heartbeat',
       'cron-job-1',
     );
+  });
+
+  it('enforces automation permissions and delegates automation host calls', async () => {
+    const manifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.automation-tools',
+      permissions: ['automation:read', 'automation:write'],
+      tools: [
+        {
+          name: 'create_automation',
+          description: '创建自动化',
+          parameters: {
+            name: {
+              type: 'string',
+              required: true,
+            },
+          },
+        },
+      ],
+      hooks: [],
+    };
+
+    automationService.create.mockResolvedValue({
+      id: 'automation-1',
+      name: '咖啡提醒',
+      trigger: { type: 'cron', cron: '5m' },
+      actions: [
+        {
+          type: 'device_command',
+          plugin: 'builtin.memory-tools',
+          capability: 'save_memory',
+          params: {
+            content: '提醒喝咖啡',
+          },
+        },
+      ],
+      enabled: true,
+      lastRunAt: null,
+      createdAt: '2026-03-27T15:00:00.000Z',
+      updatedAt: '2026-03-27T15:00:00.000Z',
+    });
+    automationService.findAllByUser.mockResolvedValue([
+      {
+        id: 'automation-1',
+        name: '咖啡提醒',
+        trigger: { type: 'cron', cron: '5m' },
+        actions: [],
+        enabled: true,
+        lastRunAt: null,
+        createdAt: '2026-03-27T15:00:00.000Z',
+        updatedAt: '2026-03-27T15:00:00.000Z',
+      },
+    ]);
+    automationService.toggle.mockResolvedValue({
+      id: 'automation-1',
+      enabled: false,
+    });
+    automationService.executeAutomation.mockResolvedValue({
+      status: 'success',
+      results: [
+        {
+          action: 'device_command',
+          plugin: 'builtin.memory-tools',
+        },
+      ],
+    });
+
+    await service.registerPlugin({
+      manifest,
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.automation-tools',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'automation.create' as never,
+        params: {
+          name: '咖啡提醒',
+          trigger: {
+            type: 'cron',
+            cron: '5m',
+          },
+          actions: [
+            {
+              type: 'device_command',
+              plugin: 'builtin.memory-tools',
+              capability: 'save_memory',
+              params: {
+                content: '提醒喝咖啡',
+              },
+            },
+          ],
+        },
+      }),
+    ).resolves.toEqual({
+      id: 'automation-1',
+      name: '咖啡提醒',
+      trigger: { type: 'cron', cron: '5m' },
+      actions: [
+        {
+          type: 'device_command',
+          plugin: 'builtin.memory-tools',
+          capability: 'save_memory',
+          params: {
+            content: '提醒喝咖啡',
+          },
+        },
+      ],
+      enabled: true,
+      lastRunAt: null,
+      createdAt: '2026-03-27T15:00:00.000Z',
+      updatedAt: '2026-03-27T15:00:00.000Z',
+    });
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.automation-tools',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'automation.list' as never,
+        params: {},
+      }),
+    ).resolves.toEqual([
+      {
+        id: 'automation-1',
+        name: '咖啡提醒',
+        trigger: { type: 'cron', cron: '5m' },
+        actions: [],
+        enabled: true,
+        lastRunAt: null,
+        createdAt: '2026-03-27T15:00:00.000Z',
+        updatedAt: '2026-03-27T15:00:00.000Z',
+      },
+    ]);
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.automation-tools',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'automation.toggle' as never,
+        params: {
+          automationId: 'automation-1',
+        },
+      }),
+    ).resolves.toEqual({
+      id: 'automation-1',
+      enabled: false,
+    });
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.automation-tools',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'automation.run' as never,
+        params: {
+          automationId: 'automation-1',
+        },
+      }),
+    ).resolves.toEqual({
+      status: 'success',
+      results: [
+        {
+          action: 'device_command',
+          plugin: 'builtin.memory-tools',
+        },
+      ],
+    });
+
+    expect(automationService.create).toHaveBeenCalledWith(
+      'user-1',
+      '咖啡提醒',
+      {
+        type: 'cron',
+        cron: '5m',
+      },
+      [
+        {
+          type: 'device_command',
+          plugin: 'builtin.memory-tools',
+          capability: 'save_memory',
+          params: {
+            content: '提醒喝咖啡',
+          },
+        },
+      ],
+    );
+    expect(automationService.findAllByUser).toHaveBeenCalledWith('user-1');
+    expect(automationService.toggle).toHaveBeenCalledWith('automation-1', 'user-1');
+    expect(automationService.executeAutomation).toHaveBeenCalledWith('automation-1', 'user-1');
   });
 
   it('records plugin failures when tool execution throws and keeps later hooks running', async () => {

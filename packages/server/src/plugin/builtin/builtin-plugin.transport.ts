@@ -1,4 +1,6 @@
 import type {
+  ActionConfig,
+  AutomationInfo,
   ChatAfterModelHookPayload,
   ChatBeforeModelHookPayload,
   ChatBeforeModelHookResult,
@@ -22,6 +24,7 @@ import type {
   PluginRouteRequest,
   PluginRouteResponse,
   PluginSelfInfo,
+  TriggerConfig,
 } from '@garlic-claw/shared';
 import { BadRequestException } from '@nestjs/common';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
@@ -162,6 +165,41 @@ interface BuiltinPluginHostFacade {
    * @returns 是否删除成功
    */
   deleteCron(jobId: string): Promise<boolean>;
+
+  /**
+   * 创建一个自动化规则。
+   * @param input 自动化名称、触发器与动作列表
+   * @returns 新建后的自动化摘要
+   */
+  createAutomation(input: {
+    name: string;
+    trigger: TriggerConfig;
+    actions: ActionConfig[];
+  }): Promise<AutomationInfo>;
+
+  /**
+   * 列出当前用户的自动化规则。
+   * @returns 自动化摘要列表
+   */
+  listAutomations(): Promise<AutomationInfo[]>;
+
+  /**
+   * 切换一个自动化的启用状态。
+   * @param automationId 自动化 ID
+   * @returns 切换结果；未找到时返回 null
+   */
+  toggleAutomation(
+    automationId: string,
+  ): Promise<{ id: string; enabled: boolean } | null>;
+
+  /**
+   * 立刻运行一个自动化。
+   * @param automationId 自动化 ID
+   * @returns 执行结果；未找到或不可运行时返回 null
+   */
+  runAutomation(
+    automationId: string,
+  ): Promise<{ status: string; results: JsonValue[] } | null>;
 
   /**
    * 读取当前插件自身摘要。
@@ -563,6 +601,42 @@ export class BuiltinPluginTransport implements PluginTransport {
             jobId,
           },
         }) as unknown as Promise<boolean>,
+      createAutomation: ({ name, trigger, actions }) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'automation.create',
+          params: {
+            name,
+            trigger: trigger as unknown as JsonValue,
+            actions: actions as unknown as JsonValue,
+          },
+        }) as unknown as Promise<AutomationInfo>,
+      listAutomations: () =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'automation.list',
+          params: {},
+        }) as unknown as Promise<AutomationInfo[]>,
+      toggleAutomation: (automationId) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'automation.toggle',
+          params: {
+            automationId,
+          },
+        }) as unknown as Promise<{ id: string; enabled: boolean } | null>,
+      runAutomation: (automationId) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'automation.run',
+          params: {
+            automationId,
+          },
+        }) as unknown as Promise<{ status: string; results: JsonValue[] } | null>,
       getPluginSelf: () =>
         this.hostService.call({
           pluginId: this.definition.manifest.id,

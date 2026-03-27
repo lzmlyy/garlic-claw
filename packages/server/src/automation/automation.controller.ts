@@ -48,8 +48,11 @@ export class AutomationController {
   }
 
   @Post(':id/run')
-  run(@Param('id') id: string) {
-    return this.automationService.executeAutomation(id);
+  run(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.automationService.executeAutomation(id, userId);
   }
 
   @Get(':id/logs')

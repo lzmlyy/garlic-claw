@@ -2,6 +2,7 @@ import type {
   ChatAfterModelHookPayload,
   ChatBeforeModelHookPayload,
 } from '@garlic-claw/shared';
+import { createAutomationToolsPlugin } from './automation-tools.plugin';
 import { createConversationTitlePlugin } from './conversation-title.plugin';
 import { createKbContextPlugin } from './kb-context.plugin';
 import { createMemoryContextPlugin } from './memory-context.plugin';
@@ -1122,6 +1123,202 @@ describe('BuiltinPluginTransport', () => {
         },
       ],
       deleted: true,
+    });
+  });
+
+  it('exposes automation helpers through the host facade', async () => {
+    hostService.call
+      .mockResolvedValueOnce({
+        id: 'automation-1',
+        name: '咖啡提醒',
+        trigger: {
+          type: 'cron',
+          cron: '5m',
+        },
+        actions: [
+          {
+            type: 'device_command',
+            plugin: 'builtin.memory-tools',
+            capability: 'save_memory',
+          },
+        ],
+        enabled: true,
+        lastRunAt: null,
+        createdAt: '2026-03-27T15:00:00.000Z',
+        updatedAt: '2026-03-27T15:00:00.000Z',
+      })
+      .mockResolvedValueOnce([
+        {
+          id: 'automation-1',
+          name: '咖啡提醒',
+          trigger: {
+            type: 'cron',
+            cron: '5m',
+          },
+          actions: [],
+          enabled: true,
+          lastRunAt: null,
+          createdAt: '2026-03-27T15:00:00.000Z',
+          updatedAt: '2026-03-27T15:00:00.000Z',
+        },
+      ])
+      .mockResolvedValueOnce({
+        id: 'automation-1',
+        enabled: false,
+      })
+      .mockResolvedValueOnce({
+        status: 'success',
+        results: [
+          {
+            action: 'device_command',
+            plugin: 'builtin.memory-tools',
+          },
+        ],
+      });
+
+    const transport = new BuiltinPluginTransport(
+      createAutomationToolsPlugin(),
+      hostService as never,
+    );
+
+    const created = await transport.executeTool({
+      toolName: 'create_automation',
+      params: {
+        name: '咖啡提醒',
+        triggerType: 'cron',
+        cronInterval: '5m',
+        actions: [
+          {
+            type: 'device_command',
+            plugin: 'builtin.memory-tools',
+            capability: 'save_memory',
+          },
+        ],
+      },
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+    });
+    const listed = await transport.executeTool({
+      toolName: 'list_automations',
+      params: {},
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+    });
+    const toggled = await transport.executeTool({
+      toolName: 'toggle_automation',
+      params: {
+        automationId: 'automation-1',
+      },
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+    });
+    const ran = await transport.executeTool({
+      toolName: 'run_automation',
+      params: {
+        automationId: 'automation-1',
+      },
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+    });
+
+    expect(hostService.call).toHaveBeenNthCalledWith(1, {
+      pluginId: 'builtin.automation-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'automation.create',
+      params: {
+        name: '咖啡提醒',
+        trigger: {
+          type: 'cron',
+          cron: '5m',
+        },
+        actions: [
+          {
+            type: 'device_command',
+            plugin: 'builtin.memory-tools',
+            capability: 'save_memory',
+          },
+        ],
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(2, {
+      pluginId: 'builtin.automation-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'automation.list',
+      params: {},
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(3, {
+      pluginId: 'builtin.automation-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'automation.toggle',
+      params: {
+        automationId: 'automation-1',
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(4, {
+      pluginId: 'builtin.automation-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'automation.run',
+      params: {
+        automationId: 'automation-1',
+      },
+    });
+    expect(created).toEqual({
+      created: true,
+      id: 'automation-1',
+      name: '咖啡提醒',
+    });
+    expect(listed).toEqual([
+      {
+        id: 'automation-1',
+        name: '咖啡提醒',
+        trigger: {
+          type: 'cron',
+          cron: '5m',
+        },
+        enabled: true,
+        lastRunAt: null,
+      },
+    ]);
+    expect(toggled).toEqual({
+      id: 'automation-1',
+      enabled: false,
+    });
+    expect(ran).toEqual({
+      status: 'success',
+      results: [
+        {
+          action: 'device_command',
+          plugin: 'builtin.memory-tools',
+        },
+      ],
     });
   });
 

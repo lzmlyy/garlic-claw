@@ -1,11 +1,9 @@
 import type {
   PluginAvailableToolSummary,
   PluginInvocationSource,
-  PluginParamSchema,
 } from '@garlic-claw/shared';
 import { tool, type Tool } from 'ai';
 import { z } from 'zod';
-import type { AutomationService } from '../automation/automation.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import type { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 
@@ -34,66 +32,6 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
     z.record(z.string(), jsonValueSchema),
   ]),
 );
-
-/**
- * 聊天侧自动化工具摘要。
- * 这里只暴露可序列化的工具描述，供插件 Hook 读取上下文。
- */
-const AUTOMATION_TOOL_SUMMARIES = [
-  {
-    name: 'create_automation',
-    description:
-      '创建自动化规则。支持 cron 计划（例如 "5m"、"1h"、"30s"）和设备命令。当用户要求设置重复任务或自动化操作时使用此工具。',
-    parameters: {
-      name: {
-        type: 'string',
-        required: true,
-        description: '此自动化的描述性名称',
-      },
-      triggerType: {
-        type: 'string',
-        required: true,
-        description: '触发类型：cron 为计划执行，manual 为手动触发',
-      },
-      cronInterval: {
-        type: 'string',
-        description: '对于 cron 触发：间隔如 "5m"、"1h"、"30s"',
-      },
-      actions: {
-        type: 'array',
-        required: true,
-        description: '要执行的动作列表',
-      },
-    },
-  },
-  {
-    name: 'list_automations',
-    description: '列出当前用户的所有自动化。',
-    parameters: {},
-  },
-  {
-    name: 'toggle_automation',
-    description: '通过 ID 启用或禁用自动化。',
-    parameters: {
-      automationId: {
-        type: 'string',
-        required: true,
-        description: '要切换的自动化 ID',
-      },
-    },
-  },
-  {
-    name: 'run_automation',
-    description: '手动触发自动化立即执行。',
-    parameters: {
-      automationId: {
-        type: 'string',
-        required: true,
-        description: '要运行的自动化 ID',
-      },
-    },
-  },
-] satisfies PluginAvailableToolSummary[];
 
 /**
  * 将 PluginParamSchema 记录转换为 Zod 对象模式。
@@ -226,17 +164,6 @@ export function getPluginToolSummaries(
 }
 
 /**
- * 输出聊天侧自动化工具摘要。
- * @returns 自动化工具摘要列表
- */
-export function getAutomationToolSummaries(): PluginAvailableToolSummary[] {
-  return AUTOMATION_TOOL_SUMMARIES.map((tool) => ({
-    ...tool,
-    parameters: cloneToolParameters(tool.parameters as Record<string, PluginParamSchema>),
-  }));
-}
-
-/**
  * 按允许名单裁剪工具集合。
  * @param tools 原始工具集合
  * @param allowedToolNames 可选允许名单
@@ -256,127 +183,4 @@ export function filterToolSet(
   );
 
   return Object.keys(filtered).length > 0 ? filtered : undefined;
-}
-
-/**
- * 复制一份工具参数 schema，避免后续代码共享同一引用。
- * @param parameters 原始参数 schema
- * @returns 复制后的参数 schema
- */
-function cloneToolParameters(
-  parameters: Record<string, PluginParamSchema>,
-): Record<string, PluginParamSchema> {
-  return Object.fromEntries(
-    Object.entries(parameters).map(([key, value]) => [key, { ...value }]),
-  );
-}
-
-/**
- * 构建自动化管理的 AI 工具。
- */
-export function getAutomationTools(automationService: AutomationService, userId: string) {
-  /**
-   * 自动化动作输入。
-   */
-  interface AutomationActionInput {
-    /** 动作类型。 */
-    type: 'device_command';
-    /** 目标插件。 */
-    plugin: string;
-    /** 能力名。 */
-    capability: string;
-    /** 动作参数。 */
-    params?: JsonObject;
-  }
-
-  /**
-   * 创建自动化工具输入。
-   */
-  interface CreateAutomationInput {
-    /** 自动化名称。 */
-    name: string;
-    /** 触发类型。 */
-    triggerType: 'cron' | 'manual';
-    /** cron 间隔。 */
-    cronInterval?: string;
-    /** 动作列表。 */
-    actions: AutomationActionInput[];
-  }
-
-  return {
-    create_automation: tool({
-      description:
-        '创建自动化规则。支持 cron 计划（例如 "5m"、"1h"、"30s"）和设备命令。当用户要求设置重复任务或自动化操作时使用此工具。',
-      inputSchema: z.object({
-        name: z.string().describe('此自动化的描述性名称'),
-        triggerType: z
-          .enum(['cron', 'manual'])
-          .describe('触发类型：cron 为计划执行，manual 为手动触发'),
-        cronInterval: z
-          .string()
-          .optional()
-          .describe('对于 cron 触发：间隔如 "5m"、"1h"、"30s"'),
-        actions: z
-          .array(
-            z.object({
-              type: z.enum(['device_command']).describe('动作类型'),
-              plugin: z.string().describe('目标插件名称'),
-              capability: z.string().describe('要调用的能力'),
-              params: z.record(z.string(), jsonValueSchema).optional().describe('能力的参数'),
-            }),
-          )
-          .describe('要执行的动作列表'),
-      }),
-      execute: async ({
-        name,
-        triggerType,
-        cronInterval,
-        actions,
-      }: CreateAutomationInput) => {
-        const trigger = { type: triggerType, cron: cronInterval };
-        const result = await automationService.create(userId, name, trigger, actions);
-        return { created: true, id: result.id, name: result.name };
-      },
-    }),
-
-    list_automations: tool({
-      description: '列出当前用户的所有自动化。',
-      inputSchema: z.object({}),
-      execute: async () => {
-        const automations = await automationService.findAllByUser(userId);
-        return automations.map((a) => ({
-          id: a.id,
-          name: a.name,
-          trigger: a.trigger,
-          enabled: a.enabled,
-          lastRunAt: a.lastRunAt?.toISOString() ?? null,
-        }));
-      },
-    }),
-
-    toggle_automation: tool({
-      description: '通过 ID 启用或禁用自动化。',
-      inputSchema: z.object({
-        automationId: z.string().describe('要切换的自动化 ID'),
-      }),
-      execute: async ({ automationId }: { automationId: string }) => {
-        const result = await automationService.toggle(automationId, userId)
-        if (!result) {
-          return { error: '未找到自动化' }
-        }
-        return { id: result.id, enabled: result.enabled }
-      },
-    }),
-
-    run_automation: tool({
-      description: '手动触发自动化立即执行。',
-      inputSchema: z.object({
-        automationId: z.string().describe('要运行的自动化 ID'),
-      }),
-      execute: async ({ automationId }: { automationId: string }) => {
-        const result = await automationService.executeAutomation(automationId);
-        return result ?? { error: '未找到自动化或已禁用' };
-      },
-    }),
-  } satisfies Record<string, Tool>;
 }

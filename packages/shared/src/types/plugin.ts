@@ -15,6 +15,8 @@ export type PluginRuntimeKind = 'builtin' | 'remote';
 
 /** 插件权限。 */
 export type PluginPermission =
+  | 'automation:read'
+  | 'automation:write'
   | 'cron:read'
   | 'cron:write'
   | 'conversation:read'
@@ -537,6 +539,10 @@ export interface RouteResultPayload {
 
 /** Host API 方法名。 */
 export type PluginHostMethod =
+  | 'automation.create'
+  | 'automation.list'
+  | 'automation.run'
+  | 'automation.toggle'
   | 'config.get'
   | 'cron.delete'
   | 'cron.list'

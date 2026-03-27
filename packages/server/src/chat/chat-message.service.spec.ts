@@ -31,13 +31,6 @@ describe('ChatMessageService', () => {
     runChatAfterModelHooks: jest.fn(),
   };
 
-  const automationService = {
-    create: jest.fn(),
-    findAllByUser: jest.fn(),
-    toggle: jest.fn(),
-    executeAutomation: jest.fn(),
-  };
-
   const modelInvocation = {
     prepareResolved: jest.fn(),
     streamPrepared: jest.fn(),
@@ -65,7 +58,6 @@ describe('ChatMessageService', () => {
       aiProvider as never,
       personaService as never,
       pluginRuntime as never,
-      automationService as never,
       modelInvocation as never,
       chatTaskService as never,
     );
@@ -175,6 +167,26 @@ describe('ChatMessageService', () => {
             pluginId: 'builtin.memory-tools',
             runtimeKind: 'builtin',
           },
+          {
+            name: 'create_automation',
+            description: '创建自动化',
+            parameters: {
+              name: {
+                type: 'string',
+                required: true,
+              },
+              triggerType: {
+                type: 'string',
+                required: true,
+              },
+              actions: {
+                type: 'array',
+                required: true,
+              },
+            },
+            pluginId: 'builtin.automation-tools',
+            runtimeKind: 'builtin',
+          },
         ],
         headers: {
           'x-router': 'enabled',
@@ -206,6 +218,28 @@ describe('ChatMessageService', () => {
           parameters: {
             query: {
               type: 'string',
+              required: true,
+            },
+          },
+        },
+      },
+      {
+        pluginId: 'builtin.automation-tools',
+        runtimeKind: 'builtin',
+        tool: {
+          name: 'create_automation',
+          description: '创建自动化',
+          parameters: {
+            name: {
+              type: 'string',
+              required: true,
+            },
+            triggerType: {
+              type: 'string',
+              required: true,
+            },
+            actions: {
+              type: 'array',
               required: true,
             },
           },
@@ -309,10 +343,16 @@ describe('ChatMessageService', () => {
 
     expect(Object.keys(modelInvocation.streamPrepared.mock.calls[0][0].tools)).toEqual([
       'recall_memory',
+      'create_automation',
     ]);
 
     await modelInvocation.streamPrepared.mock.calls[0][0].tools.recall_memory.execute({
       query: '咖啡',
+    });
+    await modelInvocation.streamPrepared.mock.calls[0][0].tools.create_automation.execute({
+      name: '咖啡提醒',
+      triggerType: 'manual',
+      actions: [],
     });
 
     expect(pluginRuntime.executeTool).toHaveBeenCalledWith({
@@ -320,6 +360,23 @@ describe('ChatMessageService', () => {
       toolName: 'recall_memory',
       params: {
         query: '咖啡',
+      },
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'anthropic',
+        activeModelId: 'claude-3-7-sonnet',
+        activePersonaId: 'builtin.default-assistant',
+      },
+    });
+    expect(pluginRuntime.executeTool).toHaveBeenCalledWith({
+      pluginId: 'builtin.automation-tools',
+      toolName: 'create_automation',
+      params: {
+        name: '咖啡提醒',
+        triggerType: 'manual',
+        actions: [],
       },
       context: {
         source: 'chat-tool',

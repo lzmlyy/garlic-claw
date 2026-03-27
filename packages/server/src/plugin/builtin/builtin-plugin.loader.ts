@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PluginRuntimeService } from '../plugin-runtime.service';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
 import { BuiltinPluginTransport } from './builtin-plugin.transport';
+import { createAutomationToolsPlugin } from './automation-tools.plugin';
 import { createConversationTitlePlugin } from './conversation-title.plugin';
 import { createCoreToolsPlugin } from './core-tools.plugin';
 import { createCronHeartbeatPlugin } from './cron-heartbeat.plugin';
@@ -40,6 +41,7 @@ export class BuiltinPluginLoader implements OnModuleInit {
     const definitions = [
       createCoreToolsPlugin(),
       createMemoryToolsPlugin(),
+      createAutomationToolsPlugin(),
       createMemoryContextPlugin(),
       createKbContextPlugin(),
       createConversationTitlePlugin(),

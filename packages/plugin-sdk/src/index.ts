@@ -1,5 +1,7 @@
 import {
+  type ActionConfig,
   type AuthPayload,
+  type AutomationInfo,
   type DeviceType,
   type ExecuteErrorPayload,
   type ExecutePayload,
@@ -31,6 +33,7 @@ import {
   type PluginSubagentRunResult,
   type RegisterPayload,
   type RouteResultPayload,
+  type TriggerConfig,
   WS_ACTION,
   WS_TYPE,
   type WsMessage,
@@ -198,6 +201,41 @@ export interface PluginHostFacade {
    * @returns 是否删除成功
    */
   deleteCron(jobId: string): Promise<boolean>;
+
+  /**
+   * 创建一个自动化规则。
+   * @param input 自动化名称、触发器与动作列表
+   * @returns 新建后的自动化摘要
+   */
+  createAutomation(input: {
+    name: string;
+    trigger: TriggerConfig;
+    actions: ActionConfig[];
+  }): Promise<AutomationInfo>;
+
+  /**
+   * 列出当前用户的自动化规则。
+   * @returns 自动化摘要列表
+   */
+  listAutomations(): Promise<AutomationInfo[]>;
+
+  /**
+   * 切换一个自动化的启用状态。
+   * @param automationId 自动化 ID
+   * @returns 切换结果；未找到时返回 null
+   */
+  toggleAutomation(
+    automationId: string,
+  ): Promise<{ id: string; enabled: boolean } | null>;
+
+  /**
+   * 立刻运行一个自动化。
+   * @param automationId 自动化 ID
+   * @returns 执行结果；未找到或不可运行时返回 null
+   */
+  runAutomation(
+    automationId: string,
+  ): Promise<{ status: string; results: JsonValue[] } | null>;
 
   /**
    * 读取当前插件自身摘要。
@@ -808,6 +846,34 @@ export class PluginClient {
             },
             context,
           ) as unknown as Promise<boolean>,
+        createAutomation: ({ name, trigger, actions }) =>
+          this.sendHostCall(
+            'automation.create',
+            {
+              name,
+              trigger: trigger as never,
+              actions: actions as never,
+            },
+            context,
+          ) as unknown as Promise<AutomationInfo>,
+        listAutomations: () =>
+          this.sendHostCall(
+            'automation.list',
+            {},
+            context,
+          ) as unknown as Promise<AutomationInfo[]>,
+        toggleAutomation: (automationId) =>
+          this.sendHostCall(
+            'automation.toggle',
+            { automationId },
+            context,
+          ) as unknown as Promise<{ id: string; enabled: boolean } | null>,
+        runAutomation: (automationId) =>
+          this.sendHostCall(
+            'automation.run',
+            { automationId },
+            context,
+          ) as unknown as Promise<{ status: string; results: JsonValue[] } | null>,
         getPluginSelf: () =>
           this.sendHostCall('plugin.self.get', {}, context) as unknown as Promise<PluginSelfInfo>,
         saveMemory: ({ content, category, keywords }) =>

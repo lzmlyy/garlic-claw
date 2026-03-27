@@ -1,4 +1,5 @@
 import type {
+  ActionConfig,
   ChatAfterModelHookPayload,
   ChatBeforeModelHookMutateResult,
   ChatBeforeModelRequest,
@@ -18,6 +19,7 @@ import type {
   PluginRouteResponse,
   PluginRuntimeKind,
   PluginSubagentRunResult,
+  TriggerConfig,
 } from '@garlic-claw/shared';
 import {
   BadRequestException,
@@ -25,9 +27,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import { createStepLimit } from '../ai/sdk-adapter';
 import { filterToolSet, getPluginTools } from '../ai/tools';
+import { AutomationService } from '../automation/automation.service';
 import type { ChatRuntimeMessage } from '../chat/chat-message-session';
 import { toAiSdkMessages } from '../chat/sdk-message-converter';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
@@ -43,6 +47,10 @@ import {
  * Host API 与权限的映射表。
  */
 const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | null> = {
+  'automation.create': 'automation:write',
+  'automation.list': 'automation:read',
+  'automation.run': 'automation:write',
+  'automation.toggle': 'automation:write',
   'config.get': 'config:read',
   'cron.delete': 'cron:write',
   'cron.list': 'cron:read',
@@ -193,12 +201,14 @@ type NormalizedChatBeforeModelHookResult =
 @Injectable()
 export class PluginRuntimeService {
   private readonly records = new Map<string, PluginRuntimeRecord>();
+  private automationService?: AutomationService;
 
   constructor(
     private readonly pluginService: PluginService,
     private readonly hostService: PluginHostService,
     private readonly cronService: PluginCronService,
     private readonly aiModelExecution: AiModelExecutionService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   /**
@@ -439,6 +449,39 @@ export class PluginRuntimeService {
       );
     }
 
+    if (input.method === 'automation.create') {
+      return toJsonValue(
+        await this.getAutomationService().create(
+          this.requireUserId(input.context, 'automation.create'),
+          this.requireString(input.params, 'name', 'automation.create'),
+          this.readAutomationTrigger(input.params, 'automation.create'),
+          this.readAutomationActions(input.params, 'automation.create'),
+        ),
+      );
+    }
+    if (input.method === 'automation.list') {
+      return toJsonValue(
+        await this.getAutomationService().findAllByUser(
+          this.requireUserId(input.context, 'automation.list'),
+        ),
+      );
+    }
+    if (input.method === 'automation.toggle') {
+      return toJsonValue(
+        await this.getAutomationService().toggle(
+          this.requireString(input.params, 'automationId', 'automation.toggle'),
+          this.requireUserId(input.context, 'automation.toggle'),
+        ),
+      );
+    }
+    if (input.method === 'automation.run') {
+      return toJsonValue(
+        await this.getAutomationService().executeAutomation(
+          this.requireString(input.params, 'automationId', 'automation.run'),
+          this.requireUserId(input.context, 'automation.run'),
+        ),
+      );
+    }
     if (input.method === 'cron.register') {
       return toJsonValue(await this.cronService.registerCron(input.pluginId, {
         name: this.requireString(input.params, 'name', 'cron.register'),
@@ -872,6 +915,167 @@ export class PluginRuntimeService {
     }
 
     return nextRequest;
+  }
+
+  /**
+   * 延迟解析自动化服务，避免与 runtime 形成构造期循环依赖。
+   * @returns 自动化服务实例
+   */
+  private getAutomationService(): AutomationService {
+    if (this.automationService) {
+      return this.automationService;
+    }
+
+    const resolved = this.moduleRef.get(AutomationService, {
+      strict: false,
+    });
+    if (!resolved) {
+      throw new NotFoundException('AutomationService is not available');
+    }
+
+    this.automationService = resolved;
+    return resolved;
+  }
+
+  /**
+   * 从调用上下文读取 userId。
+   * @param context 插件调用上下文
+   * @param method 当前 Host API 方法名
+   * @returns userId
+   */
+  private requireUserId(
+    context: PluginCallContext,
+    method: string,
+  ): string {
+    if (!context.userId) {
+      throw new BadRequestException(`${method} 需要 userId 上下文`);
+    }
+
+    return context.userId;
+  }
+
+  /**
+   * 从参数对象读取自动化触发配置。
+   * @param params 参数对象
+   * @param method 当前 Host API 方法名
+   * @returns 已校验的触发配置
+   */
+  private readAutomationTrigger(
+    params: JsonObject,
+    method: string,
+  ): TriggerConfig {
+    const value = params.trigger;
+    if (!isJsonObjectValue(value)) {
+      throw new BadRequestException(`${method} 的 trigger 必须是对象`);
+    }
+    if (
+      value.type !== 'cron'
+      && value.type !== 'event'
+      && value.type !== 'manual'
+    ) {
+      throw new BadRequestException(`${method} 的 trigger.type 不合法`);
+    }
+
+    const trigger: TriggerConfig = {
+      type: value.type,
+    };
+    if ('cron' in value && value.cron !== undefined) {
+      if (typeof value.cron !== 'string') {
+        throw new BadRequestException(`${method} 的 trigger.cron 必须是字符串`);
+      }
+      trigger.cron = value.cron;
+    }
+    if ('event' in value && value.event !== undefined) {
+      if (typeof value.event !== 'string') {
+        throw new BadRequestException(`${method} 的 trigger.event 必须是字符串`);
+      }
+      trigger.event = value.event;
+    }
+
+    return trigger;
+  }
+
+  /**
+   * 从参数对象读取自动化动作列表。
+   * @param params 参数对象
+   * @param method 当前 Host API 方法名
+   * @returns 已校验的动作配置数组
+   */
+  private readAutomationActions(
+    params: JsonObject,
+    method: string,
+  ): ActionConfig[] {
+    const value = params.actions;
+    if (!Array.isArray(value)) {
+      throw new BadRequestException(`${method} 的 actions 必须是数组`);
+    }
+
+    return value.map((action, index) =>
+      this.readAutomationAction(action, index, method),
+    );
+  }
+
+  /**
+   * 从参数对象读取单条自动化动作。
+   * @param value 原始动作值
+   * @param index 当前动作索引
+   * @param method 当前 Host API 方法名
+   * @returns 已校验的动作配置
+   */
+  private readAutomationAction(
+    value: JsonValue,
+    index: number,
+    method: string,
+  ): ActionConfig {
+    if (!isJsonObjectValue(value)) {
+      throw new BadRequestException(`${method} 的 actions[${index}] 必须是对象`);
+    }
+    if (value.type !== 'device_command' && value.type !== 'ai_message') {
+      throw new BadRequestException(`${method} 的 actions[${index}].type 不合法`);
+    }
+
+    if (value.type === 'device_command') {
+      if (typeof value.plugin !== 'string') {
+        throw new BadRequestException(
+          `${method} 的 actions[${index}].plugin 必须是字符串`,
+        );
+      }
+      if (typeof value.capability !== 'string') {
+        throw new BadRequestException(
+          `${method} 的 actions[${index}].capability 必须是字符串`,
+        );
+      }
+
+      const action: ActionConfig = {
+        type: value.type,
+        plugin: value.plugin,
+        capability: value.capability,
+      };
+      if ('params' in value && value.params !== undefined) {
+        if (!isJsonObjectValue(value.params)) {
+          throw new BadRequestException(
+            `${method} 的 actions[${index}].params 必须是对象`,
+          );
+        }
+        action.params = value.params;
+      }
+
+      return action;
+    }
+
+    const action: ActionConfig = {
+      type: value.type,
+    };
+    if ('message' in value && value.message !== undefined) {
+      if (typeof value.message !== 'string') {
+        throw new BadRequestException(
+          `${method} 的 actions[${index}].message 必须是字符串`,
+        );
+      }
+      action.message = value.message;
+    }
+
+    return action;
   }
 
   /**

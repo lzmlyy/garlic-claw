@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import type { ActionConfig, TriggerConfig } from '@garlic-claw/shared';
+import type { ActionConfig, AutomationInfo, TriggerConfig } from '@garlic-claw/shared';
 import type { JsonValue } from '../common/types/json-value';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,7 +37,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     name: string,
     trigger: TriggerConfig,
     actions: ActionConfig[],
-  ) {
+  ): Promise<AutomationInfo> {
     const automation = await this.prisma.automation.create({
       data: {
         userId,
@@ -52,10 +52,10 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log(`自动化 "${name}" 已创建 (${trigger.type})`);
-    return automation;
+    return this.toAutomationInfo(automation);
   }
 
-  async findAllByUser(userId: string) {
+  async findAllByUser(userId: string): Promise<AutomationInfo[]> {
     const automations = await this.prisma.automation.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -65,41 +65,56 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     });
 
     return automations.map((a) => ({
-      ...a,
-      trigger: JSON.parse(a.trigger),
-      actions: JSON.parse(a.actions),
+      ...this.toAutomationInfo(a),
+      logs: a.logs.map((log) => ({
+        id: log.id,
+        status: log.status,
+        result: log.result,
+        createdAt: log.createdAt.toISOString(),
+      })),
     }));
   }
 
-  async findById(id: string) {
-    const automation = await this.prisma.automation.findUnique({
-      where: { id },
-      include: {
-        logs: { orderBy: { createdAt: 'desc' }, take: 20 },
-      },
-    })
+  async findById(id: string, userId?: string): Promise<AutomationInfo | null> {
+    const automation = userId
+      ? await this.prisma.automation.findFirst({
+          where: { id, userId },
+          include: {
+            logs: { orderBy: { createdAt: 'desc' }, take: 20 },
+          },
+        })
+      : await this.prisma.automation.findUnique({
+          where: { id },
+          include: {
+            logs: { orderBy: { createdAt: 'desc' }, take: 20 },
+          },
+        });
     if (!automation) {
-      return null
+      return null;
     }
     return {
-      ...automation,
-      trigger: JSON.parse(automation.trigger) as TriggerConfig,
-      actions: JSON.parse(automation.actions) as ActionConfig[],
-    }
+      ...this.toAutomationInfo(automation),
+      logs: automation.logs.map((log) => ({
+        id: log.id,
+        status: log.status,
+        result: log.result,
+        createdAt: log.createdAt.toISOString(),
+      })),
+    };
   }
 
   async toggle(id: string, userId: string) {
     const automation = await this.prisma.automation.findFirst({
       where: { id, userId },
-    })
+    });
     if (!automation) {
-      return null
+      return null;
     }
 
     const updated = await this.prisma.automation.update({
       where: { id },
       data: { enabled: !automation.enabled },
-    })
+    });
 
     const trigger = JSON.parse(automation.trigger) as TriggerConfig;
     if (trigger.type === 'cron') {
@@ -120,11 +135,18 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
 
   // --- 执行 ---
 
-  async executeAutomation(automationId: string) {
-    const automation = await this.findById(automationId)
-    if (!automation || !automation.enabled) {
-      return
+  async executeAutomation(automationId: string, userId?: string) {
+    const automationRecord = userId
+      ? await this.prisma.automation.findFirst({
+          where: { id: automationId, userId },
+        })
+      : await this.prisma.automation.findUnique({
+          where: { id: automationId },
+        });
+    if (!automationRecord || !automationRecord.enabled) {
+      return null;
     }
+    const automation = this.toAutomationInfo(automationRecord);
 
     const results: JsonValue[] = [];
     let status = 'success';
@@ -138,11 +160,16 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
             params: action.params || {},
             context: {
               source: 'automation',
-              userId: automation.userId,
+              userId: automationRecord.userId,
               automationId,
             },
-          })
-          results.push({ action: action.type, plugin: action.plugin, capability: action.capability, result })
+          });
+          results.push({
+            action: action.type,
+            plugin: action.plugin,
+            capability: action.capability,
+            result,
+          });
         }
         // ai_message 类型由注入 ChatService 处理，此处留空
       } catch (err) {
@@ -150,7 +177,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
         results.push({
           action: action.type,
           error: err instanceof Error ? err.message : String(err),
-        })
+        });
       }
     }
 
@@ -161,19 +188,19 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
         status,
         result: JSON.stringify(results),
       },
-    })
+    });
 
     // 更新 lastRunAt
     await this.prisma.automation.update({
       where: { id: automationId },
       data: { lastRunAt: new Date() },
-    })
+    });
 
     this.logger.log(
-      `自动化 "${automation.name}" 已执行：${status}`,
-    )
+      `自动化 "${automationRecord.name}" 已执行：${status}`,
+    );
 
-    return { status, results }
+    return { status, results };
   }
 
   // --- Cron 计划 ---
@@ -268,5 +295,32 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+  }
+
+  /**
+   * 将数据库记录转换为共享自动化摘要。
+   * @param automation Prisma 自动化记录
+   * @returns 面向 API/插件的自动化摘要
+   */
+  private toAutomationInfo(automation: {
+    id: string;
+    name: string;
+    trigger: string;
+    actions: string;
+    enabled: boolean;
+    lastRunAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): AutomationInfo {
+    return {
+      id: automation.id,
+      name: automation.name,
+      trigger: JSON.parse(automation.trigger) as TriggerConfig,
+      actions: JSON.parse(automation.actions) as ActionConfig[],
+      enabled: automation.enabled,
+      lastRunAt: automation.lastRunAt?.toISOString() ?? null,
+      createdAt: automation.createdAt.toISOString(),
+      updatedAt: automation.updatedAt.toISOString(),
+    };
   }
 }

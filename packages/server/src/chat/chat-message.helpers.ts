@@ -1,11 +1,8 @@
 import {
   filterToolSet,
-  getAutomationToolSummaries,
-  getAutomationTools,
   getPluginToolSummaries,
   getPluginTools,
 } from '../ai/tools';
-import { AutomationService } from '../automation/automation.service';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import type { ChatRuntimeMessage } from './chat-message-session';
 import type { SendMessagePartDto } from './dto/chat.dto';
@@ -100,7 +97,6 @@ export function hasActiveAssistantMessage(
  * 按需构造聊天工具集合。
  * @param supportsToolCall 模型是否支持工具调用
  * @param pluginRuntime 统一插件运行时
- * @param automationService 自动化服务
  * @param userId 当前用户 ID
  * @param conversationId 当前对话 ID
  * @returns 工具集合；模型不支持时返回 undefined
@@ -108,7 +104,6 @@ export function hasActiveAssistantMessage(
 export function buildChatToolSet(params: {
   supportsToolCall: boolean;
   pluginRuntime: PluginRuntimeService;
-  automationService: AutomationService;
   userId: string;
   conversationId: string;
   activeProviderId: string;
@@ -128,7 +123,6 @@ export function buildChatToolSet(params: {
       activeModelId: params.activeModelId,
       activePersonaId: params.activePersonaId,
     }),
-    ...getAutomationTools(params.automationService, params.userId),
   }, params.allowedToolNames);
 }
 
@@ -149,16 +143,13 @@ export function listChatAvailableTools(params: {
   activeModelId: string;
   activePersonaId?: string;
 }) {
-  return [
-    ...getPluginToolSummaries(params.pluginRuntime, {
-      userId: params.userId,
-      conversationId: params.conversationId,
-      activeProviderId: params.activeProviderId,
-      activeModelId: params.activeModelId,
-      activePersonaId: params.activePersonaId,
-    }),
-    ...getAutomationToolSummaries(),
-  ];
+  return getPluginToolSummaries(params.pluginRuntime, {
+    userId: params.userId,
+    conversationId: params.conversationId,
+    activeProviderId: params.activeProviderId,
+    activeModelId: params.activeModelId,
+    activePersonaId: params.activePersonaId,
+  });
 }
 
 /**

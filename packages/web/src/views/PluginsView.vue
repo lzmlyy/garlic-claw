@@ -265,6 +265,12 @@ function pluginHighlights(plugin: PluginInfo): string[] {
   if (permissions.has('provider:read')) {
     highlights.push('可读取 Provider 上下文')
   }
+  if (permissions.has('automation:read')) {
+    highlights.push('可读取自动化规则')
+  }
+  if (permissions.has('automation:write')) {
+    highlights.push('可管理和触发自动化')
+  }
   if (permissions.has('kb:read')) {
     highlights.push('可读取系统知识库')
   }

@@ -3,7 +3,6 @@ import type { ChatBeforeModelRequest } from '@garlic-claw/shared';
 import { AiProviderService } from '../ai/ai-provider.service';
 import { createStepLimit } from '../ai/sdk-adapter';
 import type { ModelConfig } from '../ai/types/provider.types';
-import { AutomationService } from '../automation/automation.service';
 import { PersonaService } from '../persona/persona.service';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -66,7 +65,6 @@ export class ChatMessageService {
     private readonly aiProvider: AiProviderService,
     private readonly personaService: PersonaService,
     private readonly pluginRuntime: PluginRuntimeService,
-    private readonly automationService: AutomationService,
     private readonly modelInvocation: ChatModelInvocationService,
     private readonly chatTaskService: ChatTaskService,
   ) {}
@@ -399,7 +397,6 @@ export class ChatMessageService {
         tools: buildChatToolSet({
           supportsToolCall: input.supportsToolCall,
           pluginRuntime: this.pluginRuntime,
-          automationService: this.automationService,
           userId: input.userId,
           conversationId: input.conversationId,
           activeProviderId: input.activeProviderId,
