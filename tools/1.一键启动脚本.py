@@ -100,6 +100,50 @@ def kill_pid(pid: int, name: str):
 
 
 # ──────────────────────────────────────────────────────────────────
+# ？？？
+# ──────────────────────────────────────────────────────────────────
+
+
+def 确保_git_hooks_已启用() -> None:
+    """检查并启用 git hooks。"""
+    # 检查 .githooks 目录是否存在
+    githooks_dir = ROOT / ".githooks"
+    if not githooks_dir.exists():
+        return
+
+    # 获取当前 hooks 路径
+    result = subprocess.run(
+        ["git", "config", "core.hooksPath"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    current_path = result.stdout.strip() if result.returncode == 0 else ""
+
+    # 如果已经设置为 .githooks，则跳过
+    if current_path == ".githooks":
+        return
+
+    ok("启用 git hooks")
+    subprocess.run(
+        ["git", "config", "core.hooksPath", ".githooks"],
+        check=True,
+        cwd=ROOT,
+    )
+
+    # 非 Windows 系统需要添加执行权限
+    if os.name != "nt":
+        for hook_file in githooks_dir.iterdir():
+            if hook_file.is_file():
+                subprocess.run(
+                    ["chmod", "+x", str(hook_file)],
+                    check=False,
+                    cwd=ROOT,
+                )
+
+
+
+# ──────────────────────────────────────────────────────────────────
 # 构建
 # ──────────────────────────────────────────────────────────────────
 def run_step(label: str, cmd: list, cwd: Path, retries: int = 0, delay: float = 1.0) -> bool:
@@ -163,6 +207,7 @@ def start_service(name: str, cfg: dict) -> int | None:
 
 
 def start(with_web: bool = False):
+    确保_git_hooks_已启用()
     head("启动服务")
     pids = load_pids()
     services = dict(SERVICES)
