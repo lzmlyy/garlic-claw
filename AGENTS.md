@@ -91,10 +91,17 @@ packages/: server(NestJS) | web(Vue) | shared | plugin-sdk | plugins
 
 ## Git Commit
 
-格式：`<type>: <subject>`（当前不使用 scope）
-type: feat/fix/docs/style/refactor/test/chore
+格式：`<类型>: <描述>`
 
-- `subject` 必须使用中文，简洁描述本次改动，不要写英文提交说明
+### 类型列表
+
+新增 / 修复 / 文档 / 重构 / 杂项 / 格式 / 性能 / 测试 / 集成 / 构建 / 回退
+
+### 示例
+
+- `新增: 添加用户登录功能`
+- `修复: 修复登录超时问题`
+- `文档: 更新接口说明`
 
 ## 代码格式
 
@@ -147,4 +154,4 @@ taskkill /F /IM node.exe
 
 ### 一键启动脚本
 
-`1.一键启动脚本.py` 可以一键启动/停止前后端。
+`一键启停脚本.py` 可以一键启动/停止前后端。

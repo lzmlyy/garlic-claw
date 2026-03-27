@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { AiController } from './ai.controller';
+import { AiModelExecutionService } from './ai-model-execution.service';
 import { AiProviderDiagnosticsService } from './ai-provider-diagnostics.service';
 import { AiManagementService } from './ai-management.service';
 import { AiProviderService } from './ai-provider.service';
@@ -13,6 +14,7 @@ import { ImageTranscriptionCacheService, ImageToTextService } from './vision';
   controllers: [AiController],
   providers: [
     AiProviderService,
+    AiModelExecutionService,
     AiProviderDiagnosticsService,
     AiManagementService,
     ConfigManagerService,
@@ -25,6 +27,7 @@ import { ImageTranscriptionCacheService, ImageToTextService } from './vision';
   ],
   exports: [
     AiProviderService,
+    AiModelExecutionService,
     AiProviderDiagnosticsService,
     AiManagementService,
     ConfigManagerService,

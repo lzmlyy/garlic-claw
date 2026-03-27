@@ -22,7 +22,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { toJsonValue } from '../common/utils/json-value';
-import { AiProviderService } from './ai-provider.service';
+import { AiModelExecutionService } from './ai-model-execution.service';
 import {
   type AiProviderConnectionTestResult,
   buildModelDiscoveryRequest,
@@ -32,7 +32,6 @@ import {
 } from './ai-provider-diagnostics.helpers';
 import type { StoredAiProviderConfig } from './config/config-manager.service';
 import { ConfigManagerService } from './config/config-manager.service';
-import { runGenerateText } from './sdk-adapter';
 
 @Injectable()
 export class AiProviderDiagnosticsService {
@@ -41,7 +40,7 @@ export class AiProviderDiagnosticsService {
 
   constructor(
     private readonly configManager: ConfigManagerService,
-    private readonly aiProvider: AiProviderService,
+    private readonly aiModelExecution: AiModelExecutionService,
   ) {}
 
   /**
@@ -100,10 +99,10 @@ export class AiProviderDiagnosticsService {
   ): Promise<AiProviderConnectionTestResult> {
     const provider = this.getProvider(providerId);
     const resolvedModelId = await this.resolveTestModelId(provider, modelId);
-    const model = this.aiProvider.getModel(providerId, resolvedModelId);
-    const result = await runGenerateText({
-      model,
-      messages: [
+    const executed = await this.aiModelExecution.generateText({
+      providerId,
+      modelId: resolvedModelId,
+      sdkMessages: [
         {
           role: 'user',
           content: AiProviderDiagnosticsService.TEST_CONNECTION_PROMPT,
@@ -116,7 +115,7 @@ export class AiProviderDiagnosticsService {
       ok: true,
       providerId,
       modelId: resolvedModelId,
-      text: result.text.trim(),
+      text: executed.result.text.trim(),
     };
   }
 

@@ -1,17 +1,19 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AiProviderService } from '../ai/ai-provider.service';
-import { createStepLimit, runStreamText } from '../ai/sdk-adapter';
+import { createStepLimit } from '../ai/sdk-adapter';
 import { AutomationService } from '../automation/automation.service';
 import { MemoryService } from '../memory/memory.service';
 import { PluginGateway } from '../plugin/plugin.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildChatToolSet, CHAT_SYSTEM_PROMPT, findLatestUserContent, hasActiveAssistantMessage, mapDtoParts, toRuntimeMessages, toUserMessageInput } from './chat-message.helpers';
-import { ChatMessageTransformService } from './chat-message-transform.service';
+import {
+  ChatModelInvocationService,
+  type PreparedChatModelInvocation,
+} from './chat-model-invocation.service';
 import { prepareSendMessagePayload } from './chat-message-session';
 import { ChatService } from './chat.service';
 import { type RetryMessageDto, type SendMessageDto, type UpdateMessageDto } from './dto/chat.dto';
 import { normalizeUserMessageInput, serializeMessageParts } from './message-parts';
-import { toAiSdkMessages } from './sdk-message-converter';
 import { ChatTaskService } from './chat-task.service';
 
 @Injectable()
@@ -23,7 +25,7 @@ export class ChatMessageService {
     private readonly pluginGateway: PluginGateway,
     private readonly memoryService: MemoryService,
     private readonly automationService: AutomationService,
-    private readonly messageTransform: ChatMessageTransformService,
+    private readonly modelInvocation: ChatModelInvocationService,
     private readonly chatTaskService: ChatTaskService,
   ) {}
 
@@ -63,11 +65,11 @@ export class ChatMessageService {
 
     try {
       const systemPrompt = await this.buildSystemPrompt(userId, payload.searchableContent);
-      const transformedMessages = await this.messageTransform.transformMessages(
+      const preparedInvocation = await this.modelInvocation.prepareResolved({
         conversationId,
-        payload.modelMessages,
         modelConfig,
-      );
+        messages: payload.modelMessages,
+      });
 
       this.chatTaskService.startTask({
         assistantMessageId: assistantMessage.id,
@@ -77,9 +79,7 @@ export class ChatMessageService {
         createStream: this.buildStreamFactory(
           userId,
           systemPrompt,
-          transformedMessages,
-          modelConfig.providerId,
-          modelConfig.id,
+          preparedInvocation,
           modelConfig.capabilities.toolCall,
         ),
       });
@@ -159,11 +159,11 @@ export class ChatMessageService {
         userId,
         searchableContent,
       );
-      const transformedMessages = await this.messageTransform.transformMessages(
+      const preparedInvocation = await this.modelInvocation.prepareResolved({
         conversationId,
-        toRuntimeMessages(historyMessages),
         modelConfig,
-      );
+        messages: toRuntimeMessages(historyMessages),
+      });
 
       this.chatTaskService.startTask({
         assistantMessageId: messageId,
@@ -173,9 +173,7 @@ export class ChatMessageService {
         createStream: this.buildStreamFactory(
           userId,
           systemPrompt,
-          transformedMessages,
-          modelConfig.providerId,
-          modelConfig.id,
+          preparedInvocation,
           modelConfig.capabilities.toolCall,
         ),
       });
@@ -274,16 +272,13 @@ export class ChatMessageService {
   private buildStreamFactory(
     userId: string,
     systemPrompt: string,
-    messages: ReturnType<typeof toRuntimeMessages>,
-    providerId: string,
-    modelId: string,
+    preparedInvocation: PreparedChatModelInvocation,
     supportsToolCall: boolean,
   ) {
     return (abortSignal: AbortSignal) =>
-      runStreamText({
-        model: this.aiProvider.getModel(providerId, modelId),
+      this.modelInvocation.streamPrepared({
+        prepared: preparedInvocation,
         system: systemPrompt,
-        messages: toAiSdkMessages(messages),
         tools: buildChatToolSet({
           supportsToolCall,
           pluginGateway: this.pluginGateway,
@@ -293,6 +288,6 @@ export class ChatMessageService {
         }),
         stopWhen: createStepLimit(5),
         abortSignal,
-      });
+      }).result;
   }
 }

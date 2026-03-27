@@ -14,7 +14,7 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT_DIR="$ROOT_DIR/tools"
 
 if [ "$#" -eq 0 ]; then
-    "$PYTHON_CMD" "$SCRIPT_DIR/1.一键启动脚本.py" --prod --start
+    "$PYTHON_CMD" "$SCRIPT_DIR/一键启停脚本.py"
 else
-    "$PYTHON_CMD" "$SCRIPT_DIR/1.一键启动脚本.py" "$@"
+    "$PYTHON_CMD" "$SCRIPT_DIR/一键启停脚本.py" "$@"
 fi
