@@ -13,6 +13,7 @@ import { createPluginGovernanceRecorderPlugin } from './builtin/plugin-governanc
 import { createResponseRecorderPlugin } from './builtin/response-recorder.plugin';
 import { createToolAuditPlugin } from './builtin/tool-audit.plugin';
 import { PluginRuntimeService } from './plugin-runtime.service';
+import { ChatMessageService } from '../chat/chat-message.service';
 
 describe('PluginRuntimeService', () => {
   const pluginService = {
@@ -48,6 +49,10 @@ describe('PluginRuntimeService', () => {
     findAllByUser: jest.fn(),
     toggle: jest.fn(),
     executeAutomation: jest.fn(),
+  };
+
+  const chatMessageService = {
+    createPluginConversationMessage: jest.fn(),
   };
 
   const moduleRef = {
@@ -128,7 +133,12 @@ describe('PluginRuntimeService', () => {
         toolCall: true,
       },
     });
-    moduleRef.get.mockReturnValue(automationService);
+    moduleRef.get.mockImplementation((token: unknown) => {
+      if (token === ChatMessageService) {
+        return chatMessageService;
+      }
+      return automationService;
+    });
     service = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
@@ -2379,6 +2389,34 @@ describe('PluginRuntimeService', () => {
           userId: 'user-1',
           conversationId: 'conversation-1',
         },
+        method: 'conversation.message.create' as never,
+        params: {
+          content: '插件补充回复',
+        },
+      }),
+    ).rejects.toThrow('插件 builtin.conversation-title 缺少权限 conversation:write');
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.conversation-title',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        method: 'conversation.session.start' as never,
+        params: {
+          timeoutMs: 60000,
+        },
+      }),
+    ).rejects.toThrow('插件 builtin.conversation-title 缺少权限 conversation:write');
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.conversation-title',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
         method: 'conversation.title.set',
         params: {
           title: '咖啡偏好总结',
@@ -2400,6 +2438,470 @@ describe('PluginRuntimeService', () => {
       }),
     ).rejects.toThrow('插件 builtin.conversation-title 缺少权限 llm:generate');
     expect(hostService.call).not.toHaveBeenCalled();
+    expect(chatMessageService.createPluginConversationMessage).not.toHaveBeenCalled();
+  });
+
+  it('delegates conversation.message.create to the chat message service', async () => {
+    const manifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.response-recorder',
+      permissions: ['conversation:write'],
+      tools: [],
+      hooks: [],
+    };
+
+    chatMessageService.createPluginConversationMessage.mockResolvedValue({
+      id: 'assistant-message-plugin-1',
+      conversationId: 'conversation-2',
+      role: 'assistant',
+      content: '插件补充回复',
+      parts: [
+        {
+          type: 'text',
+          text: '插件补充回复',
+        },
+      ],
+      provider: 'openai',
+      model: 'gpt-5.2',
+      status: 'completed',
+      createdAt: '2026-03-28T10:00:00.000Z',
+      updatedAt: '2026-03-28T10:00:00.000Z',
+    });
+
+    await service.registerPlugin({
+      manifest,
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.response-recorder',
+        context: {
+          source: 'cron',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+        },
+        method: 'conversation.message.create' as never,
+        params: {
+          conversationId: 'conversation-2',
+          content: '插件补充回复',
+          parts: [
+            {
+              type: 'text',
+              text: '插件补充回复',
+            },
+          ],
+          provider: 'openai',
+          model: 'gpt-5.2',
+        },
+      }),
+    ).resolves.toEqual({
+      id: 'assistant-message-plugin-1',
+      conversationId: 'conversation-2',
+      role: 'assistant',
+      content: '插件补充回复',
+      parts: [
+        {
+          type: 'text',
+          text: '插件补充回复',
+        },
+      ],
+      provider: 'openai',
+      model: 'gpt-5.2',
+      status: 'completed',
+      createdAt: '2026-03-28T10:00:00.000Z',
+      updatedAt: '2026-03-28T10:00:00.000Z',
+    });
+
+    expect(chatMessageService.createPluginConversationMessage).toHaveBeenCalledWith({
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+      conversationId: 'conversation-2',
+      content: '插件补充回复',
+      parts: [
+        {
+          type: 'text',
+          text: '插件补充回复',
+        },
+      ],
+      provider: 'openai',
+      model: 'gpt-5.2',
+    });
+    expect(hostService.call).not.toHaveBeenCalled();
+  });
+
+  it('starts, keeps, reads, and finishes conversation sessions through host calls', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-28T12:00:00.000Z'));
+
+    try {
+      const manifest: PluginManifest = {
+        ...builtinManifest,
+        id: 'builtin.idiom-session',
+        permissions: ['conversation:write'],
+        tools: [],
+        hooks: [
+          {
+            name: 'message:received',
+          },
+        ],
+      };
+
+      await service.registerPlugin({
+        manifest,
+        runtimeKind: 'builtin',
+        transport: createTransport(),
+      });
+
+      await expect(
+        service.callHost({
+          pluginId: 'builtin.idiom-session',
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+          },
+          method: 'conversation.session.start' as never,
+          params: {
+            timeoutMs: 60000,
+            captureHistory: true,
+            metadata: {
+              flow: 'idiom',
+            },
+          },
+        }),
+      ).resolves.toEqual({
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 60000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:00.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+        metadata: {
+          flow: 'idiom',
+        },
+      });
+
+      jest.advanceTimersByTime(10000);
+
+      await expect(
+        service.callHost({
+          pluginId: 'builtin.idiom-session',
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+          },
+          method: 'conversation.session.keep' as never,
+          params: {
+            timeoutMs: 30000,
+            resetTimeout: false,
+          },
+        }),
+      ).resolves.toEqual({
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 80000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:30.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+        metadata: {
+          flow: 'idiom',
+        },
+      });
+
+      await expect(
+        service.callHost({
+          pluginId: 'builtin.idiom-session',
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+          },
+          method: 'conversation.session.get' as never,
+          params: {},
+        }),
+      ).resolves.toEqual({
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 80000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:30.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+        metadata: {
+          flow: 'idiom',
+        },
+      });
+
+      await expect(
+        service.callHost({
+          pluginId: 'builtin.idiom-session',
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+          },
+          method: 'conversation.session.finish' as never,
+          params: {},
+        }),
+      ).resolves.toBe(true);
+
+      await expect(
+        service.callHost({
+          pluginId: 'builtin.idiom-session',
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+          },
+          method: 'conversation.session.get' as never,
+          params: {},
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('routes message:received through the active conversation session before later hooks', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-28T12:00:00.000Z'));
+
+    try {
+      const sessionHook = jest.fn().mockResolvedValue({
+        action: 'mutate',
+        content: '会话插件接管后的输入',
+        parts: [
+          {
+            type: 'text',
+            text: '会话插件接管后的输入',
+          },
+        ],
+        modelMessages: [
+          {
+            role: 'user',
+            content: '会话插件接管后的输入',
+          },
+        ],
+      });
+      const skippedHook = jest.fn();
+
+      await service.registerPlugin({
+        manifest: {
+          ...builtinManifest,
+          id: 'builtin.idiom-session',
+          permissions: ['conversation:write'],
+          tools: [],
+          hooks: [
+            {
+              name: 'message:received',
+            },
+          ],
+        } as never,
+        runtimeKind: 'builtin',
+        transport: createTransport({
+          invokeHook: sessionHook,
+        }),
+      });
+      await service.registerPlugin({
+        manifest: {
+          ...builtinManifest,
+          id: 'builtin.message-observer',
+          tools: [],
+          hooks: [
+            {
+              name: 'message:received',
+            },
+          ],
+        } as never,
+        runtimeKind: 'builtin',
+        transport: createTransport({
+          invokeHook: skippedHook,
+        }),
+      });
+
+      await service.callHost({
+        pluginId: 'builtin.idiom-session',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        method: 'conversation.session.start' as never,
+        params: {
+          timeoutMs: 60000,
+          captureHistory: true,
+        },
+      });
+
+      await expect(
+        (service as any).runMessageReceivedHooks({
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+            activeProviderId: 'openai',
+            activeModelId: 'gpt-5.2',
+          },
+          payload: {
+            context: {
+              source: 'chat-hook',
+              userId: 'user-1',
+              conversationId: 'conversation-1',
+              activeProviderId: 'openai',
+              activeModelId: 'gpt-5.2',
+            },
+            conversationId: 'conversation-1',
+            providerId: 'openai',
+            modelId: 'gpt-5.2',
+            message: {
+              role: 'user',
+              content: '一马当先',
+              parts: [
+                {
+                  type: 'text',
+                  text: '一马当先',
+                },
+              ],
+            },
+            modelMessages: [
+              {
+                role: 'user',
+                content: '一马当先',
+              },
+            ],
+          },
+        }),
+      ).resolves.toEqual({
+        action: 'continue',
+        payload: {
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+            activeProviderId: 'openai',
+            activeModelId: 'gpt-5.2',
+          },
+          conversationId: 'conversation-1',
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          session: {
+            pluginId: 'builtin.idiom-session',
+            conversationId: 'conversation-1',
+            timeoutMs: 60000,
+            startedAt: '2026-03-28T12:00:00.000Z',
+            expiresAt: '2026-03-28T12:01:00.000Z',
+            lastMatchedAt: '2026-03-28T12:00:00.000Z',
+            captureHistory: true,
+            historyMessages: [
+              {
+                role: 'user',
+                content: '一马当先',
+                parts: [
+                  {
+                    type: 'text',
+                    text: '一马当先',
+                  },
+                ],
+              },
+            ],
+          },
+          message: {
+            role: 'user',
+            content: '会话插件接管后的输入',
+            parts: [
+              {
+                type: 'text',
+                text: '会话插件接管后的输入',
+              },
+            ],
+          },
+          modelMessages: [
+            {
+              role: 'user',
+              content: '会话插件接管后的输入',
+            },
+          ],
+        },
+      });
+
+      expect(sessionHook).toHaveBeenCalledWith({
+        hookName: 'message:received',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+        },
+        payload: {
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+            activeProviderId: 'openai',
+            activeModelId: 'gpt-5.2',
+          },
+          conversationId: 'conversation-1',
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          session: {
+            pluginId: 'builtin.idiom-session',
+            conversationId: 'conversation-1',
+            timeoutMs: 60000,
+            startedAt: '2026-03-28T12:00:00.000Z',
+            expiresAt: '2026-03-28T12:01:00.000Z',
+            lastMatchedAt: '2026-03-28T12:00:00.000Z',
+            captureHistory: true,
+            historyMessages: [
+              {
+                role: 'user',
+                content: '一马当先',
+                parts: [
+                  {
+                    type: 'text',
+                    text: '一马当先',
+                  },
+                ],
+              },
+            ],
+          },
+          message: {
+            role: 'user',
+            content: '一马当先',
+            parts: [
+              {
+                type: 'text',
+                text: '一马当先',
+              },
+            ],
+          },
+          modelMessages: [
+            {
+              role: 'user',
+              content: '一马当先',
+            },
+          ],
+        },
+      });
+      expect(skippedHook).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('enforces storage and user permissions before host calls', async () => {

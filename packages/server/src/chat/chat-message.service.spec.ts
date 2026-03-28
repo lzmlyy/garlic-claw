@@ -852,6 +852,250 @@ describe('ChatMessageService', () => {
     });
   });
 
+  it('creates a plugin conversation assistant message through the message:created hook chain', async () => {
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-2',
+      title: 'Plugin Target',
+      messages: [],
+    });
+    pluginRuntime.runMessageCreatedHooks.mockResolvedValue({
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-2',
+        activeProviderId: 'plugin-provider',
+        activeModelId: 'plugin-model',
+        activePersonaId: 'persona-1',
+      },
+      conversationId: 'conversation-2',
+      message: {
+        role: 'assistant',
+        content: '插件补充回复\n第二段',
+        parts: [
+          {
+            type: 'text',
+            text: '插件补充回复',
+          },
+          {
+            type: 'image',
+            image: 'https://example.com/plugin.png',
+            mimeType: 'image/png',
+          },
+          {
+            type: 'text',
+            text: '第二段',
+          },
+        ],
+        provider: 'plugin-provider',
+        model: 'plugin-model',
+        status: 'completed',
+      },
+      modelMessages: [
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: '插件补充回复',
+            },
+            {
+              type: 'image',
+              image: 'https://example.com/plugin.png',
+              mimeType: 'image/png',
+            },
+            {
+              type: 'text',
+              text: '第二段',
+            },
+          ],
+        },
+      ],
+    });
+    prisma.message.create.mockResolvedValue({
+      id: 'assistant-message-plugin-1',
+      conversationId: 'conversation-2',
+      role: 'assistant',
+      content: '插件补充回复\n第二段',
+      partsJson: JSON.stringify([
+        {
+          type: 'text',
+          text: '插件补充回复',
+        },
+        {
+          type: 'image',
+          image: 'https://example.com/plugin.png',
+          mimeType: 'image/png',
+        },
+        {
+          type: 'text',
+          text: '第二段',
+        },
+      ]),
+      provider: 'plugin-provider',
+      model: 'plugin-model',
+      status: 'completed',
+      createdAt: new Date('2026-03-28T10:00:00.000Z'),
+      updatedAt: new Date('2026-03-28T10:00:00.000Z'),
+    });
+    prisma.conversation.update.mockResolvedValue(null);
+
+    const result = await service.createPluginConversationMessage({
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'persona-1',
+      },
+      conversationId: 'conversation-2',
+      content: '这段内容会被 parts 覆盖',
+      parts: [
+        {
+          type: 'text',
+          text: '  插件补充回复  ',
+        },
+        {
+          type: 'image',
+          image: 'https://example.com/plugin.png',
+          mimeType: 'image/png',
+        },
+        {
+          type: 'text',
+          text: '第二段',
+        },
+      ],
+      provider: 'plugin-provider',
+      model: 'plugin-model',
+    });
+
+    expect(chatService.getConversation).toHaveBeenCalledWith(
+      'user-1',
+      'conversation-2',
+    );
+    expect(pluginRuntime.runMessageCreatedHooks).toHaveBeenCalledWith({
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-2',
+        activeProviderId: 'plugin-provider',
+        activeModelId: 'plugin-model',
+        activePersonaId: 'persona-1',
+      },
+      payload: {
+        context: {
+          source: 'cron',
+          userId: 'user-1',
+          conversationId: 'conversation-2',
+          activeProviderId: 'plugin-provider',
+          activeModelId: 'plugin-model',
+          activePersonaId: 'persona-1',
+        },
+        conversationId: 'conversation-2',
+        message: {
+          role: 'assistant',
+          content: '插件补充回复\n第二段',
+          parts: [
+            {
+              type: 'text',
+              text: '插件补充回复',
+            },
+            {
+              type: 'image',
+              image: 'https://example.com/plugin.png',
+              mimeType: 'image/png',
+            },
+            {
+              type: 'text',
+              text: '第二段',
+            },
+          ],
+          provider: 'plugin-provider',
+          model: 'plugin-model',
+          status: 'completed',
+        },
+        modelMessages: [
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text: '插件补充回复',
+              },
+              {
+                type: 'image',
+                image: 'https://example.com/plugin.png',
+                mimeType: 'image/png',
+              },
+              {
+                type: 'text',
+                text: '第二段',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(prisma.message.create).toHaveBeenCalledWith({
+      data: {
+        conversationId: 'conversation-2',
+        role: 'assistant',
+        content: '插件补充回复\n第二段',
+        partsJson: JSON.stringify([
+          {
+            type: 'text',
+            text: '插件补充回复',
+          },
+          {
+            type: 'image',
+            image: 'https://example.com/plugin.png',
+            mimeType: 'image/png',
+          },
+          {
+            type: 'text',
+            text: '第二段',
+          },
+        ]),
+        provider: 'plugin-provider',
+        model: 'plugin-model',
+        status: 'completed',
+        error: null,
+      },
+    });
+    expect(prisma.conversation.update).toHaveBeenCalledWith({
+      where: { id: 'conversation-2' },
+      data: {
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(result).toEqual({
+      id: 'assistant-message-plugin-1',
+      conversationId: 'conversation-2',
+      role: 'assistant',
+      content: '插件补充回复\n第二段',
+      parts: [
+        {
+          type: 'text',
+          text: '插件补充回复',
+        },
+        {
+          type: 'image',
+          image: 'https://example.com/plugin.png',
+          mimeType: 'image/png',
+        },
+        {
+          type: 'text',
+          text: '第二段',
+        },
+      ],
+      provider: 'plugin-provider',
+      model: 'plugin-model',
+      status: 'completed',
+      createdAt: '2026-03-28T10:00:00.000Z',
+      updatedAt: '2026-03-28T10:00:00.000Z',
+    });
+  });
+
   it('short-circuits through message:received before scheduling a model task', async () => {
     const userMessage = {
       id: 'user-message-1',

@@ -509,6 +509,7 @@ export interface MessageReceivedHookPayload {
   conversationId: string;
   providerId: string;
   modelId: string;
+  session?: PluginConversationSessionInfo | null;
   message: PluginMessageHookInfo;
   modelMessages: PluginLlmMessage[];
 }
@@ -656,6 +657,55 @@ export interface PluginMessageHookInfo {
   provider?: string | null;
   model?: string | null;
   status?: ChatMessageStatus;
+}
+
+/** 插件主动创建会话消息的参数。 */
+export interface PluginConversationMessageCreateParams {
+  conversationId?: string;
+  content?: string | null;
+  parts?: ChatMessagePart[] | null;
+  provider?: string | null;
+  model?: string | null;
+}
+
+/** 插件主动创建的会话消息摘要。 */
+export interface PluginConversationMessageInfo {
+  id: string;
+  conversationId: string;
+  role: 'assistant';
+  content: string;
+  parts: ChatMessagePart[];
+  provider?: string | null;
+  model?: string | null;
+  status: ChatMessageStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 插件启动会话等待态的参数。 */
+export interface PluginConversationSessionStartParams {
+  timeoutMs: number;
+  captureHistory?: boolean;
+  metadata?: JsonValue;
+}
+
+/** 插件续期当前会话等待态的参数。 */
+export interface PluginConversationSessionKeepParams {
+  timeoutMs: number;
+  resetTimeout?: boolean;
+}
+
+/** 插件可见的当前会话等待态摘要。 */
+export interface PluginConversationSessionInfo {
+  pluginId: string;
+  conversationId: string;
+  timeoutMs: number;
+  startedAt: string;
+  expiresAt: string;
+  lastMatchedAt: string | null;
+  captureHistory: boolean;
+  historyMessages: PluginMessageHookInfo[];
+  metadata?: JsonValue;
 }
 
 /** 会话创建 Hook 的输入。 */
@@ -980,6 +1030,11 @@ export type PluginHostMethod =
   | 'cron.list'
   | 'cron.register'
   | 'conversation.get'
+  | 'conversation.message.create'
+  | 'conversation.session.finish'
+  | 'conversation.session.get'
+  | 'conversation.session.keep'
+  | 'conversation.session.start'
   | 'conversation.messages.list'
   | 'conversation.title.set'
   | 'kb.get'

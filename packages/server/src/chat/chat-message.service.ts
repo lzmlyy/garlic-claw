@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type {
   ChatBeforeModelRequest,
   ChatMessagePart,
+  PluginCallContext,
+  PluginConversationMessageInfo,
   PluginResponseSource,
 } from '@garlic-claw/shared';
 import { AiProviderService } from '../ai/ai-provider.service';
@@ -476,6 +478,101 @@ export class ChatMessageService {
     return { success: true };
   }
 
+  /** 供插件主动向当前或指定会话追加一条已完成的 assistant 消息。 */
+  async createPluginConversationMessage(input: {
+    context: PluginCallContext;
+    conversationId?: string;
+    content?: string | null;
+    parts?: ChatMessagePart[] | null;
+    provider?: string | null;
+    model?: string | null;
+  }): Promise<PluginConversationMessageInfo> {
+    const targetConversationId = input.conversationId ?? input.context.conversationId;
+    if (!targetConversationId) {
+      throw new BadRequestException('conversation.message.create 需要 conversationId 上下文');
+    }
+
+    await this.ensureConversationAccess(input.context, targetConversationId);
+
+    const normalizedAssistant = normalizeAssistantMessageOutput({
+      content: input.content,
+      parts: input.parts,
+    });
+    if (!normalizedAssistant.content && normalizedAssistant.parts.length === 0) {
+      throw new BadRequestException(
+        'conversation.message.create 需要非空 content 或 parts',
+      );
+    }
+
+    const provider = input.provider ?? input.context.activeProviderId ?? null;
+    const model = input.model ?? input.context.activeModelId ?? null;
+    const hookContext = this.createChatLifecycleContext({
+      source: input.context.source,
+      userId: input.context.userId,
+      conversationId: targetConversationId,
+      ...(provider ? { activeProviderId: provider } : {}),
+      ...(model ? { activeModelId: model } : {}),
+      ...(input.context.activePersonaId
+        ? { activePersonaId: input.context.activePersonaId }
+        : {}),
+    });
+    const createdMessagePayload = await this.pluginRuntime.runMessageCreatedHooks({
+      context: hookContext,
+      payload: {
+        context: hookContext,
+        conversationId: targetConversationId,
+        message: {
+          role: 'assistant',
+          content: normalizedAssistant.content,
+          parts: normalizedAssistant.parts,
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
+          status: 'completed',
+        },
+        modelMessages: [
+          {
+            role: 'assistant',
+            content: normalizedAssistant.parts,
+          },
+        ],
+      },
+    });
+
+    const createdMessage = await this.prisma.message.create({
+      data: {
+        conversationId: targetConversationId,
+        role: 'assistant',
+        content: createdMessagePayload.message.content ?? '',
+        partsJson: createdMessagePayload.message.parts.length
+          ? serializeMessageParts(createdMessagePayload.message.parts)
+          : null,
+        provider: createdMessagePayload.message.provider ?? null,
+        model: createdMessagePayload.message.model ?? null,
+        status: createdMessagePayload.message.status ?? 'completed',
+        error: null,
+      },
+    });
+    await this.touchConversation(targetConversationId);
+
+    return {
+      id: createdMessage.id,
+      conversationId: targetConversationId,
+      role: 'assistant',
+      content: createdMessage.content ?? '',
+      parts: deserializeMessageParts(createdMessage.partsJson),
+      ...(typeof createdMessage.provider !== 'undefined'
+        ? { provider: createdMessage.provider }
+        : {}),
+      ...(typeof createdMessage.model !== 'undefined'
+        ? { model: createdMessage.model }
+        : {}),
+      status: createdMessage.status as
+        'pending' | 'streaming' | 'completed' | 'stopped' | 'error',
+      createdAt: createdMessage.createdAt.toISOString(),
+      updatedAt: createdMessage.updatedAt.toISOString(),
+    };
+  }
+
   /** 读取对话中的一条消息并校验所有权，输出对话与消息。 */
   private async getOwnedMessage(userId: string, conversationId: string, messageId: string) {
     const conversation = await this.chatService.getConversation(userId, conversationId);
@@ -485,6 +582,34 @@ export class ChatMessageService {
     }
 
     return { conversation, message };
+  }
+
+  /**
+   * 校验插件要写入的目标会话确实存在，并在有 userId 时复用现有所有权校验。
+   * @param context 插件调用上下文
+   * @param conversationId 目标会话 ID
+   * @returns 无返回值
+   */
+  private async ensureConversationAccess(
+    context: PluginCallContext,
+    conversationId: string,
+  ) {
+    if (context.userId) {
+      await this.chatService.getConversation(context.userId, conversationId);
+      return;
+    }
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: {
+        id: conversationId,
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
   }
 
   /**
@@ -519,15 +644,16 @@ export class ChatMessageService {
    * @returns 统一插件调用上下文
    */
   private createChatLifecycleContext(input: {
-    userId: string;
+    source?: PluginCallContext['source'];
+    userId?: string;
     conversationId: string;
     activeProviderId?: string;
     activeModelId?: string;
     activePersonaId?: string;
   }) {
     return {
-      source: 'chat-hook' as const,
-      userId: input.userId,
+      source: input.source ?? ('chat-hook' as const),
+      ...(input.userId ? { userId: input.userId } : {}),
       conversationId: input.conversationId,
       ...(input.activeProviderId ? { activeProviderId: input.activeProviderId } : {}),
       ...(input.activeModelId ? { activeModelId: input.activeModelId } : {}),

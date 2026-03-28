@@ -2,6 +2,7 @@ import {
   type ActionConfig,
   type AuthPayload,
   type AutomationInfo,
+  type ChatMessagePart,
   type DeviceType,
   type ExecuteErrorPayload,
   type ExecutePayload,
@@ -10,14 +11,24 @@ import {
   type HostResultPayload,
   type JsonObject,
   type JsonValue,
+  type MessageReceivedHookPayload,
+  type MessageReceivedHookResult,
   type PluginCallContext,
   type PluginEventLevel,
+  type PluginHookDescriptor,
+  type PluginHookMessageFilter,
   type PluginKbEntryDetail,
   type PluginKbEntrySummary,
   type PluginCapability,
   type PluginCronDescriptor,
   type PluginCronJobSummary,
+  type PluginConversationMessageCreateParams,
+  type PluginConversationMessageInfo,
+  type PluginConversationSessionInfo,
+  type PluginConversationSessionKeepParams,
+  type PluginConversationSessionStartParams,
   type PluginHookName,
+  type PluginMessageKind,
   type PluginLlmGenerateParams,
   type PluginLlmGenerateResult,
   type PluginManifest,
@@ -131,6 +142,45 @@ export interface PluginHostFacade {
    * @returns 会话摘要
    */
   getConversation(): Promise<JsonValue>;
+
+  /**
+   * 主动向当前或指定会话追加一条 assistant 消息。
+   * @param input 目标会话与消息内容
+   * @returns 已创建的消息摘要
+   */
+  createConversationMessage(
+    input: PluginConversationMessageCreateParams,
+  ): Promise<PluginConversationMessageInfo>;
+
+  /**
+   * 为当前会话启动等待态，多轮用户消息会优先交给当前插件处理。
+   * @param input 超时与历史记录参数
+   * @returns 当前活动会话等待态摘要
+   */
+  startConversationSession(
+    input: PluginConversationSessionStartParams,
+  ): Promise<PluginConversationSessionInfo>;
+
+  /**
+   * 读取当前插件在当前会话上的活动等待态。
+   * @returns 会话等待态摘要；不存在时返回 null
+   */
+  getConversationSession(): Promise<PluginConversationSessionInfo | null>;
+
+  /**
+   * 续期当前插件在当前会话上的等待态。
+   * @param input 新的超时参数
+   * @returns 更新后的会话等待态摘要；不存在时返回 null
+   */
+  keepConversationSession(
+    input: PluginConversationSessionKeepParams,
+  ): Promise<PluginConversationSessionInfo | null>;
+
+  /**
+   * 结束当前插件在当前会话上的等待态。
+   * @returns 是否成功结束
+   */
+  finishConversationSession(): Promise<boolean>;
 
   /**
    * 列出宿主当前可见的知识库条目摘要。
@@ -386,10 +436,88 @@ export interface PluginExecutionContext {
   host: PluginHostFacade;
 }
 
+/** SDK 级消息监听配置。 */
+export interface PluginMessageHandlerOptions {
+  /** 当前监听器在插件内的优先级；数字越小越先执行。 */
+  priority?: number;
+  /** 当前监听器的声明式过滤条件。 */
+  filter?: PluginHookMessageFilter;
+  /** 可选描述文本，用于文档或自动帮助。 */
+  description?: string;
+}
+
+/** SDK 级命令注册配置。 */
+export interface PluginCommandOptions {
+  /** 命令别名。 */
+  alias?: Iterable<string>;
+  /** 当前命令在插件内的优先级；数字越小越先执行。 */
+  priority?: number;
+  /** 命令描述，会出现在自动帮助里。 */
+  description?: string;
+}
+
+/** SDK 级命令组注册配置。 */
+export interface PluginCommandGroupOptions extends PluginCommandOptions {}
+
+/** 命令命中后的上下文。 */
+export interface PluginCommandInvocation {
+  /** 实际命中的命令路径，可能是别名。 */
+  matchedCommand: string;
+  /** 归一化后的规范命令路径。 */
+  canonicalCommand: string;
+  /** 命令路径分段。 */
+  path: string[];
+  /** 已按空白拆分的参数。 */
+  args: string[];
+  /** 未进一步拆分的原始参数串。 */
+  rawArgs: string;
+  /** 当前消息 Hook 载荷。 */
+  payload: MessageReceivedHookPayload;
+}
+
+/** SDK 返回短路消息的便捷结构。 */
+export interface PluginMessageContentResult {
+  content: string;
+  parts?: ChatMessagePart[] | null;
+}
+
+/** SDK 级命令组注册器。 */
+export interface PluginCommandGroupRegistration {
+  /** 在当前组下注册一个子命令。 */
+  command(
+    name: string,
+    handler: MessageCommandHandler,
+    options?: PluginCommandOptions,
+  ): PluginCommandGroupRegistration;
+
+  /** 在当前组下注册一个子命令组。 */
+  group(
+    name: string,
+    options?: PluginCommandGroupOptions,
+  ): PluginCommandGroupRegistration;
+}
+
 type CommandHandler = (
   params: JsonObject,
   context: PluginExecutionContext,
 ) => Promise<JsonValue> | JsonValue;
+
+type PluginMessageHandlerResult =
+  | MessageReceivedHookResult
+  | PluginMessageContentResult
+  | string
+  | null
+  | undefined;
+
+type MessageHandler = (
+  payload: MessageReceivedHookPayload,
+  context: PluginExecutionContext,
+) => Promise<PluginMessageHandlerResult> | PluginMessageHandlerResult;
+
+type MessageCommandHandler = (
+  input: PluginCommandInvocation,
+  context: PluginExecutionContext,
+) => Promise<PluginMessageHandlerResult> | PluginMessageHandlerResult;
 
 type HookHandler = (
   payload: JsonValue,
@@ -411,6 +539,45 @@ type PluginClientPayload =
   | HostResultPayload
   | RouteResultPayload
   | JsonValue;
+
+interface InternalMessageListener {
+  kind: 'listener';
+  order: number;
+  priority: number;
+  specificity: number;
+  filter?: PluginHookMessageFilter;
+  description?: string;
+  handler: MessageHandler;
+}
+
+interface InternalCommandRegistration {
+  kind: 'command' | 'group-help';
+  order: number;
+  priority: number;
+  specificity: number;
+  canonicalCommand: string;
+  path: string[];
+  variants: string[];
+  description?: string;
+  exactMatchOnly?: boolean;
+  handler: MessageCommandHandler;
+}
+
+interface InternalCommandGroupNode {
+  segment: string;
+  aliases: string[];
+  canonicalCommand: string;
+  priority: number;
+  description?: string;
+  parent: InternalCommandGroupNode | null;
+  children: InternalCommandGroupNode[];
+  commands: InternalCommandRegistration[];
+}
+
+interface CommandSegmentDescriptor {
+  segment: string;
+  aliases: string[];
+}
 
 /**
  * 输出插件 SDK 的普通运行日志。
@@ -435,12 +602,18 @@ export class PluginClient {
   private readonly handlers = new Map<string, CommandHandler>();
   private readonly hookHandlers = new Map<PluginHookName, HookHandler>();
   private readonly routeHandlers = new Map<string, RouteHandler>();
+  private readonly messageHandlers: InternalMessageListener[] = [];
+  private readonly commandHandlers: InternalCommandRegistration[] = [];
+  private readonly commandGroups: InternalCommandGroupNode[] = [];
+  private readonly commandPaths = new Set<string>();
+  private readonly commandGroupPaths = new Set<string>();
   private readonly pendingHostCalls = new Map<string, {
     resolve: (value: JsonValue) => void;
     reject: (reason: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }>();
   private connected = false;
+  private messageHandlerOrder = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private readonly options: Required<Omit<PluginClientOptions, 'manifest'>> & {
@@ -470,10 +643,235 @@ export class PluginClient {
     return this;
   }
 
+  /** 注册 SDK 级消息监听器。 */
+  onMessage(handler: MessageHandler, options: PluginMessageHandlerOptions = {}) {
+    this.messageHandlers.push({
+      kind: 'listener',
+      order: this.nextMessageHandlerOrder(),
+      priority: normalizePriority(options.priority),
+      specificity: computeFilterSpecificity(options.filter),
+      filter: cloneMessageFilter(options.filter),
+      description: options.description,
+      handler,
+    });
+    return this;
+  }
+
+  /** 注册一个消息命令。 */
+  command(
+    name: string,
+    handler: MessageCommandHandler,
+    options: PluginCommandOptions = {},
+  ) {
+    this.registerCommand(null, name, handler, options);
+    return this;
+  }
+
+  /** 创建一个命令组。 */
+  commandGroup(
+    name: string,
+    options: PluginCommandGroupOptions = {},
+  ): PluginCommandGroupRegistration {
+    const group = this.createCommandGroup(null, name, options);
+    this.commandGroups.push(group);
+    return this.createCommandGroupRegistration(group);
+  }
+
   /** 注册 Route 处理器。 */
   onRoute(path: string, handler: RouteHandler) {
     this.routeHandlers.set(normalizeRoutePath(path), handler);
     return this;
+  }
+
+  /**
+   * 创建命令组注册器。
+   * @param group 当前命令组节点
+   * @returns 可继续挂子命令与子命令组的注册器
+   */
+  private createCommandGroupRegistration(
+    group: InternalCommandGroupNode,
+  ): PluginCommandGroupRegistration {
+    return {
+      command: (name, handler, options = {}) => {
+        this.registerCommand(group, name, handler, options);
+        return this.createCommandGroupRegistration(group);
+      },
+      group: (name, options = {}) => {
+        const child = this.createCommandGroup(group, name, options);
+        group.children.push(child);
+        return this.createCommandGroupRegistration(child);
+      },
+    };
+  }
+
+  /**
+   * 注册一个命令组并顺手生成“精确命中时自动帮助”的内部处理器。
+   * @param parentGroup 父命令组；根组时传 null
+   * @param name 命令组名
+   * @param options 别名、优先级与描述
+   * @returns 已注册的命令组节点
+   */
+  private createCommandGroup(
+    parentGroup: InternalCommandGroupNode | null,
+    name: string,
+    options: PluginCommandGroupOptions,
+  ): InternalCommandGroupNode {
+    const segment = normalizeCommandSegment(name);
+    const aliases = normalizeCommandAliases(options.alias);
+    const canonicalPath = this.buildCommandPathSegments(parentGroup, segment);
+    const canonicalCommand = buildCanonicalCommandPath(canonicalPath);
+
+    this.assertCommandPathAvailable(canonicalCommand, '命令组');
+    this.commandGroupPaths.add(canonicalCommand);
+
+    const group: InternalCommandGroupNode = {
+      segment,
+      aliases,
+      canonicalCommand,
+      priority: normalizePriority(options.priority),
+      description: options.description,
+      parent: parentGroup,
+      children: [],
+      commands: [],
+    };
+
+    this.commandHandlers.push({
+      kind: 'group-help',
+      order: this.nextMessageHandlerOrder(),
+      priority: group.priority,
+      specificity: canonicalPath.length,
+      canonicalCommand,
+      path: canonicalPath,
+      variants: this.buildCommandVariants(parentGroup, segment, aliases),
+      description: options.description,
+      exactMatchOnly: true,
+      handler: async () => ({
+        content: renderCommandGroupHelp(group),
+      }),
+    });
+
+    return group;
+  }
+
+  /**
+   * 注册一个命令处理器。
+   * @param parentGroup 父命令组；根命令时传 null
+   * @param name 命令名
+   * @param handler 命令处理器
+   * @param options 别名、优先级与描述
+   * @returns 无返回值
+   */
+  private registerCommand(
+    parentGroup: InternalCommandGroupNode | null,
+    name: string,
+    handler: MessageCommandHandler,
+    options: PluginCommandOptions,
+  ) {
+    const segment = normalizeCommandSegment(name);
+    const aliases = normalizeCommandAliases(options.alias);
+    const path = this.buildCommandPathSegments(parentGroup, segment);
+    const canonicalCommand = buildCanonicalCommandPath(path);
+
+    this.assertCommandPathAvailable(canonicalCommand, '命令');
+    this.commandPaths.add(canonicalCommand);
+
+    const entry: InternalCommandRegistration = {
+      kind: 'command',
+      order: this.nextMessageHandlerOrder(),
+      priority: normalizePriority(options.priority),
+      specificity: path.length,
+      canonicalCommand,
+      path,
+      variants: this.buildCommandVariants(parentGroup, segment, aliases),
+      description: options.description,
+      handler,
+    };
+    this.commandHandlers.push(entry);
+    parentGroup?.commands.push(entry);
+  }
+
+  /**
+   * 校验命令或命令组路径没有和既有声明冲突。
+   * @param canonicalCommand 规范命令路径
+   * @param label 当前注册对象名称
+   * @returns 无返回值
+   */
+  private assertCommandPathAvailable(
+    canonicalCommand: string,
+    label: '命令' | '命令组',
+  ) {
+    if (this.commandPaths.has(canonicalCommand) || this.commandGroupPaths.has(canonicalCommand)) {
+      throw new Error(`${label} ${canonicalCommand} 已注册，不能重复声明`);
+    }
+  }
+
+  /**
+   * 构建当前命令的规范路径分段。
+   * @param parentGroup 父命令组
+   * @param segment 当前段名
+   * @returns 规范路径分段
+   */
+  private buildCommandPathSegments(
+    parentGroup: InternalCommandGroupNode | null,
+    segment: string,
+  ): string[] {
+    if (!parentGroup) {
+      return [segment];
+    }
+
+    return [...parentGroup.canonicalCommand.replace(/^\//, '').split(' '), segment];
+  }
+
+  /**
+   * 构建命令或命令组的所有完整命令路径。
+   * @param parentGroup 父命令组
+   * @param segment 当前段名
+   * @param aliases 当前段别名
+   * @returns 完整命令路径列表
+   */
+  private buildCommandVariants(
+    parentGroup: InternalCommandGroupNode | null,
+    segment: string,
+    aliases: string[],
+  ): string[] {
+    return buildCommandVariants([
+      ...this.getCommandSegmentDescriptors(parentGroup),
+      {
+        segment,
+        aliases,
+      },
+    ]);
+  }
+
+  /**
+   * 读取某个命令组自根向下的路径描述。
+   * @param group 当前命令组
+   * @returns 路径描述数组
+   */
+  private getCommandSegmentDescriptors(
+    group: InternalCommandGroupNode | null,
+  ): CommandSegmentDescriptor[] {
+    if (!group) {
+      return [];
+    }
+
+    return [
+      ...this.getCommandSegmentDescriptors(group.parent),
+      {
+        segment: group.segment,
+        aliases: group.aliases,
+      },
+    ];
+  }
+
+  /**
+   * 为内部消息监听器生成稳定顺序。
+   * @returns 自增序号
+   */
+  private nextMessageHandlerOrder(): number {
+    const next = this.messageHandlerOrder;
+    this.messageHandlerOrder += 1;
+    return next;
   }
 
   /** 连接到服务器。 */
@@ -675,9 +1073,12 @@ export class PluginClient {
       context: PluginCallContext;
       payload: JsonValue;
     };
+    const executionContext = this.createExecutionContext(payload.context);
+    const hasInternalMessagePipeline = payload.hookName === 'message:received'
+      && (this.messageHandlers.length > 0 || this.commandHandlers.length > 0);
     const handler = this.hookHandlers.get(payload.hookName);
 
-    if (!handler) {
+    if (!handler && !hasInternalMessagePipeline) {
       this.send(
         WS_TYPE.PLUGIN,
         WS_ACTION.HOOK_ERROR,
@@ -688,10 +1089,20 @@ export class PluginClient {
     }
 
     try {
-      const result = await handler(
-        payload.payload,
-        this.createExecutionContext(payload.context),
-      );
+      let result: JsonValue | null | undefined;
+      if (payload.hookName === 'message:received') {
+        result = await this.handleMessageReceivedHook(
+          payload.payload as unknown as MessageReceivedHookPayload,
+          executionContext,
+        );
+      } else if (handler) {
+        result = await handler(
+          payload.payload,
+          executionContext,
+        );
+      } else {
+        throw new Error(`未知 Hook：${payload.hookName}`);
+      }
       this.send(
         WS_TYPE.PLUGIN,
         WS_ACTION.HOOK_RESULT,
@@ -793,6 +1204,86 @@ export class PluginClient {
           this.sendHostCall('memory.search', { query, limit }, context),
         getConversation: () =>
           this.sendHostCall('conversation.get', {}, context),
+        createConversationMessage: ({
+          conversationId,
+          content,
+          parts,
+          provider,
+          model,
+        }) => {
+          const params: JsonObject = {};
+          if (conversationId) {
+            params.conversationId = conversationId;
+          }
+          if (typeof content === 'string') {
+            params.content = content;
+          }
+          if (parts) {
+            params.parts = parts as unknown as JsonValue;
+          }
+          if (typeof provider === 'string') {
+            params.provider = provider;
+          }
+          if (typeof model === 'string') {
+            params.model = model;
+          }
+
+          return this.sendHostCall(
+            'conversation.message.create',
+            params,
+            context,
+          ) as unknown as Promise<PluginConversationMessageInfo>;
+        },
+        startConversationSession: ({
+          timeoutMs,
+          captureHistory,
+          metadata,
+        }) => {
+          const params: JsonObject = {
+            timeoutMs,
+          };
+          if (typeof captureHistory === 'boolean') {
+            params.captureHistory = captureHistory;
+          }
+          if (typeof metadata !== 'undefined') {
+            params.metadata = metadata;
+          }
+
+          return this.sendHostCall(
+            'conversation.session.start',
+            params,
+            context,
+          ) as unknown as Promise<PluginConversationSessionInfo>;
+        },
+        getConversationSession: () =>
+          this.sendHostCall(
+            'conversation.session.get',
+            {},
+            context,
+          ) as unknown as Promise<PluginConversationSessionInfo | null>,
+        keepConversationSession: ({
+          timeoutMs,
+          resetTimeout,
+        }) => {
+          const params: JsonObject = {
+            timeoutMs,
+          };
+          if (typeof resetTimeout === 'boolean') {
+            params.resetTimeout = resetTimeout;
+          }
+
+          return this.sendHostCall(
+            'conversation.session.keep',
+            params,
+            context,
+          ) as unknown as Promise<PluginConversationSessionInfo | null>;
+        },
+        finishConversationSession: () =>
+          this.sendHostCall(
+            'conversation.session.finish',
+            {},
+            context,
+          ) as unknown as Promise<boolean>,
         listKnowledgeBaseEntries: (limit) =>
           this.sendHostCall(
             'kb.list',
@@ -1014,6 +1505,257 @@ export class PluginClient {
   }
 
   /**
+   * 解析当前插件最终应声明的 Hook 描述。
+   * @returns 去重后的 Hook 描述列表
+   */
+  private resolveHookDescriptors(): PluginHookDescriptor[] {
+    const hooks = (this.options.manifest.hooks ?? []).map((hook) => cloneHookDescriptor(hook));
+
+    for (const hookName of this.hookHandlers.keys()) {
+      if (hookName === 'message:received') {
+        continue;
+      }
+      this.ensureHookDescriptor(hooks, {
+        name: hookName,
+      });
+    }
+
+    const messageHook = this.buildSyntheticMessageReceivedHook();
+    if (messageHook) {
+      this.ensureHookDescriptor(hooks, messageHook);
+    }
+
+    return hooks;
+  }
+
+  /**
+   * 把一个 Hook 描述合并到最终 manifest 中。
+   * @param hooks 当前 Hook 列表
+   * @param descriptor 待合并的 Hook 描述
+   * @returns 无返回值
+   */
+  private ensureHookDescriptor(
+    hooks: PluginHookDescriptor[],
+    descriptor: PluginHookDescriptor,
+  ) {
+    const existing = hooks.find((hook) => hook.name === descriptor.name);
+    if (existing) {
+      if (typeof existing.priority !== 'number' && typeof descriptor.priority === 'number') {
+        existing.priority = descriptor.priority;
+      }
+      if (!existing.description && descriptor.description) {
+        existing.description = descriptor.description;
+      }
+      if (!existing.filter && descriptor.filter) {
+        existing.filter = cloneHookFilterDescriptor(descriptor.filter);
+      }
+      return;
+    }
+
+    hooks.push(cloneHookDescriptor(descriptor));
+  }
+
+  /**
+   * 当 SDK 内部注册了消息监听器或命令 DSL 时，自动合成一个 `message:received` Hook 描述。
+   * @returns 合成后的 Hook 描述；没有消息管线时返回 null
+   */
+  private buildSyntheticMessageReceivedHook(): PluginHookDescriptor | null {
+    if (
+      this.messageHandlers.length === 0
+      && this.commandHandlers.length === 0
+      && !this.hookHandlers.has('message:received')
+    ) {
+      return null;
+    }
+
+    const priorities = [
+      ...this.messageHandlers.map((listener) => listener.priority),
+      ...this.commandHandlers.map((command) => command.priority),
+    ];
+    const filter = this.buildSyntheticMessageFilter();
+
+    return {
+      name: 'message:received',
+      ...(priorities.length > 0 ? { priority: Math.min(...priorities) } : {}),
+      ...(filter ? { filter: { message: filter } } : {}),
+    };
+  }
+
+  /**
+   * 尝试从 SDK 内部消息监听器里收敛一个安全可合成的 message filter。
+   * @returns 可声明的统一过滤器；无法安全收敛时返回 undefined
+   */
+  private buildSyntheticMessageFilter(): PluginHookMessageFilter | undefined {
+    const filters: PluginHookMessageFilter[] = [
+      ...this.messageHandlers
+        .map((listener) => listener.filter)
+        .filter((filter): filter is PluginHookMessageFilter => Boolean(filter)),
+      ...this.commandHandlers.map((command) => ({
+        commands: [...command.variants],
+      })),
+    ];
+
+    if (filters.length === 0 || filters.some((filter) => isEmptyMessageFilter(filter))) {
+      return undefined;
+    }
+
+    if (filters.every((filter) => hasOnlyMessageFilterKey(filter, 'commands'))) {
+      return {
+        commands: dedupeStrings(filters.flatMap((filter) => filter.commands ?? [])),
+      };
+    }
+
+    if (filters.every((filter) => hasOnlyMessageFilterKey(filter, 'messageKinds'))) {
+      return {
+        messageKinds: dedupeStrings(filters.flatMap((filter) => filter.messageKinds ?? [])) as
+          PluginHookMessageFilter['messageKinds'],
+      };
+    }
+
+    if (filters.every((filter) => hasOnlyMessageFilterKey(filter, 'regex'))) {
+      const regexes = filters
+        .map((filter) => filter.regex)
+        .filter((regex): regex is NonNullable<PluginHookMessageFilter['regex']> => Boolean(regex));
+      const flags = dedupeStrings(
+        regexes
+          .map((regex) => typeof regex === 'string' ? '' : regex.flags ?? '')
+          .join('')
+          .split(''),
+      ).join('');
+
+      return {
+        regex: {
+          pattern: regexes
+            .map((regex) => `(?:${typeof regex === 'string' ? regex : regex.pattern})`)
+            .join('|'),
+          ...(flags ? { flags } : {}),
+        },
+      };
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 在 SDK 内部执行 `message:received` 二次分发。
+   * @param payload 当前消息 Hook 载荷
+   * @param context 插件执行上下文
+   * @returns 最终要回给宿主的 Hook 结果
+   */
+  private async handleMessageReceivedHook(
+    payload: MessageReceivedHookPayload,
+    context: PluginExecutionContext,
+  ): Promise<JsonValue | null> {
+    const originalPayload = cloneJsonValue(payload);
+    let currentPayload = cloneJsonValue(payload);
+    let hasMutation = false;
+
+    for (const listener of this.listMessagePipelineEntries()) {
+      const normalizedResult = await this.runMessagePipelineEntry(listener, currentPayload, context);
+      if (!normalizedResult || normalizedResult.action === 'pass') {
+        continue;
+      }
+      if (normalizedResult.action === 'short-circuit') {
+        return normalizedResult as unknown as JsonValue;
+      }
+
+      currentPayload = applyMessageReceivedMutation(currentPayload, normalizedResult);
+      hasMutation = true;
+    }
+
+    if (hasMutation) {
+      return buildMessageReceivedMutationResult(
+        originalPayload,
+        currentPayload,
+      ) as unknown as JsonValue;
+    }
+
+    const fallbackHandler = this.hookHandlers.get('message:received');
+    if (!fallbackHandler) {
+      return {
+        action: 'pass',
+      };
+    }
+
+    const rawResult = await fallbackHandler(
+      cloneJsonValue(payload) as unknown as JsonValue,
+      context,
+    );
+
+    return normalizeRawMessageHookResult(rawResult);
+  }
+
+  /**
+   * 读取当前插件内部消息管线的稳定执行顺序。
+   * @returns 已排序的消息监听与命令列表
+   */
+  private listMessagePipelineEntries(): Array<InternalMessageListener | InternalCommandRegistration> {
+    return [...this.messageHandlers, ...this.commandHandlers].sort((left, right) => {
+      const priorityDiff = left.priority - right.priority;
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+
+      const specificityDiff = right.specificity - left.specificity;
+      if (specificityDiff !== 0) {
+        return specificityDiff;
+      }
+
+      if (left.kind !== right.kind) {
+        if (left.kind === 'command') {
+          return -1;
+        }
+        if (right.kind === 'command') {
+          return 1;
+        }
+      }
+
+      return left.order - right.order;
+    });
+  }
+
+  /**
+   * 执行单个 SDK 内部消息管线节点。
+   * @param entry 当前监听器或命令
+   * @param payload 当前消息载荷
+   * @param context 插件执行上下文
+   * @returns 归一化后的 Hook 结果；未命中时返回 null
+   */
+  private async runMessagePipelineEntry(
+    entry: InternalMessageListener | InternalCommandRegistration,
+    payload: MessageReceivedHookPayload,
+    context: PluginExecutionContext,
+  ): Promise<MessageReceivedHookResult | null> {
+    if (entry.kind === 'listener') {
+      if (!matchesMessageFilter(payload, entry.filter)) {
+        return null;
+      }
+
+      return normalizeMessageListenerResult(await entry.handler(
+        cloneJsonValue(payload),
+        context,
+      ));
+    }
+
+    const matchedCommand = matchRegisteredCommand(payload, entry);
+    if (!matchedCommand) {
+      return null;
+    }
+
+    return normalizeMessageListenerResult(await entry.handler(
+      {
+        matchedCommand: matchedCommand.command,
+        canonicalCommand: entry.canonicalCommand,
+        path: [...entry.path],
+        args: matchedCommand.args,
+        rawArgs: matchedCommand.rawArgs,
+        payload: cloneJsonValue(payload),
+      },
+      context,
+    ));
+  }
+
+  /**
    * 通过 WebSocket 发起一次 Host API 调用。
    * @param method Host API 方法名
    * @param params JSON 参数
@@ -1055,6 +1797,8 @@ export class PluginClient {
    * @returns 完整 manifest
    */
   private resolveManifest(): PluginManifest {
+    const hooks = this.resolveHookDescriptors();
+
     return {
       id: this.options.pluginName,
       name: this.options.manifest.name ?? this.options.pluginName,
@@ -1063,7 +1807,7 @@ export class PluginClient {
       description: this.options.manifest.description,
       permissions: this.options.manifest.permissions ?? [],
       tools: this.options.manifest.tools ?? this.options.capabilities,
-      hooks: this.options.manifest.hooks ?? [],
+      hooks,
       config: this.options.manifest.config,
       routes: this.options.manifest.routes ?? [],
     };
@@ -1207,10 +1951,586 @@ export {
   type PluginCronDescriptor,
   type PluginCronJobSummary,
   type PluginHookName,
+  type PluginHookMessageFilter,
   type PluginRouteDescriptor,
   type PluginRouteRequest,
   type PluginRouteResponse,
 } from '@garlic-claw/shared';
+
+/**
+ * 归一化命令段名。
+ * @param name 原始命令段名
+ * @returns 去掉前导 `/` 后的命令段名
+ */
+function normalizeCommandSegment(name: string): string {
+  const normalized = name.trim().replace(/^\/+/, '');
+  if (!normalized) {
+    throw new Error('命令名不能为空');
+  }
+  if (/\s/.test(normalized)) {
+    throw new Error(`命令名 ${name} 不能包含空白字符`);
+  }
+
+  return normalized;
+}
+
+/**
+ * 归一化命令别名集合。
+ * @param aliases 原始别名输入
+ * @returns 去重后的别名数组
+ */
+function normalizeCommandAliases(aliases?: Iterable<string>): string[] {
+  if (!aliases) {
+    return [];
+  }
+
+  return dedupeStrings(
+    [...aliases]
+      .map((alias) => normalizeCommandSegment(alias))
+      .filter(Boolean),
+  );
+}
+
+/**
+ * 构建规范命令路径。
+ * @param path 命令路径分段
+ * @returns 带 `/` 前缀的完整命令
+ */
+function buildCanonicalCommandPath(path: string[]): string {
+  return `/${path.join(' ')}`.trim();
+}
+
+/**
+ * 展开一组命令段描述的所有完整命令路径。
+ * @param descriptors 命令段描述
+ * @returns 完整命令路径列表
+ */
+function buildCommandVariants(descriptors: CommandSegmentDescriptor[]): string[] {
+  let variants = [''];
+  for (const descriptor of descriptors) {
+    const candidates = [descriptor.segment, ...descriptor.aliases];
+    const nextVariants: string[] = [];
+
+    for (const prefix of variants) {
+      for (const candidate of candidates) {
+        nextVariants.push(`${prefix} ${candidate}`.trim());
+      }
+    }
+
+    variants = nextVariants;
+  }
+
+  return dedupeStrings(variants.map((variant) => `/${variant}`));
+}
+
+/**
+ * 渲染命令组帮助树。
+ * @param group 命令组节点
+ * @returns 可直接短路发回宿主的帮助文本
+ */
+function renderCommandGroupHelp(group: InternalCommandGroupNode): string {
+  const lines = [group.canonicalCommand];
+  const treeLines = renderCommandGroupTree(group, '');
+
+  if (treeLines.length === 0) {
+    if (group.description) {
+      lines.push(group.description);
+    }
+    return lines.join('\n');
+  }
+
+  lines.push(...treeLines);
+  return lines.join('\n');
+}
+
+/**
+ * 递归渲染命令组树。
+ * @param group 命令组节点
+ * @param prefix 当前层级前缀
+ * @returns 树形文本行
+ */
+function renderCommandGroupTree(
+  group: InternalCommandGroupNode,
+  prefix: string,
+): string[] {
+  const lines: string[] = [];
+  const commands = group.commands
+    .filter((command) => command.kind === 'command')
+    .sort((left, right) => left.path[left.path.length - 1].localeCompare(right.path[right.path.length - 1]));
+  const children = [...group.children].sort((left, right) =>
+    left.segment.localeCompare(right.segment),
+  );
+
+  for (const command of commands) {
+    lines.push(
+      formatCommandTreeLine(
+        prefix,
+        command.path[command.path.length - 1],
+        command.variants
+          .map((variant) => variant.replace(/^\//, '').split(' ').pop() ?? '')
+          .filter((alias) => alias !== command.path[command.path.length - 1]),
+        command.description,
+      ),
+    );
+  }
+
+  for (const child of children) {
+    lines.push(formatCommandTreeLine(prefix, child.segment, child.aliases, child.description));
+    lines.push(...renderCommandGroupTree(child, `${prefix}│   `));
+  }
+
+  return lines;
+}
+
+/**
+ * 格式化一条命令帮助行。
+ * @param prefix 当前树前缀
+ * @param segment 命令段名
+ * @param aliases 命令别名
+ * @param description 可选描述
+ * @returns 单行帮助文本
+ */
+function formatCommandTreeLine(
+  prefix: string,
+  segment: string,
+  aliases: string[],
+  description?: string,
+): string {
+  const aliasText = aliases.length > 0 ? ` [${aliases.join(', ')}]` : '';
+  const descriptionText = description ? `: ${description}` : '';
+  return `${prefix}├── ${segment}${aliasText}${descriptionText}`;
+}
+
+/**
+ * 深拷贝 JSON 兼容值。
+ * @param value 原始值
+ * @returns 深拷贝后的值
+ */
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * 复制一条 Hook 描述。
+ * @param hook 原始 Hook 描述
+ * @returns 深拷贝后的 Hook 描述
+ */
+function cloneHookDescriptor(hook: PluginHookDescriptor): PluginHookDescriptor {
+  return {
+    name: hook.name,
+    ...(hook.description ? { description: hook.description } : {}),
+    ...(typeof hook.priority === 'number' ? { priority: hook.priority } : {}),
+    ...(hook.filter ? { filter: cloneHookFilterDescriptor(hook.filter) } : {}),
+  };
+}
+
+/**
+ * 复制 Hook 过滤描述。
+ * @param filter 原始过滤描述
+ * @returns 深拷贝后的过滤描述
+ */
+function cloneHookFilterDescriptor(
+  filter: NonNullable<PluginHookDescriptor['filter']>,
+): NonNullable<PluginHookDescriptor['filter']> {
+  return {
+    ...(filter.message ? { message: cloneMessageFilter(filter.message) } : {}),
+  };
+}
+
+/**
+ * 复制消息过滤描述。
+ * @param filter 原始消息过滤
+ * @returns 深拷贝后的消息过滤
+ */
+function cloneMessageFilter(
+  filter?: PluginHookMessageFilter,
+): PluginHookMessageFilter | undefined {
+  if (!filter) {
+    return undefined;
+  }
+
+  return {
+    ...(filter.commands ? { commands: [...filter.commands] } : {}),
+    ...(filter.regex
+      ? {
+          regex: typeof filter.regex === 'string'
+            ? filter.regex
+            : {
+                pattern: filter.regex.pattern,
+                ...(filter.regex.flags ? { flags: filter.regex.flags } : {}),
+              },
+        }
+      : {}),
+    ...(filter.messageKinds ? { messageKinds: [...filter.messageKinds] } : {}),
+  };
+}
+
+/**
+ * 归一化消息监听优先级。
+ * @param priority 原始优先级
+ * @returns 归一化后的整数优先级
+ */
+function normalizePriority(priority?: number): number {
+  if (typeof priority !== 'number' || !Number.isFinite(priority)) {
+    return 0;
+  }
+
+  return Math.trunc(priority);
+}
+
+/**
+ * 计算一个消息过滤器的大致特异性。
+ * @param filter 消息过滤器
+ * @returns 特异性分值，越大越具体
+ */
+function computeFilterSpecificity(filter?: PluginHookMessageFilter): number {
+  if (!filter) {
+    return 0;
+  }
+
+  const commandSpecificity = Math.max(
+    0,
+    ...(filter.commands ?? []).map((command) =>
+      command.trim().replace(/^\//, '').split(/\s+/).filter(Boolean).length),
+  );
+  const regexSpecificity = filter.regex ? 1 : 0;
+  const kindSpecificity = filter.messageKinds?.length ? 1 : 0;
+  return commandSpecificity + regexSpecificity + kindSpecificity;
+}
+
+/**
+ * 判断消息过滤器是否为空。
+ * @param filter 消息过滤器
+ * @returns 是否为空过滤器
+ */
+function isEmptyMessageFilter(filter: PluginHookMessageFilter): boolean {
+  return (!filter.commands || filter.commands.length === 0)
+    && !filter.regex
+    && (!filter.messageKinds || filter.messageKinds.length === 0);
+}
+
+/**
+ * 判断一个过滤器是否只声明了某一种过滤键。
+ * @param filter 消息过滤器
+ * @param key 目标过滤键
+ * @returns 是否只声明了该过滤键
+ */
+function hasOnlyMessageFilterKey(
+  filter: PluginHookMessageFilter,
+  key: keyof PluginHookMessageFilter,
+): boolean {
+  const activeKeys = [
+    filter.commands?.length ? 'commands' : null,
+    filter.regex ? 'regex' : null,
+    filter.messageKinds?.length ? 'messageKinds' : null,
+  ].filter((item): item is keyof PluginHookMessageFilter => Boolean(item));
+
+  return activeKeys.length === 1 && activeKeys[0] === key;
+}
+
+/**
+ * 判断当前消息是否命中过滤条件。
+ * @param payload 当前消息载荷
+ * @param filter 过滤条件
+ * @returns 是否命中
+ */
+function matchesMessageFilter(
+  payload: MessageReceivedHookPayload,
+  filter?: PluginHookMessageFilter,
+): boolean {
+  if (!filter || isEmptyMessageFilter(filter)) {
+    return true;
+  }
+
+  const messageText = getMessageReceivedText(payload);
+  const messageKind = detectMessageKind(payload);
+
+  if (
+    filter.commands
+    && filter.commands.length > 0
+    && !filter.commands.some((command) => matchesMessageCommand(messageText, command))
+  ) {
+    return false;
+  }
+
+  if (filter.regex) {
+    const regex = typeof filter.regex === 'string'
+      ? new RegExp(filter.regex)
+      : new RegExp(filter.regex.pattern, filter.regex.flags);
+    if (!regex.test(messageText)) {
+      return false;
+    }
+  }
+
+  if (
+    filter.messageKinds
+    && filter.messageKinds.length > 0
+    && !filter.messageKinds.includes(messageKind)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * 从消息载荷中提取可匹配的纯文本。
+ * @param payload 当前消息载荷
+ * @returns 归一化后的消息文本
+ */
+function getMessageReceivedText(payload: MessageReceivedHookPayload): string {
+  if (typeof payload.message.content === 'string') {
+    return payload.message.content;
+  }
+
+  return payload.message.parts
+    .filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n');
+}
+
+/**
+ * 判断一条消息的模态类型。
+ * @param payload 当前消息载荷
+ * @returns 当前消息类型
+ */
+function detectMessageKind(payload: MessageReceivedHookPayload): PluginMessageKind {
+  const hasText = typeof payload.message.content === 'string'
+    ? payload.message.content.trim().length > 0
+    : payload.message.parts.some((part) => part.type === 'text' && part.text.trim().length > 0);
+  const hasImage = payload.message.parts.some((part) => part.type === 'image');
+
+  if (hasText && hasImage) {
+    return 'mixed';
+  }
+  if (hasImage) {
+    return 'image';
+  }
+  return 'text';
+}
+
+/**
+ * 判断一条消息是否命中了某个命令。
+ * @param messageText 当前消息文本
+ * @param command 命令路径
+ * @returns 是否命中
+ */
+function matchesMessageCommand(messageText: string, command: string): boolean {
+  const normalizedCommand = command.trim();
+  if (!normalizedCommand) {
+    return false;
+  }
+
+  const normalizedMessage = messageText.trimStart();
+  if (!normalizedMessage.startsWith(normalizedCommand)) {
+    return false;
+  }
+
+  const nextChar = normalizedMessage.charAt(normalizedCommand.length);
+  return nextChar === '' || /\s/.test(nextChar);
+}
+
+/**
+ * 匹配某个已注册命令在当前消息中的具体命中信息。
+ * @param payload 当前消息载荷
+ * @param command 已注册命令
+ * @returns 命中信息；未命中时返回 null
+ */
+function matchRegisteredCommand(
+  payload: MessageReceivedHookPayload,
+  command: InternalCommandRegistration,
+): { command: string; rawArgs: string; args: string[] } | null {
+  const messageText = getMessageReceivedText(payload).trimStart();
+
+  for (const variant of command.variants) {
+    if (command.exactMatchOnly) {
+      if (messageText.trim() !== variant) {
+        continue;
+      }
+      return {
+        command: variant,
+        rawArgs: '',
+        args: [],
+      };
+    }
+
+    if (!matchesMessageCommand(messageText, variant)) {
+      continue;
+    }
+
+    const rawArgs = messageText.slice(variant.length).trim();
+    return {
+      command: variant,
+      rawArgs,
+      args: rawArgs ? rawArgs.split(/\s+/).filter(Boolean) : [],
+    };
+  }
+
+  return null;
+}
+
+/**
+ * 归一化 SDK 级消息监听器的返回值。
+ * @param result 原始返回值
+ * @returns 统一 Hook 结果；未返回时为 null
+ */
+function normalizeMessageListenerResult(
+  result: PluginMessageHandlerResult,
+): MessageReceivedHookResult | null {
+  if (result === null || result === undefined) {
+    return null;
+  }
+  if (
+    typeof result === 'object'
+    && result !== null
+    && 'action' in result
+    && typeof result.action === 'string'
+  ) {
+    return result as MessageReceivedHookResult;
+  }
+  if (typeof result === 'string') {
+    return {
+      action: 'short-circuit',
+      assistantContent: result,
+    };
+  }
+  if (typeof result === 'object' && result !== null && 'content' in result) {
+    return {
+      action: 'short-circuit',
+      assistantContent: typeof result.content === 'string' ? result.content : '',
+      ...(Array.isArray(result.parts) ? { assistantParts: result.parts } : {}),
+    };
+  }
+
+  throw new Error('SDK message handler 必须返回 string、{ content } 或标准 Hook 结果');
+}
+
+/**
+ * 归一化裸 `onHook("message:received")` 的返回值。
+ * @param result 原始 Hook 返回值
+ * @returns 宿主可接受的 JSON 值
+ */
+function normalizeRawMessageHookResult(
+  result: JsonValue | null | undefined,
+): JsonValue | null {
+  if (result === null || result === undefined) {
+    return {
+      action: 'pass',
+    };
+  }
+  if (
+    typeof result === 'object'
+    && result !== null
+    && 'action' in result
+    && typeof result.action === 'string'
+  ) {
+    return result;
+  }
+  if (typeof result === 'string') {
+    return {
+      action: 'short-circuit',
+      assistantContent: result,
+    };
+  }
+  if (typeof result === 'object' && result !== null && 'content' in result) {
+    return {
+      action: 'short-circuit',
+      assistantContent: typeof result.content === 'string' ? result.content : '',
+      ...(Array.isArray(result.parts) ? { assistantParts: result.parts } : {}),
+    };
+  }
+
+  return result;
+}
+
+/**
+ * 将一条 mutate 结果应用到当前消息载荷。
+ * @param payload 当前消息载荷
+ * @param mutation mutate 结果
+ * @returns 新的消息载荷
+ */
+function applyMessageReceivedMutation(
+  payload: MessageReceivedHookPayload,
+  mutation: Extract<MessageReceivedHookResult, { action: 'mutate' }>,
+): MessageReceivedHookPayload {
+  const nextPayload = cloneJsonValue(payload);
+
+  if ('providerId' in mutation && typeof mutation.providerId === 'string') {
+    nextPayload.providerId = mutation.providerId;
+  }
+  if ('modelId' in mutation && typeof mutation.modelId === 'string') {
+    nextPayload.modelId = mutation.modelId;
+  }
+  if ('content' in mutation) {
+    nextPayload.message.content = mutation.content ?? null;
+  }
+  if ('parts' in mutation) {
+    nextPayload.message.parts = mutation.parts ?? [];
+  }
+  if ('modelMessages' in mutation && Array.isArray(mutation.modelMessages)) {
+    nextPayload.modelMessages = cloneJsonValue(mutation.modelMessages);
+  }
+
+  return nextPayload;
+}
+
+/**
+ * 把当前载荷相对原始载荷的差异收敛成一个 mutate 结果。
+ * @param original 原始载荷
+ * @param current 当前载荷
+ * @returns mutate 或 pass 结果
+ */
+function buildMessageReceivedMutationResult(
+  original: MessageReceivedHookPayload,
+  current: MessageReceivedHookPayload,
+): MessageReceivedHookResult {
+  const mutation: Extract<MessageReceivedHookResult, { action: 'mutate' }> = {
+    action: 'mutate',
+  };
+  let changed = false;
+
+  if (current.providerId !== original.providerId) {
+    mutation.providerId = current.providerId;
+    changed = true;
+  }
+  if (current.modelId !== original.modelId) {
+    mutation.modelId = current.modelId;
+    changed = true;
+  }
+  if (current.message.content !== original.message.content) {
+    mutation.content = current.message.content;
+    changed = true;
+  }
+  if (!isJsonEqual(current.message.parts, original.message.parts)) {
+    mutation.parts = cloneJsonValue(current.message.parts);
+    changed = true;
+  }
+  if (!isJsonEqual(current.modelMessages, original.modelMessages)) {
+    mutation.modelMessages = cloneJsonValue(current.modelMessages);
+    changed = true;
+  }
+
+  return changed ? mutation : { action: 'pass' };
+}
+
+/**
+ * 判断两个 JSON 兼容值是否语义相等。
+ * @param left 左值
+ * @param right 右值
+ * @returns 是否相等
+ */
+function isJsonEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * 对字符串数组去重并保留首次出现顺序。
+ * @param values 原始字符串数组
+ * @returns 去重后的数组
+ */
+function dedupeStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
 
 /**
  * 归一化插件 Route 路径。

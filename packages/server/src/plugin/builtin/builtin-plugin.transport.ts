@@ -12,6 +12,11 @@ import type {
   PluginKbEntrySummary,
   PluginCronDescriptor,
   PluginCronJobSummary,
+  PluginConversationMessageCreateParams,
+  PluginConversationMessageInfo,
+  PluginConversationSessionInfo,
+  PluginConversationSessionKeepParams,
+  PluginConversationSessionStartParams,
   PluginHookName,
   PluginLlmGenerateParams,
   PluginLlmGenerateResult,
@@ -119,6 +124,45 @@ interface BuiltinPluginHostFacade {
    * @returns 会话摘要
    */
   getConversation(): Promise<JsonValue>;
+
+  /**
+   * 主动向当前或指定会话追加一条 assistant 消息。
+   * @param input 目标会话与消息内容
+   * @returns 已创建的消息摘要
+   */
+  createConversationMessage(
+    input: PluginConversationMessageCreateParams,
+  ): Promise<PluginConversationMessageInfo>;
+
+  /**
+   * 为当前会话启动等待态，多轮用户消息会优先交给当前插件处理。
+   * @param input 超时与历史记录参数
+   * @returns 当前活动会话等待态摘要
+   */
+  startConversationSession(
+    input: PluginConversationSessionStartParams,
+  ): Promise<PluginConversationSessionInfo>;
+
+  /**
+   * 读取当前插件在当前会话上的活动等待态。
+   * @returns 会话等待态摘要；不存在时返回 null
+   */
+  getConversationSession(): Promise<PluginConversationSessionInfo | null>;
+
+  /**
+   * 续期当前插件在当前会话上的等待态。
+   * @param input 新的超时参数
+   * @returns 更新后的会话等待态摘要；不存在时返回 null
+   */
+  keepConversationSession(
+    input: PluginConversationSessionKeepParams,
+  ): Promise<PluginConversationSessionInfo | null>;
+
+  /**
+   * 结束当前插件在当前会话上的等待态。
+   * @returns 是否成功结束
+   */
+  finishConversationSession(): Promise<boolean>;
 
   /**
    * 列出宿主当前可见的知识库条目摘要。
@@ -608,6 +652,67 @@ export class BuiltinPluginTransport implements PluginTransport {
           method: 'conversation.get',
           params: {},
         }),
+      createConversationMessage: ({
+        conversationId,
+        content,
+        parts,
+        provider,
+        model,
+      }) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'conversation.message.create',
+          params: {
+            ...(conversationId ? { conversationId } : {}),
+            ...(typeof content === 'string' ? { content } : {}),
+            ...(parts ? { parts: parts as unknown as JsonValue } : {}),
+            ...(typeof provider === 'string' ? { provider } : {}),
+            ...(typeof model === 'string' ? { model } : {}),
+          },
+        }) as unknown as Promise<PluginConversationMessageInfo>,
+      startConversationSession: ({
+        timeoutMs,
+        captureHistory,
+        metadata,
+      }) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'conversation.session.start',
+          params: {
+            timeoutMs,
+            ...(typeof captureHistory === 'boolean' ? { captureHistory } : {}),
+            ...(typeof metadata !== 'undefined' ? { metadata } : {}),
+          },
+        }) as unknown as Promise<PluginConversationSessionInfo>,
+      getConversationSession: () =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'conversation.session.get',
+          params: {},
+        }) as unknown as Promise<PluginConversationSessionInfo | null>,
+      keepConversationSession: ({
+        timeoutMs,
+        resetTimeout,
+      }) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'conversation.session.keep',
+          params: {
+            timeoutMs,
+            ...(typeof resetTimeout === 'boolean' ? { resetTimeout } : {}),
+          },
+        }) as unknown as Promise<PluginConversationSessionInfo | null>,
+      finishConversationSession: () =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'conversation.session.finish',
+          params: {},
+        }) as unknown as Promise<boolean>,
       listKnowledgeBaseEntries: (limit) =>
         this.hostService.call({
           pluginId: this.definition.manifest.id,

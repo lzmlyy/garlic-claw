@@ -19,6 +19,7 @@ import type {
   ChatWaitingModelHookPayload,
   ConversationCreatedHookPayload,
   HostCallPayload,
+  PluginConversationSessionInfo,
   MessageReceivedHookMutateResult,
   MessageReceivedHookPassResult,
   MessageReceivedHookPayload,
@@ -101,6 +102,11 @@ const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | nu
   'cron.list': 'cron:read',
   'cron.register': 'cron:write',
   'conversation.get': 'conversation:read',
+  'conversation.message.create': 'conversation:write',
+  'conversation.session.finish': 'conversation:write',
+  'conversation.session.get': 'conversation:write',
+  'conversation.session.keep': 'conversation:write',
+  'conversation.session.start': 'conversation:write',
   'conversation.messages.list': 'conversation:read',
   'conversation.title.set': 'conversation:write',
   'kb.get': 'kb:read',
@@ -226,6 +232,34 @@ interface PluginRuntimeRecord {
   governance: PluginGovernanceSnapshot;
   activeExecutions: number;
   maxConcurrentExecutions: number;
+}
+
+/**
+ * 宿主侧会话消息写入器。
+ */
+interface PluginConversationMessageWriter {
+  createPluginConversationMessage(input: {
+    context: PluginCallContext;
+    conversationId?: string;
+    content?: string;
+    parts?: ChatMessagePart[];
+    provider?: string;
+    model?: string;
+  }): Promise<JsonValue>;
+}
+
+/**
+ * 运行时维护的活动会话等待态。
+ */
+interface ConversationSessionRecord {
+  pluginId: string;
+  conversationId: string;
+  startedAt: number;
+  expiresAt: number;
+  lastMatchedAt: number | null;
+  captureHistory: boolean;
+  historyMessages: PluginMessageHookInfo[];
+  metadata?: JsonValue;
 }
 
 /**
@@ -426,7 +460,9 @@ type NormalizedResponseBeforeSendHookResult =
 @Injectable()
 export class PluginRuntimeService {
   private readonly records = new Map<string, PluginRuntimeRecord>();
+  private readonly conversationSessions = new Map<string, ConversationSessionRecord>();
   private automationService?: AutomationService;
+  private chatMessageService?: PluginConversationMessageWriter;
 
   constructor(
     private readonly pluginService: PluginService,
@@ -939,6 +975,78 @@ export class PluginRuntimeService {
         this.requireString(input.params, 'jobId', 'cron.delete'),
       );
     }
+    if (input.method === 'conversation.message.create') {
+      const chatMessageService = await this.getChatMessageService();
+      return chatMessageService.createPluginConversationMessage({
+        context: input.context,
+        conversationId: this.readOptionalString(
+          input.params,
+          'conversationId',
+          'conversation.message.create',
+        ),
+        content: this.readOptionalString(
+          input.params,
+          'content',
+          'conversation.message.create',
+        ),
+        parts: this.readOptionalChatMessageParts(
+          input.params,
+          'parts',
+          'conversation.message.create',
+        ),
+        provider: this.readOptionalString(
+          input.params,
+          'provider',
+          'conversation.message.create',
+        ),
+        model: this.readOptionalString(
+          input.params,
+          'model',
+          'conversation.message.create',
+        ),
+      });
+    }
+    if (input.method === 'conversation.session.start') {
+      return toJsonValue(this.startConversationSession({
+        pluginId: input.pluginId,
+        context: input.context,
+        timeoutMs: this.requirePositiveNumber(
+          input.params,
+          'timeoutMs',
+          'conversation.session.start',
+        ),
+        captureHistory: this.readOptionalBoolean(
+          input.params,
+          'captureHistory',
+          'conversation.session.start',
+        ) ?? false,
+        metadata: Object.prototype.hasOwnProperty.call(input.params, 'metadata')
+          ? input.params.metadata as JsonValue
+          : undefined,
+      }));
+    }
+    if (input.method === 'conversation.session.get') {
+      return toJsonValue(this.getConversationSession(input.pluginId, input.context));
+    }
+    if (input.method === 'conversation.session.keep') {
+      return toJsonValue(this.keepConversationSession({
+        pluginId: input.pluginId,
+        context: input.context,
+        timeoutMs: this.requirePositiveNumber(
+          input.params,
+          'timeoutMs',
+          'conversation.session.keep',
+        ),
+        resetTimeout: this.readOptionalBoolean(
+          input.params,
+          'resetTimeout',
+          'conversation.session.keep',
+        ) ?? true,
+      }));
+    }
+    if (input.method === 'conversation.session.finish') {
+      return this.finishConversationSession(input.pluginId, input.context);
+    }
     if (input.method === 'subagent.run') {
       return toJsonValue(await this.runSubagent({
         pluginId: input.pluginId,
@@ -1090,6 +1198,14 @@ export class PluginRuntimeService {
   }): Promise<MessageReceivedExecutionResult> {
     let payload = cloneMessageReceivedHookPayload(input.payload);
 
+    const sessionResult = await this.runConversationSessionMessageReceivedHook({
+      context: input.context,
+      payload,
+    });
+    if (sessionResult) {
+      return sessionResult;
+    }
+
     for (const record of this.listHookRecords(
       'message:received',
       input.context,
@@ -1134,6 +1250,88 @@ export class PluginRuntimeService {
       action: 'continue',
       payload,
     };
+  }
+
+  /**
+   * 若当前会话存在活动等待态，则优先把消息交给该插件处理。
+   * @param input Hook 调用上下文与载荷
+   * @returns 已消费的结果；无活动等待态或等待态失效时返回 null
+   */
+  private async runConversationSessionMessageReceivedHook(input: {
+    context: PluginCallContext;
+    payload: MessageReceivedHookPayload;
+  }): Promise<MessageReceivedExecutionResult | null> {
+    const session = this.getActiveConversationSession(input.payload.conversationId);
+    if (!session) {
+      return null;
+    }
+
+    const ownerRecord = this.records.get(session.pluginId);
+    if (!ownerRecord || !this.isPluginEnabledForContext(ownerRecord, input.context)) {
+      this.conversationSessions.delete(session.conversationId);
+      return null;
+    }
+    if (!this.getHookDescriptor(ownerRecord, 'message:received')) {
+      this.conversationSessions.delete(session.conversationId);
+      return null;
+    }
+
+    let payload = cloneMessageReceivedHookPayload(input.payload);
+    payload.session = this.recordConversationSessionMessage(session, payload.message);
+
+    try {
+      const rawResult = await this.invokePluginHook({
+        pluginId: ownerRecord.manifest.id,
+        hookName: 'message:received',
+        context: input.context,
+        payload: toJsonValue(payload),
+      });
+      const hookResult = this.normalizeMessageReceivedHookResult(rawResult);
+
+      if (!hookResult || hookResult.action === 'pass') {
+        const activeSession = this.getActiveConversationSession(session.conversationId);
+        payload.session = activeSession
+          ? this.toConversationSessionInfo(activeSession)
+          : payload.session;
+        return {
+          action: 'continue',
+          payload,
+        };
+      }
+
+      if (hookResult.action === 'short-circuit') {
+        const normalizedAssistant = normalizeAssistantOutput({
+          assistantContent: hookResult.assistantContent,
+          assistantParts: hookResult.assistantParts,
+        });
+        const activeSession = this.getActiveConversationSession(session.conversationId);
+        payload.session = activeSession
+          ? this.toConversationSessionInfo(activeSession)
+          : payload.session;
+        return {
+          action: 'short-circuit',
+          payload,
+          assistantContent: normalizedAssistant.assistantContent,
+          assistantParts: normalizedAssistant.assistantParts,
+          providerId: hookResult.providerId ?? payload.providerId,
+          modelId: hookResult.modelId ?? payload.modelId,
+          ...(hookResult.reason ? { reason: hookResult.reason } : {}),
+        };
+      }
+
+      payload = this.applyMessageReceivedMutation(payload, hookResult);
+      const activeSession = this.getActiveConversationSession(session.conversationId);
+      payload.session = activeSession
+        ? this.toConversationSessionInfo(activeSession)
+        : payload.session;
+      return {
+        action: 'continue',
+        payload,
+      };
+    } catch {
+      this.conversationSessions.delete(session.conversationId);
+      return null;
+    }
   }
 
   /**
@@ -2759,6 +2957,233 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 延迟解析聊天消息服务，避免与 runtime 形成静态循环依赖。
+   * @returns 聊天消息服务实例
+   */
+  private async getChatMessageService(): Promise<PluginConversationMessageWriter> {
+    if (this.chatMessageService) {
+      return this.chatMessageService;
+    }
+
+    const { ChatMessageService } = await import('../chat/chat-message.service');
+    const resolved = this.moduleRef.get<PluginConversationMessageWriter>(
+      ChatMessageService,
+      {
+        strict: false,
+      },
+    );
+    if (!resolved) {
+      throw new NotFoundException('ChatMessageService is not available');
+    }
+
+    this.chatMessageService = resolved;
+    return resolved;
+  }
+
+  /**
+   * 为当前会话启动一条活动等待态。
+   * @param input 插件、上下文与超时参数
+   * @returns 当前活动等待态摘要
+   */
+  private startConversationSession(input: {
+    pluginId: string;
+    context: PluginCallContext;
+    timeoutMs: number;
+    captureHistory: boolean;
+    metadata?: JsonValue;
+  }): PluginConversationSessionInfo {
+    const conversationId = this.requireConversationIdContext(
+      input.context,
+      'conversation.session.start',
+    );
+    const now = Date.now();
+    const record: ConversationSessionRecord = {
+      pluginId: input.pluginId,
+      conversationId,
+      startedAt: now,
+      expiresAt: now + input.timeoutMs,
+      lastMatchedAt: null,
+      captureHistory: input.captureHistory,
+      historyMessages: [],
+      ...(typeof input.metadata !== 'undefined'
+        ? { metadata: toJsonValue(input.metadata) }
+        : {}),
+    };
+    this.conversationSessions.set(conversationId, record);
+    return this.toConversationSessionInfo(record);
+  }
+
+  /**
+   * 读取当前插件在当前会话上的活动等待态。
+   * @param pluginId 当前插件 ID
+   * @param context 插件调用上下文
+   * @returns 会话等待态摘要；不存在时返回 null
+   */
+  private getConversationSession(
+    pluginId: string,
+    context: PluginCallContext,
+  ): PluginConversationSessionInfo | null {
+    const conversationId = this.requireConversationIdContext(
+      context,
+      'conversation.session.get',
+    );
+    const session = this.getOwnedConversationSession(pluginId, conversationId);
+    return session ? this.toConversationSessionInfo(session) : null;
+  }
+
+  /**
+   * 续期当前插件在当前会话上的活动等待态。
+   * @param input 插件、上下文与超时参数
+   * @returns 更新后的会话等待态摘要；不存在时返回 null
+   */
+  private keepConversationSession(input: {
+    pluginId: string;
+    context: PluginCallContext;
+    timeoutMs: number;
+    resetTimeout: boolean;
+  }): PluginConversationSessionInfo | null {
+    const conversationId = this.requireConversationIdContext(
+      input.context,
+      'conversation.session.keep',
+    );
+    const session = this.getOwnedConversationSession(input.pluginId, conversationId);
+    if (!session) {
+      return null;
+    }
+
+    const now = Date.now();
+    session.expiresAt = input.resetTimeout
+      ? now + input.timeoutMs
+      : session.expiresAt + input.timeoutMs;
+    return this.toConversationSessionInfo(session);
+  }
+
+  /**
+   * 结束当前插件在当前会话上的活动等待态。
+   * @param pluginId 当前插件 ID
+   * @param context 插件调用上下文
+   * @returns 是否成功结束
+   */
+  private finishConversationSession(
+    pluginId: string,
+    context: PluginCallContext,
+  ): boolean {
+    const conversationId = this.requireConversationIdContext(
+      context,
+      'conversation.session.finish',
+    );
+    const session = this.getOwnedConversationSession(pluginId, conversationId);
+    if (!session) {
+      return false;
+    }
+
+    this.conversationSessions.delete(conversationId);
+    return true;
+  }
+
+  /**
+   * 读取当前会话上活动且未过期的等待态。
+   * @param conversationId 会话 ID
+   * @returns 活动等待态；不存在或已过期时返回 null
+   */
+  private getActiveConversationSession(
+    conversationId?: string,
+  ): ConversationSessionRecord | null {
+    if (!conversationId) {
+      return null;
+    }
+
+    const session = this.conversationSessions.get(conversationId);
+    if (!session) {
+      return null;
+    }
+    if (session.expiresAt <= Date.now()) {
+      this.conversationSessions.delete(conversationId);
+      return null;
+    }
+
+    return session;
+  }
+
+  /**
+   * 读取当前插件在指定会话上的活动等待态。
+   * @param pluginId 当前插件 ID
+   * @param conversationId 会话 ID
+   * @returns 会话等待态；不存在或不归当前插件所有时返回 null
+   */
+  private getOwnedConversationSession(
+    pluginId: string,
+    conversationId: string,
+  ): ConversationSessionRecord | null {
+    const session = this.getActiveConversationSession(conversationId);
+    if (!session || session.pluginId !== pluginId) {
+      return null;
+    }
+
+    return session;
+  }
+
+  /**
+   * 读取当前会话等待态的安全摘要。
+   * @param session 活动等待态
+   * @returns 可暴露给插件的等待态摘要
+   */
+  private toConversationSessionInfo(
+    session: ConversationSessionRecord,
+  ): PluginConversationSessionInfo {
+    return {
+      pluginId: session.pluginId,
+      conversationId: session.conversationId,
+      timeoutMs: Math.max(0, session.expiresAt - Date.now()),
+      startedAt: new Date(session.startedAt).toISOString(),
+      expiresAt: new Date(session.expiresAt).toISOString(),
+      lastMatchedAt: session.lastMatchedAt
+        ? new Date(session.lastMatchedAt).toISOString()
+        : null,
+      captureHistory: session.captureHistory,
+      historyMessages: session.historyMessages.map((message) => cloneMessageHookInfo(message)),
+      ...(typeof session.metadata !== 'undefined'
+        ? { metadata: toJsonValue(session.metadata) }
+        : {}),
+    };
+  }
+
+  /**
+   * 记录一条命中活动等待态的消息。
+   * @param session 活动等待态
+   * @param message 当前收到的消息
+   * @returns 最新的等待态摘要
+   */
+  private recordConversationSessionMessage(
+    session: ConversationSessionRecord,
+    message: PluginMessageHookInfo,
+  ): PluginConversationSessionInfo {
+    session.lastMatchedAt = Date.now();
+    if (session.captureHistory) {
+      session.historyMessages.push(cloneMessageHookInfo(message));
+    }
+
+    return this.toConversationSessionInfo(session);
+  }
+
+  /**
+   * 从上下文中读取 conversationId。
+   * @param context 插件调用上下文
+   * @param method 当前 Host API 方法名
+   * @returns conversationId
+   */
+  private requireConversationIdContext(
+    context: PluginCallContext,
+    method: string,
+  ): string {
+    if (!context.conversationId) {
+      throw new BadRequestException(`${method} 需要 conversationId 上下文`);
+    }
+
+    return context.conversationId;
+  }
+
+  /**
    * 从调用上下文读取 userId。
    * @param context 插件调用上下文
    * @param method 当前 Host API 方法名
@@ -3004,6 +3429,26 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 从参数对象读取必填正数字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns 正数字段值
+   */
+  private requirePositiveNumber(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): number {
+    const value = this.readOptionalNumber(params, key, method);
+    if (typeof value !== 'number' || value <= 0) {
+      throw new BadRequestException(`${method} 的 ${key} 必须是正数`);
+    }
+
+    return value;
+  }
+
+  /**
    * 从参数对象读取可选对象字段。
    * @param params 参数对象
    * @param key 字段名
@@ -3188,6 +3633,31 @@ export class PluginRuntimeService {
     }
 
     throw new BadRequestException(`${label} 不是合法的消息 part`);
+  }
+
+  /**
+   * 从参数对象读取可选消息 part 数组。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns 已校验的消息 part 数组；缺失时返回 undefined
+   */
+  private readOptionalChatMessageParts(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): ChatMessagePart[] | undefined {
+    const value = params[key];
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (!Array.isArray(value)) {
+      throw new BadRequestException(`${method} 的 ${key} 必须是数组`);
+    }
+
+    return value.map((part, index) =>
+      this.readChatMessagePart(part, `${method}.${key}[${index}]`),
+    );
   }
 
   /**
@@ -3531,6 +4001,9 @@ function cloneMessageReceivedHookPayload(
     conversationId: payload.conversationId,
     providerId: payload.providerId,
     modelId: payload.modelId,
+    ...(typeof payload.session !== 'undefined'
+      ? { session: payload.session ? cloneConversationSessionInfo(payload.session) : null }
+      : {}),
     message: cloneMessageHookInfo(payload.message),
     modelMessages: clonePluginLlmMessages(payload.modelMessages),
   };
@@ -3589,6 +4062,29 @@ function cloneMessageHookInfo(
     ...(typeof message.provider !== 'undefined' ? { provider: message.provider } : {}),
     ...(typeof message.model !== 'undefined' ? { model: message.model } : {}),
     ...(typeof message.status !== 'undefined' ? { status: message.status } : {}),
+  };
+}
+
+/**
+ * 复制会话等待态摘要。
+ * @param session 原始等待态摘要
+ * @returns 新的等待态副本
+ */
+function cloneConversationSessionInfo(
+  session: PluginConversationSessionInfo,
+): PluginConversationSessionInfo {
+  return {
+    pluginId: session.pluginId,
+    conversationId: session.conversationId,
+    timeoutMs: session.timeoutMs,
+    startedAt: session.startedAt,
+    expiresAt: session.expiresAt,
+    lastMatchedAt: session.lastMatchedAt,
+    captureHistory: session.captureHistory,
+    historyMessages: session.historyMessages.map((message) => cloneMessageHookInfo(message)),
+    ...(typeof session.metadata !== 'undefined'
+      ? { metadata: toJsonValue(session.metadata) }
+      : {}),
   };
 }
 

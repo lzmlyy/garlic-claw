@@ -1691,4 +1691,276 @@ describe('BuiltinPluginTransport', () => {
       finishReason: 'stop',
     });
   });
+
+  it('exposes conversation.message.create through the builtin host facade', async () => {
+    hostService.call.mockResolvedValue({
+      id: 'assistant-message-plugin-1',
+      conversationId: 'conversation-2',
+      role: 'assistant',
+      content: '插件补充回复',
+      parts: [
+        {
+          type: 'text',
+          text: '插件补充回复',
+        },
+      ],
+      provider: 'openai',
+      model: 'gpt-5.2',
+      status: 'completed',
+      createdAt: '2026-03-28T10:00:00.000Z',
+      updatedAt: '2026-03-28T10:00:00.000Z',
+    });
+
+    const definition: BuiltinPluginDefinition = {
+      manifest: {
+        id: 'builtin.response-recorder',
+        name: 'Response Recorder',
+        version: '1.0.0',
+        runtime: 'builtin',
+        permissions: ['conversation:write'],
+        tools: [
+          {
+            name: 'push_reply',
+            description: '主动向会话追加回复',
+            parameters: {},
+          },
+        ],
+      },
+      tools: {
+        push_reply: async (_params, { host }) =>
+          host.createConversationMessage({
+            conversationId: 'conversation-2',
+            content: '插件补充回复',
+            parts: [
+              {
+                type: 'text',
+                text: '插件补充回复',
+              },
+            ],
+            provider: 'openai',
+            model: 'gpt-5.2',
+          }) as never,
+      },
+    };
+
+    const transport = new BuiltinPluginTransport(
+      definition,
+      hostService as never,
+    );
+
+    const result = await transport.executeTool({
+      toolName: 'push_reply',
+      params: {},
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+    });
+
+    expect(hostService.call).toHaveBeenCalledWith({
+      pluginId: 'builtin.response-recorder',
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+      method: 'conversation.message.create',
+      params: {
+        conversationId: 'conversation-2',
+        content: '插件补充回复',
+        parts: [
+          {
+            type: 'text',
+            text: '插件补充回复',
+          },
+        ],
+        provider: 'openai',
+        model: 'gpt-5.2',
+      },
+    });
+    expect(result).toEqual({
+      id: 'assistant-message-plugin-1',
+      conversationId: 'conversation-2',
+      role: 'assistant',
+      content: '插件补充回复',
+      parts: [
+        {
+          type: 'text',
+          text: '插件补充回复',
+        },
+      ],
+      provider: 'openai',
+      model: 'gpt-5.2',
+      status: 'completed',
+      createdAt: '2026-03-28T10:00:00.000Z',
+      updatedAt: '2026-03-28T10:00:00.000Z',
+    });
+  });
+
+  it('exposes conversation.session.* through the builtin host facade', async () => {
+    hostService.call
+      .mockResolvedValueOnce({
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 60000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:00.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+      })
+      .mockResolvedValueOnce({
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 60000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:00.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+      })
+      .mockResolvedValueOnce({
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 90000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:30.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+      })
+      .mockResolvedValueOnce(true);
+
+    const definition: BuiltinPluginDefinition = {
+      manifest: {
+        id: 'builtin.idiom-session',
+        name: 'Idiom Session',
+        version: '1.0.0',
+        runtime: 'builtin',
+        permissions: ['conversation:write'],
+        tools: [
+          {
+            name: 'control_session',
+            description: '控制当前会话等待态',
+            parameters: {},
+          },
+        ],
+      },
+      tools: {
+        control_session: async (_params, { host }) =>
+          ({
+            started: await host.startConversationSession({
+              timeoutMs: 60000,
+              captureHistory: true,
+            }),
+            current: await host.getConversationSession(),
+            kept: await host.keepConversationSession({
+              timeoutMs: 30000,
+              resetTimeout: false,
+            }),
+            finished: await host.finishConversationSession(),
+          }) as never,
+      },
+    };
+
+    const transport = new BuiltinPluginTransport(
+      definition,
+      hostService as never,
+    );
+
+    const result = await transport.executeTool({
+      toolName: 'control_session',
+      params: {},
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+    });
+
+    expect(hostService.call).toHaveBeenNthCalledWith(1, {
+      pluginId: 'builtin.idiom-session',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'conversation.session.start',
+      params: {
+        timeoutMs: 60000,
+        captureHistory: true,
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(2, {
+      pluginId: 'builtin.idiom-session',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'conversation.session.get',
+      params: {},
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(3, {
+      pluginId: 'builtin.idiom-session',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'conversation.session.keep',
+      params: {
+        timeoutMs: 30000,
+        resetTimeout: false,
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(4, {
+      pluginId: 'builtin.idiom-session',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'conversation.session.finish',
+      params: {},
+    });
+    expect(result).toEqual({
+      started: {
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 60000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:00.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+      },
+      current: {
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 60000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:00.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+      },
+      kept: {
+        pluginId: 'builtin.idiom-session',
+        conversationId: 'conversation-1',
+        timeoutMs: 90000,
+        startedAt: '2026-03-28T12:00:00.000Z',
+        expiresAt: '2026-03-28T12:01:30.000Z',
+        lastMatchedAt: null,
+        captureHistory: true,
+        historyMessages: [],
+      },
+      finished: true,
+    });
+  });
 });
