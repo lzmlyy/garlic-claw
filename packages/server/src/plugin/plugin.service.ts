@@ -461,6 +461,28 @@ export class PluginService {
   }
 
   /**
+   * 记录一条插件主动写入的事件日志。
+   * @param name 插件 ID
+   * @param input 事件输入
+   * @returns 无返回值
+   */
+  async recordPluginEvent(
+    name: string,
+    input: PluginEventInput & {
+      level: PluginEventLevel;
+    },
+  ): Promise<void> {
+    const plugin = await this.findByNameOrThrow(name);
+    await this.createPluginEvent(
+      plugin.id,
+      input.type,
+      input.level,
+      input.message,
+      input.metadata,
+    );
+  }
+
+  /**
    * 记录插件成功事件并更新健康快照。
    * @param name 插件 ID
    * @param input 事件输入

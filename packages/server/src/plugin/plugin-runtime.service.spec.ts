@@ -1043,6 +1043,39 @@ describe('PluginRuntimeService', () => {
     ).rejects.toThrow('插件 builtin.memory-context 缺少权限 user:read');
   });
 
+  it('enforces log write permission before log.write host calls', async () => {
+    const manifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.memory-context',
+      permissions: ['config:read'],
+      tools: [],
+      hooks: [],
+    };
+
+    await service.registerPlugin({
+      manifest,
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.memory-context',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'log.write' as never,
+        params: {
+          level: 'info',
+          message: '插件已启动',
+        },
+      }),
+    ).rejects.toThrow('插件 builtin.memory-context 缺少权限 log:write');
+
+    expect(hostService.call).not.toHaveBeenCalled();
+  });
+
   it('enforces provider read permission before provider host calls', async () => {
     const manifest: PluginManifest = {
       ...builtinManifest,

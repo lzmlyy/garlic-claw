@@ -500,6 +500,58 @@ describe('PluginService', () => {
       },
     });
   });
+
+  it('records plugin-authored event logs without mutating health snapshot', async () => {
+    prisma.plugin.findUnique.mockResolvedValue(
+      createPluginRecord({
+        id: 'plugin-1',
+        name: 'builtin.memory-context',
+        status: 'online',
+        healthStatus: 'degraded',
+        failureCount: 2,
+        consecutiveFailures: 1,
+        lastSuccessAt: new Date('2026-03-27T11:58:00.000Z'),
+        lastError: 'memory.search timeout',
+        lastErrorAt: new Date('2026-03-27T12:00:00.000Z'),
+        lastCheckedAt: new Date('2026-03-27T12:00:00.000Z'),
+      }),
+    );
+    prisma.pluginEvent.create.mockResolvedValue(
+      createPluginEventRecord({
+        pluginId: 'plugin-1',
+        type: 'plugin:config',
+        level: 'warn',
+        message: '缺少 limit 配置，已回退默认值',
+        metadataJson: JSON.stringify({
+          field: 'limit',
+        }),
+      }),
+    );
+
+    await expect(
+      (service as any).recordPluginEvent('builtin.memory-context', {
+        level: 'warn',
+        type: 'plugin:config',
+        message: '缺少 limit 配置，已回退默认值',
+        metadata: {
+          field: 'limit',
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(prisma.plugin.update).not.toHaveBeenCalled();
+    expect(prisma.pluginEvent.create).toHaveBeenCalledWith({
+      data: {
+        pluginId: 'plugin-1',
+        type: 'plugin:config',
+        level: 'warn',
+        message: '缺少 limit 配置，已回退默认值',
+        metadataJson: JSON.stringify({
+          field: 'limit',
+        }),
+      },
+    });
+  });
 });
 
 /**

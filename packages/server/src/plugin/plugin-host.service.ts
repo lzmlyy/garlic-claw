@@ -1,6 +1,7 @@
 import type {
   ChatMessagePart,
   HostCallPayload,
+  PluginEventLevel,
   PluginKbEntryDetail,
   PluginKbEntrySummary,
   PluginCallContext,
@@ -86,6 +87,8 @@ export class PluginHostService {
         return this.searchKbEntries(input.params);
       case 'kb.get':
         return this.getKbEntry(input.params);
+      case 'log.write':
+        return this.writeLog(input.pluginId, input.params);
       case 'persona.current.get':
         return this.getCurrentPersona(input.context);
       case 'persona.list':
@@ -558,6 +561,31 @@ export class PluginHostService {
   }
 
   /**
+   * 记录一条插件主动写入的宿主事件日志。
+   * @param pluginId 插件 ID
+   * @param params 日志参数
+   * @returns 是否记录成功
+   */
+  private async writeLog(
+    pluginId: string,
+    params: JsonObject,
+  ): Promise<JsonValue> {
+    const level = this.readEventLevel(params, 'level');
+    const message = this.requireString(params, 'message');
+    const type = this.readString(params, 'type') ?? 'plugin:log';
+    const metadata = this.readObject(params, 'metadata') ?? undefined;
+
+    await this.pluginService.recordPluginEvent(pluginId, {
+      level,
+      type,
+      message,
+      metadata,
+    });
+
+    return true;
+  }
+
+  /**
    * 读取插件自己的运行时状态。
    * @param pluginId 插件 ID
    * @param params 查询参数
@@ -1026,5 +1054,23 @@ export class PluginHostService {
     }
 
     return record;
+  }
+
+  /**
+   * 从参数对象读取插件事件级别字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @returns 受支持的事件级别
+   */
+  private readEventLevel(
+    params: JsonObject,
+    key: string,
+  ): PluginEventLevel {
+    const value = this.requireString(params, key);
+    if (value !== 'info' && value !== 'warn' && value !== 'error') {
+      throw new BadRequestException(`${key} 必须是 info/warn/error`);
+    }
+
+    return value;
   }
 }

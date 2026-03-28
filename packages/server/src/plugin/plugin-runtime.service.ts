@@ -65,6 +65,7 @@ const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | nu
   'kb.search': 'kb:read',
   'llm.generate': 'llm:generate',
   'llm.generate-text': 'llm:generate',
+  'log.write': 'log:write',
   'memory.search': 'memory:read',
   'memory.save': 'memory:write',
   'persona.activate': 'persona:write',

@@ -11,6 +11,7 @@ import {
   type JsonObject,
   type JsonValue,
   type PluginCallContext,
+  type PluginEventLevel,
   type PluginKbEntryDetail,
   type PluginKbEntrySummary,
   type PluginCapability,
@@ -242,6 +243,18 @@ export interface PluginHostFacade {
    * @returns 插件摘要
    */
   getPluginSelf(): Promise<PluginSelfInfo>;
+
+  /**
+   * 主动向宿主写入一条插件事件日志。
+   * @param input 日志级别、消息与可选上下文
+   * @returns 是否记录成功
+   */
+  writeLog(input: {
+    level: PluginEventLevel;
+    message: string;
+    type?: string;
+    metadata?: JsonObject;
+  }): Promise<boolean>;
 
   /**
    * 搜索用户长期记忆。
@@ -876,6 +889,17 @@ export class PluginClient {
           ) as unknown as Promise<{ status: string; results: JsonValue[] } | null>,
         getPluginSelf: () =>
           this.sendHostCall('plugin.self.get', {}, context) as unknown as Promise<PluginSelfInfo>,
+        writeLog: ({ level, message, type, metadata }) =>
+          this.sendHostCall(
+            'log.write',
+            {
+              level,
+              message,
+              ...(type ? { type } : {}),
+              ...(metadata ? { metadata } : {}),
+            },
+            context,
+          ) as unknown as Promise<boolean>,
         saveMemory: ({ content, category, keywords }) =>
           this.sendHostCall(
             'memory.save',

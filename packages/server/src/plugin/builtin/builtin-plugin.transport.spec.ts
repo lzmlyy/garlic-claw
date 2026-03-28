@@ -991,6 +991,73 @@ describe('BuiltinPluginTransport', () => {
     });
   });
 
+  it('exposes plugin log writing through the host facade', async () => {
+    hostService.call.mockResolvedValue(true);
+
+    const definition: BuiltinPluginDefinition = {
+      manifest: {
+        id: 'builtin.logger',
+        name: 'Logger',
+        version: '1.0.0',
+        runtime: 'builtin',
+        permissions: ['log:write' as never],
+        tools: [
+          {
+            name: 'emit_log',
+            description: '写入插件日志',
+            parameters: {},
+          },
+        ],
+      },
+      tools: {
+        emit_log: async (_params, { host }) =>
+          (host as any).writeLog({
+            level: 'warn',
+            type: 'plugin:test',
+            message: 'builtin logger emitted a warning',
+            metadata: {
+              source: 'emit_log',
+            },
+          }),
+      },
+    };
+
+    const transport = new BuiltinPluginTransport(
+      definition,
+      hostService as never,
+    );
+
+    await expect(
+      transport.executeTool({
+        toolName: 'emit_log',
+        params: {},
+        context: {
+          source: 'chat-tool',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(hostService.call).toHaveBeenCalledWith({
+      pluginId: 'builtin.logger',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'log.write',
+      params: {
+        level: 'warn',
+        type: 'plugin:test',
+        message: 'builtin logger emitted a warning',
+        metadata: {
+          source: 'emit_log',
+        },
+      },
+    });
+  });
+
   it('exposes cron helpers through the host facade', async () => {
     hostService.call
       .mockResolvedValueOnce({

@@ -7,6 +7,7 @@ import type {
   HostCallPayload,
   PluginActionName,
   PluginCallContext,
+  PluginEventLevel,
   PluginKbEntryDetail,
   PluginKbEntrySummary,
   PluginCronDescriptor,
@@ -230,6 +231,18 @@ interface BuiltinPluginHostFacade {
    * @returns 插件摘要
    */
   getPluginSelf(): Promise<PluginSelfInfo>;
+
+  /**
+   * 主动向宿主写入一条插件事件日志。
+   * @param input 日志级别、消息与可选上下文
+   * @returns 是否记录成功
+   */
+  writeLog(input: {
+    level: PluginEventLevel;
+    message: string;
+    type?: string;
+    metadata?: JsonObject;
+  }): Promise<boolean>;
 
   /**
    * 搜索当前用户记忆。
@@ -727,6 +740,18 @@ export class BuiltinPluginTransport implements PluginTransport {
           method: 'plugin.self.get',
           params: {},
         }) as unknown as Promise<PluginSelfInfo>,
+      writeLog: ({ level, message, type, metadata }) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'log.write',
+          params: {
+            level,
+            message,
+            ...(type ? { type } : {}),
+            ...(metadata ? { metadata } : {}),
+          },
+        }) as unknown as Promise<boolean>,
       listConversationMessages: () =>
         this.hostService.call({
           pluginId: this.definition.manifest.id,

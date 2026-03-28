@@ -54,6 +54,7 @@ describe('PluginHostService', () => {
     deletePluginStorage: jest.fn(),
     listPluginStorage: jest.fn(),
     getPluginSelfInfo: jest.fn(),
+    recordPluginEvent: jest.fn(),
   };
 
   const aiModelExecution = {
@@ -907,5 +908,40 @@ describe('PluginHostService', () => {
         },
       ],
     });
+  });
+
+  it('records plugin-authored event logs through log.write', async () => {
+    pluginService.recordPluginEvent.mockResolvedValue(undefined);
+
+    await expect(
+      service.call({
+        pluginId: 'memory-context',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'log.write' as never,
+        params: {
+          level: 'warn',
+          type: 'plugin:config',
+          message: '缺少 limit 配置，已回退默认值',
+          metadata: {
+            field: 'limit',
+          },
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(pluginService.recordPluginEvent).toHaveBeenCalledWith(
+      'memory-context',
+      {
+        level: 'warn',
+        type: 'plugin:config',
+        message: '缺少 limit 配置，已回退默认值',
+        metadata: {
+          field: 'limit',
+        },
+      },
+    );
   });
 });
