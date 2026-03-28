@@ -93,6 +93,36 @@
   color: #d8f6f3;
 }
 
+.sidebar-results {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sidebar-results-text,
+.sidebar-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.results-clear {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(133, 163, 199, 0.14);
+  background: rgba(9, 17, 29, 0.32);
+  color: #d8f6f3;
+  font-size: 0.76rem;
+}
+
+.results-clear:hover:not(:disabled) {
+  background: rgba(18, 32, 50, 0.72);
+}
+
+.sidebar-hint {
+  color: #f5d38c;
+}
+
 .ghost-button {
   background: rgba(9, 17, 29, 0.42);
   border: 1px solid var(--border);
@@ -292,6 +322,11 @@
 
   .filter-chips {
     gap: 6px;
+  }
+
+  .sidebar-results {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 }
 

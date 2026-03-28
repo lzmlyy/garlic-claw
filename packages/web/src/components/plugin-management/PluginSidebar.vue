@@ -69,6 +69,23 @@
       </div>
     </div>
 
+    <div v-if="!loading && plugins.length > 0" class="sidebar-results">
+      <span class="sidebar-results-text">匹配 {{ orderedPlugins.length }} / {{ plugins.length }}</span>
+      <button
+        v-if="hasActiveFilter"
+        type="button"
+        class="results-clear"
+        data-test="plugin-sidebar-clear-filters"
+        @click="clearFilters"
+      >
+        清除筛选
+      </button>
+    </div>
+
+    <p v-if="!loading && selectedPluginHidden" class="sidebar-hint">
+      当前详情插件未命中筛选条件。
+    </p>
+
     <p v-if="error" class="sidebar-error">{{ error }}</p>
 
     <div v-if="loading" class="sidebar-state">加载中...</div>
@@ -166,6 +183,17 @@ const issueCount = computed(() =>
 const hasActiveFilter = computed(() =>
   activeFilter.value !== 'all' || normalizedKeyword.value.length > 0,
 )
+const selectedPluginHidden = computed(() =>
+  !!props.selectedPluginName && !filteredPlugins.value.some((plugin) => plugin.name === props.selectedPluginName),
+)
+
+/**
+ * 清空当前关键字和快速筛选，恢复完整列表。
+ */
+function clearFilters() {
+  searchKeyword.value = ''
+  activeFilter.value = 'all'
+}
 
 /**
  * 判断插件是否符合当前快速筛选类型。

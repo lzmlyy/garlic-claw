@@ -245,4 +245,72 @@ describe('PluginSidebar', () => {
     titles = wrapper.findAll('.plugin-item strong').map((node) => node.text())
     expect(titles).toEqual(['Alpha Plugin'])
   })
+
+  it('shows result count and warns when the selected plugin is hidden by filters', async () => {
+    const wrapper = mount(PluginSidebar, {
+      props: {
+        loading: false,
+        selectedPluginName: 'builtin.alpha',
+        error: null,
+        plugins: [
+          {
+            id: 'plugin-1',
+            name: 'builtin.alpha',
+            displayName: 'Alpha Plugin',
+            description: 'healthy builtin plugin',
+            deviceType: 'builtin',
+            status: 'online',
+            capabilities: [],
+            connected: true,
+            runtimeKind: 'builtin',
+            health: {
+              status: 'healthy',
+              failureCount: 0,
+              consecutiveFailures: 0,
+              lastError: null,
+              lastErrorAt: null,
+              lastSuccessAt: null,
+              lastCheckedAt: null,
+            },
+            lastSeenAt: null,
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+          {
+            id: 'plugin-2',
+            name: 'remote.error',
+            displayName: 'Error Plugin',
+            description: 'remote plugin',
+            deviceType: 'api',
+            status: 'error',
+            capabilities: [],
+            connected: false,
+            runtimeKind: 'remote',
+            health: {
+              status: 'error',
+              failureCount: 2,
+              consecutiveFailures: 1,
+              lastError: 'route timeout while invoking remote endpoint',
+              lastErrorAt: '2026-03-28T00:00:00.000Z',
+              lastSuccessAt: null,
+              lastCheckedAt: '2026-03-28T00:00:00.000Z',
+            },
+            lastSeenAt: '2026-03-28T00:00:00.000Z',
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('匹配 2 / 2')
+
+    await wrapper.get('[data-test="plugin-sidebar-filter-attention"]').trigger('click')
+    expect(wrapper.text()).toContain('匹配 1 / 2')
+    expect(wrapper.text()).toContain('当前详情插件未命中筛选条件。')
+
+    await wrapper.get('[data-test="plugin-sidebar-clear-filters"]').trigger('click')
+    expect(wrapper.text()).toContain('匹配 2 / 2')
+    expect(wrapper.text()).not.toContain('当前详情插件未命中筛选条件。')
+  })
 })
