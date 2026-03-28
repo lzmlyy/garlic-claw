@@ -52,6 +52,9 @@ export type PluginHookName =
   | 'tool:after-call'
   | 'response:before-send'
   | 'response:after-send'
+  | 'plugin:loaded'
+  | 'plugin:unloaded'
+  | 'plugin:error'
   | 'cron:tick';
 
 /** 插件调用来源。 */
@@ -557,6 +560,14 @@ export interface PluginConversationHookInfo {
   updatedAt: string;
 }
 
+/** 插件生命周期 Hook 可见的插件摘要。 */
+export interface PluginLifecycleHookInfo {
+  id: string;
+  runtimeKind: PluginRuntimeKind;
+  deviceType: string;
+  manifest: PluginManifest | null;
+}
+
 /** 插件可见的消息快照。 */
 export interface PluginMessageHookInfo {
   id?: string;
@@ -572,6 +583,32 @@ export interface PluginMessageHookInfo {
 export interface ConversationCreatedHookPayload {
   context: PluginCallContext;
   conversation: PluginConversationHookInfo;
+}
+
+/** 插件加载 Hook 的输入。 */
+export interface PluginLoadedHookPayload {
+  context: PluginCallContext;
+  plugin: PluginLifecycleHookInfo;
+  loadedAt: string;
+}
+
+/** 插件卸载 Hook 的输入。 */
+export interface PluginUnloadedHookPayload {
+  context: PluginCallContext;
+  plugin: PluginLifecycleHookInfo;
+  unloadedAt: string;
+}
+
+/** 插件失败 Hook 的输入。 */
+export interface PluginErrorHookPayload {
+  context: PluginCallContext;
+  plugin: PluginLifecycleHookInfo;
+  error: {
+    type: string;
+    message: string;
+    metadata: JsonObject | null;
+  };
+  occurredAt: string;
 }
 
 /** 消息创建 Hook 的输入。 */

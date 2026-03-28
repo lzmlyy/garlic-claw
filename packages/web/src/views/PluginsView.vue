@@ -380,6 +380,15 @@ function pluginHighlights(plugin: PluginInfo): string[] {
   if (hooks.has('response:after-send')) {
     pushHighlight('可观察最终发送结果')
   }
+  if (hooks.has('plugin:loaded')) {
+    pushHighlight('可监听插件加载')
+  }
+  if (hooks.has('plugin:unloaded')) {
+    pushHighlight('可监听插件卸载')
+  }
+  if (hooks.has('plugin:error')) {
+    pushHighlight('可观察插件失败事件')
+  }
   if (hooks.has('chat:before-model')) {
     pushHighlight('可改写模型上下文')
     pushHighlight('可短路模型调用')

@@ -47,6 +47,9 @@ vi.mock('../composables/use-plugin-management', () => {
       { name: 'tool:after-call' },
       { name: 'response:before-send' },
       { name: 'response:after-send' },
+      { name: 'plugin:loaded' },
+      { name: 'plugin:unloaded' },
+      { name: 'plugin:error' },
       { name: 'chat:before-model' },
       { name: 'chat:after-model' },
     ],
@@ -149,6 +152,9 @@ describe('PluginsView', () => {
     expect(wrapper.text()).toContain('可观察或改写工具结果')
     expect(wrapper.text()).toContain('可改写最终发送内容')
     expect(wrapper.text()).toContain('可观察最终发送结果')
+    expect(wrapper.text()).toContain('可监听插件加载')
+    expect(wrapper.text()).toContain('可监听插件卸载')
+    expect(wrapper.text()).toContain('可观察插件失败事件')
     expect(wrapper.text()).toContain('可改写模型上下文')
     expect(wrapper.text()).toContain('可消费并改写模型结果')
     expect(wrapper.text()).toContain('可定时执行任务')

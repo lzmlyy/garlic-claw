@@ -22,15 +22,18 @@ import type {
   MessageDeletedHookPayload,
   MessageUpdatedHookMutateResult,
   MessageUpdatedHookPayload,
-  PluginMessageHookInfo,
   PluginActionName,
   PluginCallContext,
   PluginCapability,
+  PluginErrorHookPayload,
   PluginHookName,
   PluginHostMethod,
+  PluginLifecycleHookInfo,
   PluginLlmMessage,
   PluginManifest,
+  PluginMessageHookInfo,
   PluginPermission,
+  PluginLoadedHookPayload,
   PluginRouteDescriptor,
   PluginRouteRequest,
   PluginRouteResponse,
@@ -38,6 +41,7 @@ import type {
   PluginRuntimeKind,
   PluginSelfInfo,
   PluginSubagentRunResult,
+  PluginUnloadedHookPayload,
   ResponseAfterSendHookPayload,
   ResponseBeforeSendHookMutateResult,
   ResponseBeforeSendHookPassResult,
@@ -403,7 +407,7 @@ export class PluginRuntimeService {
       input.manifest,
     );
 
-    this.records.set(input.manifest.id, {
+    const record: PluginRuntimeRecord = {
       manifest: input.manifest,
       runtimeKind: input.runtimeKind,
       deviceType: input.deviceType ?? input.runtimeKind,
@@ -411,11 +415,24 @@ export class PluginRuntimeService {
       governance,
       activeExecutions: 0,
       maxConcurrentExecutions: this.resolveMaxConcurrentExecutions(governance),
-    });
+    };
+    this.records.set(input.manifest.id, record);
     await this.cronService.onPluginRegistered(
       input.manifest.id,
       input.manifest.crons ?? [],
     );
+    await this.runPluginLoadedHooks({
+      context: {
+        source: 'plugin',
+      },
+      payload: {
+        context: {
+          source: 'plugin',
+        },
+        plugin: this.buildPluginLifecycleHookInfo(record),
+        loadedAt: new Date().toISOString(),
+      },
+    });
 
     return input.manifest;
   }
@@ -441,6 +458,22 @@ export class PluginRuntimeService {
    * @returns 无返回值
    */
   async unregisterPlugin(pluginId: string): Promise<void> {
+    const record = this.records.get(pluginId);
+    if (record) {
+      await this.runPluginUnloadedHooks({
+        context: {
+          source: 'plugin',
+        },
+        payload: {
+          context: {
+            source: 'plugin',
+          },
+          plugin: this.buildPluginLifecycleHookInfo(record),
+          unloadedAt: new Date().toISOString(),
+        },
+      });
+    }
+
     this.cronService.onPluginUnregistered(pluginId);
     this.records.delete(pluginId);
     await this.pluginService.setOffline(pluginId);
@@ -713,7 +746,9 @@ export class PluginRuntimeService {
       if (isPluginOverloadedError(error)) {
         throw error;
       }
-      await this.pluginService.recordPluginFailure(input.pluginId, {
+      await this.recordPluginFailureAndDispatch({
+        pluginId: input.pluginId,
+        context: input.context,
         type: error instanceof Error && error.message.includes('超时')
           ? 'tool:timeout'
           : 'tool:error',
@@ -766,7 +801,9 @@ export class PluginRuntimeService {
       if (isPluginOverloadedError(error)) {
         throw error;
       }
-      await this.pluginService.recordPluginFailure(input.pluginId, {
+      await this.recordPluginFailureAndDispatch({
+        pluginId: input.pluginId,
+        context: input.context,
         type: error instanceof Error && error.message.includes('超时')
           ? 'route:timeout'
           : 'route:error',
@@ -920,7 +957,9 @@ export class PluginRuntimeService {
         throw error;
       }
       if (input.recordFailure !== false) {
-        await this.pluginService.recordPluginFailure(record.manifest.id, {
+        await this.recordPluginFailureAndDispatch({
+          pluginId: record.manifest.id,
+          context: input.context,
           type: error instanceof Error && error.message.includes('超时')
             ? 'hook:timeout'
             : 'hook:error',
@@ -928,6 +967,7 @@ export class PluginRuntimeService {
           metadata: {
             hookName: input.hookName,
           },
+          skipPluginErrorHook: input.hookName === 'plugin:error',
         });
       }
       throw error;
@@ -1329,11 +1369,109 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 派发所有插件加载 Hook。
+   * @param input Hook 调用上下文与载荷
+   * @returns 无返回值
+   */
+  async runPluginLoadedHooks(input: {
+    context: PluginCallContext;
+    payload: PluginLoadedHookPayload;
+  }): Promise<void> {
+    await this.invokeHookAcrossPlugins({
+      hookName: 'plugin:loaded',
+      context: input.context,
+      payload: input.payload,
+    });
+  }
+
+  /**
+   * 派发所有插件卸载 Hook。
+   * @param input Hook 调用上下文与载荷
+   * @returns 无返回值
+   */
+  async runPluginUnloadedHooks(input: {
+    context: PluginCallContext;
+    payload: PluginUnloadedHookPayload;
+  }): Promise<void> {
+    await this.invokeHookAcrossPlugins({
+      hookName: 'plugin:unloaded',
+      context: input.context,
+      payload: input.payload,
+    });
+  }
+
+  /**
+   * 派发所有插件失败 Hook。
+   * @param input Hook 调用上下文与载荷
+   * @returns 无返回值
+   */
+  async runPluginErrorHooks(input: {
+    context: PluginCallContext;
+    payload: PluginErrorHookPayload;
+  }): Promise<void> {
+    await this.invokeHookAcrossPlugins({
+      hookName: 'plugin:error',
+      context: input.context,
+      payload: input.payload,
+    });
+  }
+
+  /**
    * 暴露 Host API 服务给后续 transport 适配器复用。
    * @returns Host API 服务实例
    */
   getHostService(): PluginHostService {
     return this.hostService;
+  }
+
+  /**
+   * 记录一次插件失败，并向 `plugin:error` 观察者派发事件。
+   * @param input 插件失败的上下文、消息与元数据
+   * @returns 无返回值
+   */
+  private async recordPluginFailureAndDispatch(input: {
+    pluginId: string;
+    context: PluginCallContext;
+    type: string;
+    message: string;
+    metadata?: JsonObject;
+    checked?: boolean;
+    skipPluginErrorHook?: boolean;
+  }): Promise<void> {
+    await this.pluginService.recordPluginFailure(input.pluginId, {
+      type: input.type,
+      message: input.message,
+      metadata: input.metadata,
+      checked: input.checked,
+    });
+
+    if (input.skipPluginErrorHook) {
+      return;
+    }
+
+    const record = this.records.get(input.pluginId);
+    await this.runPluginErrorHooks({
+      context: input.context,
+      payload: {
+        context: {
+          ...input.context,
+        },
+        plugin: record
+          ? this.buildPluginLifecycleHookInfo(record)
+          : {
+            id: input.pluginId,
+            runtimeKind: 'remote',
+            deviceType: 'remote',
+            manifest: null,
+          },
+        error: {
+          type: input.type,
+          message: input.message,
+          metadata: input.metadata ?? null,
+        },
+        occurredAt: new Date().toISOString(),
+      },
+    });
   }
 
   /**
@@ -1348,6 +1486,22 @@ export class PluginRuntimeService {
     }
 
     return record;
+  }
+
+  /**
+   * 归一化插件生命周期 Hook 可见的插件摘要。
+   * @param record 运行时插件记录
+   * @returns 可序列化的插件摘要
+   */
+  private buildPluginLifecycleHookInfo(
+    record: PluginRuntimeRecord,
+  ): PluginLifecycleHookInfo {
+    return {
+      id: record.manifest.id,
+      runtimeKind: record.runtimeKind,
+      deviceType: record.deviceType,
+      manifest: record.manifest,
+    };
   }
 
   /**

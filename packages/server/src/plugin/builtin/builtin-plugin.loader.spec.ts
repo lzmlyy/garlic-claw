@@ -17,7 +17,7 @@ describe('BuiltinPluginLoader', () => {
   it('registers the default builtin plugins on module init', async () => {
     await loader.onModuleInit();
 
-    expect(runtime.registerPlugin).toHaveBeenCalledTimes(15);
+    expect(runtime.registerPlugin).toHaveBeenCalledTimes(16);
     expect(runtime.registerPlugin).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -163,6 +163,16 @@ describe('BuiltinPluginLoader', () => {
       expect.objectContaining({
         manifest: expect.objectContaining({
           id: 'builtin.response-recorder',
+          runtime: 'builtin',
+        }),
+        runtimeKind: 'builtin',
+      }),
+    );
+    expect(runtime.registerPlugin).toHaveBeenNthCalledWith(
+      16,
+      expect.objectContaining({
+        manifest: expect.objectContaining({
+          id: 'builtin.plugin-governance-recorder',
           runtime: 'builtin',
         }),
         runtimeKind: 'builtin',

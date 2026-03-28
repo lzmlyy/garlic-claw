@@ -12,6 +12,7 @@ import { createMemoryContextPlugin } from './memory-context.plugin';
 import { createMessageLifecycleRecorderPlugin } from './message-lifecycle-recorder.plugin';
 import { createMemoryToolsPlugin } from './memory-tools.plugin';
 import { createPersonaRouterPlugin } from './persona-router.plugin';
+import { createPluginGovernanceRecorderPlugin } from './plugin-governance-recorder.plugin';
 import { createProviderRouterPlugin } from './provider-router.plugin';
 import { createResponseRecorderPlugin } from './response-recorder.plugin';
 import { createRouteInspectorPlugin } from './route-inspector.plugin';
@@ -58,6 +59,7 @@ export class BuiltinPluginLoader implements OnModuleInit {
       createAutomationRecorderPlugin(),
       createToolAuditPlugin(),
       createResponseRecorderPlugin(),
+      createPluginGovernanceRecorderPlugin(),
     ];
 
     for (const definition of definitions) {

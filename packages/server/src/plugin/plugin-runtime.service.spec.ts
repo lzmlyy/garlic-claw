@@ -7,6 +7,7 @@ import type {
 import { createAutomationRecorderPlugin } from './builtin/automation-recorder.plugin';
 import { BuiltinPluginTransport } from './builtin/builtin-plugin.transport';
 import { createMessageLifecycleRecorderPlugin } from './builtin/message-lifecycle-recorder.plugin';
+import { createPluginGovernanceRecorderPlugin } from './builtin/plugin-governance-recorder.plugin';
 import { createResponseRecorderPlugin } from './builtin/response-recorder.plugin';
 import { createToolAuditPlugin } from './builtin/tool-audit.plugin';
 import { PluginRuntimeService } from './plugin-runtime.service';
@@ -1156,6 +1157,71 @@ describe('PluginRuntimeService', () => {
           createdAt: '2026-03-28T10:00:00.000Z',
           updatedAt: '2026-03-28T10:00:00.000Z',
         },
+      },
+    });
+  });
+
+  it('dispatches plugin:loaded and plugin:unloaded hooks around runtime lifecycle', async () => {
+    const invokeHook = jest.fn().mockResolvedValue(null);
+    const manifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.lifecycle-observer',
+      tools: [],
+      hooks: [
+        {
+          name: 'plugin:loaded',
+        },
+        {
+          name: 'plugin:unloaded',
+        },
+      ],
+    };
+
+    await service.registerPlugin({
+      manifest,
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        invokeHook,
+      }),
+    });
+
+    expect(invokeHook).toHaveBeenNthCalledWith(1, {
+      hookName: 'plugin:loaded',
+      context: {
+        source: 'plugin',
+      },
+      payload: {
+        context: {
+          source: 'plugin',
+        },
+        plugin: {
+          id: 'builtin.lifecycle-observer',
+          runtimeKind: 'builtin',
+          deviceType: 'builtin',
+          manifest,
+        },
+        loadedAt: expect.any(String),
+      },
+    });
+
+    await service.unregisterPlugin('builtin.lifecycle-observer');
+
+    expect(invokeHook).toHaveBeenNthCalledWith(2, {
+      hookName: 'plugin:unloaded',
+      context: {
+        source: 'plugin',
+      },
+      payload: {
+        context: {
+          source: 'plugin',
+        },
+        plugin: {
+          id: 'builtin.lifecycle-observer',
+          runtimeKind: 'builtin',
+          deviceType: 'builtin',
+          manifest,
+        },
+        unloadedAt: expect.any(String),
       },
     });
   });
@@ -2720,6 +2786,72 @@ describe('PluginRuntimeService', () => {
     );
   });
 
+  it('dispatches plugin:error hooks after tool failures are recorded', async () => {
+    const observeHook = jest.fn().mockResolvedValue(null);
+    const brokenManifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.broken-tool',
+      hooks: [],
+    };
+
+    await service.registerPlugin({
+      manifest: {
+        ...builtinManifest,
+        id: 'builtin.error-observer',
+        tools: [],
+        hooks: [
+          {
+            name: 'plugin:error',
+          },
+        ],
+      },
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        invokeHook: observeHook,
+      }),
+    });
+    await service.registerPlugin({
+      manifest: brokenManifest,
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        executeTool: jest.fn().mockRejectedValue(new Error('tool exploded')),
+      }),
+    });
+
+    await expect(
+      service.executeTool({
+        pluginId: 'builtin.broken-tool',
+        toolName: 'save_memory',
+        params: {
+          content: '记住我喜欢咖啡',
+        },
+        context: callContext,
+      }),
+    ).rejects.toThrow('tool exploded');
+
+    expect(observeHook).toHaveBeenCalledWith({
+      hookName: 'plugin:error',
+      context: callContext,
+      payload: {
+        context: callContext,
+        plugin: {
+          id: 'builtin.broken-tool',
+          runtimeKind: 'builtin',
+          deviceType: 'builtin',
+          manifest: brokenManifest,
+        },
+        error: {
+          type: 'tool:error',
+          message: 'tool exploded',
+          metadata: {
+            toolName: 'save_memory',
+          },
+        },
+        occurredAt: expect.any(String),
+      },
+    });
+  });
+
   it('runs builtin automation:after-run consumers through the unified host api facade', async () => {
     const definition = createAutomationRecorderPlugin();
     const hookContext = {
@@ -3354,6 +3486,219 @@ describe('PluginRuntimeService', () => {
           sentAt: '2026-03-28T12:34:56.000Z',
           userId: 'user-1',
           conversationId: 'conversation-1',
+        },
+      },
+    });
+  });
+
+  it('runs builtin plugin:* governance consumers through the unified host api facade', async () => {
+    const definition = createPluginGovernanceRecorderPlugin();
+    const hookContext = {
+      source: 'plugin' as const,
+    };
+
+    hostService.call.mockResolvedValue(true);
+    await service.registerPlugin({
+      manifest: definition.manifest,
+      runtimeKind: 'builtin',
+      transport: new BuiltinPluginTransport(definition, {
+        call: (input) => service.callHost(input),
+      }),
+    });
+
+    hostService.call.mockReset();
+    hostService.call
+      .mockResolvedValueOnce({
+        eventType: 'plugin:loaded',
+        pluginId: 'builtin.memory-tools',
+        runtimeKind: 'builtin',
+        deviceType: 'builtin',
+        errorType: null,
+        errorMessage: null,
+        occurredAt: '2026-03-28T12:00:00.000Z',
+      })
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce({
+        eventType: 'plugin:unloaded',
+        pluginId: 'remote.pc-host',
+        runtimeKind: 'remote',
+        deviceType: 'pc',
+        errorType: null,
+        errorMessage: null,
+        occurredAt: '2026-03-28T12:05:00.000Z',
+      })
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce({
+        eventType: 'plugin:error',
+        pluginId: 'builtin.memory-tools',
+        runtimeKind: 'builtin',
+        deviceType: 'builtin',
+        errorType: 'tool:error',
+        errorMessage: 'tool exploded',
+        occurredAt: '2026-03-28T12:10:00.000Z',
+      })
+      .mockResolvedValueOnce(true);
+
+    await expect(
+      service.runPluginLoadedHooks({
+        context: hookContext,
+        payload: {
+          context: hookContext,
+          plugin: {
+            id: 'builtin.memory-tools',
+            runtimeKind: 'builtin',
+            deviceType: 'builtin',
+            manifest: builtinManifest,
+          },
+          loadedAt: '2026-03-28T12:00:00.000Z',
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      service.runPluginUnloadedHooks({
+        context: hookContext,
+        payload: {
+          context: hookContext,
+          plugin: {
+            id: 'remote.pc-host',
+            runtimeKind: 'remote',
+            deviceType: 'pc',
+            manifest: null,
+          },
+          unloadedAt: '2026-03-28T12:05:00.000Z',
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      service.runPluginErrorHooks({
+        context: hookContext,
+        payload: {
+          context: hookContext,
+          plugin: {
+            id: 'builtin.memory-tools',
+            runtimeKind: 'builtin',
+            deviceType: 'builtin',
+            manifest: builtinManifest,
+          },
+          error: {
+            type: 'tool:error',
+            message: 'tool exploded',
+            metadata: {
+              toolName: 'save_memory',
+            },
+          },
+          occurredAt: '2026-03-28T12:10:00.000Z',
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(hostService.call).toHaveBeenNthCalledWith(1, {
+      pluginId: 'builtin.plugin-governance-recorder',
+      context: hookContext,
+      method: 'storage.set',
+      params: {
+        key: 'plugin.builtin.memory-tools.last-governance-event',
+        value: {
+          eventType: 'plugin:loaded',
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+          deviceType: 'builtin',
+          errorType: null,
+          errorMessage: null,
+          occurredAt: '2026-03-28T12:00:00.000Z',
+        },
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(2, {
+      pluginId: 'builtin.plugin-governance-recorder',
+      context: hookContext,
+      method: 'log.write',
+      params: {
+        level: 'info',
+        type: 'plugin:observed',
+        message: '插件 builtin.memory-tools 已加载',
+        metadata: {
+          eventType: 'plugin:loaded',
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+          deviceType: 'builtin',
+          errorType: null,
+          errorMessage: null,
+          occurredAt: '2026-03-28T12:00:00.000Z',
+        },
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(3, {
+      pluginId: 'builtin.plugin-governance-recorder',
+      context: hookContext,
+      method: 'storage.set',
+      params: {
+        key: 'plugin.remote.pc-host.last-governance-event',
+        value: {
+          eventType: 'plugin:unloaded',
+          pluginId: 'remote.pc-host',
+          runtimeKind: 'remote',
+          deviceType: 'pc',
+          errorType: null,
+          errorMessage: null,
+          occurredAt: '2026-03-28T12:05:00.000Z',
+        },
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(4, {
+      pluginId: 'builtin.plugin-governance-recorder',
+      context: hookContext,
+      method: 'log.write',
+      params: {
+        level: 'info',
+        type: 'plugin:observed',
+        message: '插件 remote.pc-host 已卸载',
+        metadata: {
+          eventType: 'plugin:unloaded',
+          pluginId: 'remote.pc-host',
+          runtimeKind: 'remote',
+          deviceType: 'pc',
+          errorType: null,
+          errorMessage: null,
+          occurredAt: '2026-03-28T12:05:00.000Z',
+        },
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(5, {
+      pluginId: 'builtin.plugin-governance-recorder',
+      context: hookContext,
+      method: 'storage.set',
+      params: {
+        key: 'plugin.builtin.memory-tools.last-governance-event',
+        value: {
+          eventType: 'plugin:error',
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+          deviceType: 'builtin',
+          errorType: 'tool:error',
+          errorMessage: 'tool exploded',
+          occurredAt: '2026-03-28T12:10:00.000Z',
+        },
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(6, {
+      pluginId: 'builtin.plugin-governance-recorder',
+      context: hookContext,
+      method: 'log.write',
+      params: {
+        level: 'warn',
+        type: 'plugin:observed',
+        message: '插件 builtin.memory-tools 发生失败：tool:error',
+        metadata: {
+          eventType: 'plugin:error',
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+          deviceType: 'builtin',
+          errorType: 'tool:error',
+          errorMessage: 'tool exploded',
+          occurredAt: '2026-03-28T12:10:00.000Z',
         },
       },
     });
