@@ -160,7 +160,7 @@ async function runSelectedRoute() {
         query: queryText.value,
         ...(selectedMethod.value !== 'GET' && selectedMethod.value !== 'DELETE'
           ? {
-              body: parseRequestBody(bodyText.value),
+              body: parseJsonRequestBody(bodyText.value),
             }
           : {}),
       },
@@ -202,13 +202,17 @@ function formatHeaders(headers: Record<string, string>): string {
  * @param raw 原始输入文本
  * @returns 解析后的 JSON 值
  */
-function parseRequestBody(raw: string): JsonValue | null {
+function parseJsonRequestBody(raw: string): JsonValue | null {
   const trimmed = raw.trim()
   if (!trimmed) {
     return null
   }
 
-  return JSON.parse(trimmed) as JsonValue
+  try {
+    return JSON.parse(trimmed) as JsonValue
+  } catch {
+    throw new Error('JSON Body 必须是有效 JSON')
+  }
 }
 </script>
 

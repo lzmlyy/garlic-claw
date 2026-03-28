@@ -52,4 +52,28 @@ describe('PluginRouteList', () => {
     expect(wrapper.text()).toContain('inspect/context')
     expect(wrapper.text()).toContain('x-route-source')
   })
+
+  it('shows a clear error and skips invocation when JSON body is invalid', async () => {
+    invokePluginRoute.mockReset()
+
+    const wrapper = mount(PluginRouteList, {
+      props: {
+        pluginName: 'builtin.route-inspector',
+        routes: [
+          {
+            path: 'inspect/context',
+            methods: ['POST'],
+            description: 'inspect current route context',
+          },
+        ],
+      },
+    })
+
+    await wrapper.get('textarea').setValue('{invalid json}')
+    await wrapper.get('[data-test="route-run-button"]').trigger('click')
+    await flushPromises()
+
+    expect(invokePluginRoute).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('JSON Body 必须是有效 JSON')
+  })
 })
