@@ -50,6 +50,9 @@
     </div>
 
     <div v-if="loading" class="section-empty">加载中...</div>
+    <div v-else-if="entries.length === 0 && hasActivePrefixFilter" class="section-empty">
+      当前前缀筛选下没有持久化 KV 条目。
+    </div>
     <div v-else-if="entries.length === 0" class="section-empty">
       当前还没有持久化 KV 条目。
     </div>
@@ -74,14 +77,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { JsonValue, PluginStorageEntry } from '@garlic-claw/shared'
 
-defineProps<{
+const props = defineProps<{
   entries: PluginStorageEntry[]
   loading: boolean
   saving: boolean
   deletingKey: string | null
+  prefix: string
 }>()
 
 const emit = defineEmits<{
@@ -94,6 +98,15 @@ const prefix = ref('')
 const draftKey = ref('')
 const draftValue = ref('')
 const formError = ref<string | null>(null)
+const hasActivePrefixFilter = computed(() => props.prefix.trim().length > 0)
+
+watch(
+  () => props.prefix,
+  (nextPrefix) => {
+    prefix.value = nextPrefix
+  },
+  { immediate: true },
+)
 
 /**
  * 按当前前缀请求父级刷新 KV 列表。

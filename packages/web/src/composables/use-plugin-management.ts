@@ -460,6 +460,7 @@ export function usePluginManagement() {
     eventQuery,
     eventNextCursor,
     storageEntries,
+    storagePrefix,
     canDeleteSelected,
     refreshAll,
     selectPlugin,

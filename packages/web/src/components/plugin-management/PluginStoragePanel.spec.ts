@@ -24,6 +24,7 @@ describe('PluginStoragePanel', () => {
         loading: false,
         saving: false,
         deletingKey: null,
+        prefix: '',
       },
     })
 
@@ -50,5 +51,19 @@ describe('PluginStoragePanel', () => {
     expect(wrapper.emitted('delete')).toEqual([
       ['cursor.offset'],
     ])
+  })
+
+  it('shows an empty-result message when the current prefix filter returns no entries', () => {
+    const wrapper = mount(PluginStoragePanel, {
+      props: {
+        entries: [],
+        loading: false,
+        saving: false,
+        deletingKey: null,
+        prefix: 'cursor.',
+      },
+    })
+
+    expect(wrapper.text()).toContain('当前前缀筛选下没有持久化 KV 条目。')
   })
 })

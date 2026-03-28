@@ -148,6 +148,7 @@
           <PluginStoragePanel
             class="detail-span"
             :entries="storageEntries"
+            :prefix="storagePrefix"
             :loading="detailLoading"
             :saving="savingStorage"
             :deleting-key="deletingStorageKey"
@@ -213,6 +214,7 @@ const {
   eventQuery,
   eventNextCursor,
   storageEntries,
+  storagePrefix,
   canDeleteSelected,
   refreshAll,
   selectPlugin,
