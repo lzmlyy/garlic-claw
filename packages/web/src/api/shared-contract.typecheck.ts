@@ -177,6 +177,12 @@ const sseEvent: SSEEvent = {
   assistantMessage: message,
 }
 
+const patchedSseEvent: SSEEvent = {
+  type: 'message-patch',
+  messageId: 'message-1',
+  content: 'patched',
+}
+
 const trigger: TriggerConfig = {
   type: 'manual',
 }
@@ -212,6 +218,7 @@ void [
   updatePayload,
   retryPayload,
   sseEvent,
+  patchedSseEvent,
   automation,
 ]
 

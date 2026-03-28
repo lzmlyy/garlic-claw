@@ -34,9 +34,11 @@ export interface StartChatTaskInput {
    * 输入:
    * - 最终 assistant 内容与工具调用快照
    * 输出:
-   * - 可选异步副作用
+   * - 可选返回一份补丁后的最终 assistant 快照
    */
-  onComplete?: (result: CompletedChatTaskResult) => Promise<void> | void;
+  onComplete?: (
+    result: CompletedChatTaskResult,
+  ) => Promise<CompletedChatTaskResult | void> | CompletedChatTaskResult | void;
 }
 
 /** 聊天任务完成后的最终 assistant 快照。 */
@@ -246,11 +248,21 @@ export class ChatTaskService implements OnModuleInit {
       }
 
       await this.persistMessageState(input, state, 'completed', null);
+      const completedResult = this.buildCompletedTaskResult(input, state);
       if (input.onComplete) {
         try {
-          await input.onComplete(
-            this.buildCompletedTaskResult(input, state),
-          );
+          const patchedResult = await input.onComplete(completedResult);
+          if (
+            patchedResult
+            && this.hasCompletedResultPatch(completedResult, patchedResult)
+          ) {
+            await this.persistCompletedResult(patchedResult);
+            this.emit(task, {
+              type: 'message-patch',
+              messageId: patchedResult.assistantMessageId,
+              content: patchedResult.content,
+            });
+          }
         } catch (error) {
           this.logger.warn(
             `聊天完成回调执行失败: ${input.assistantMessageId} - ${error instanceof Error ? error.message : String(error)}`,
@@ -355,5 +367,54 @@ export class ChatTaskService implements OnModuleInit {
       toolCalls: [...state.toolCalls],
       toolResults: [...state.toolResults],
     };
+  }
+
+  /**
+   * 把补丁后的完成态结果再次持久化到消息表。
+   * @param result 补丁后的最终 assistant 快照
+   * @returns 无返回值
+   */
+  private async persistCompletedResult(
+    result: CompletedChatTaskResult,
+  ): Promise<void> {
+    await this.prisma.message.update({
+      where: { id: result.assistantMessageId },
+      data: {
+        content: result.content,
+        provider: result.providerId,
+        model: result.modelId,
+        status: 'completed',
+        error: null,
+        toolCalls: result.toolCalls.length
+          ? JSON.stringify(result.toolCalls)
+          : null,
+        toolResults: result.toolResults.length
+          ? JSON.stringify(result.toolResults)
+          : null,
+      },
+    });
+    await this.prisma.conversation.update({
+      where: { id: result.conversationId },
+      data: {
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * 判断完成回调是否真的改写了最终 assistant 快照。
+   * @param original 原始完成态结果
+   * @param patched 回调返回的补丁结果
+   * @returns 是否存在可见变更
+   */
+  private hasCompletedResultPatch(
+    original: CompletedChatTaskResult,
+    patched: CompletedChatTaskResult,
+  ): boolean {
+    return original.content !== patched.content
+      || original.providerId !== patched.providerId
+      || original.modelId !== patched.modelId
+      || JSON.stringify(original.toolCalls) !== JSON.stringify(patched.toolCalls)
+      || JSON.stringify(original.toolResults) !== JSON.stringify(patched.toolResults);
   }
 }

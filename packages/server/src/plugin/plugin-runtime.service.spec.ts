@@ -790,20 +790,29 @@ describe('PluginRuntimeService', () => {
       }),
     });
 
-    await service.runChatAfterModelHooks({
-      context: {
-        source: 'chat-hook',
-        userId: 'user-1',
-        conversationId: 'conversation-1',
-      },
-      payload: {
-        providerId: 'openai',
-        modelId: 'gpt-5.2',
-        assistantMessageId: 'assistant-1',
-        assistantContent: '我已经帮你总结好了。',
-        toolCalls: [],
-        toolResults: [],
-      } satisfies ChatAfterModelHookPayload,
+    await expect(
+      service.runChatAfterModelHooks({
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        payload: {
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          assistantMessageId: 'assistant-1',
+          assistantContent: '我已经帮你总结好了。',
+          toolCalls: [],
+          toolResults: [],
+        } satisfies ChatAfterModelHookPayload,
+      }),
+    ).resolves.toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      assistantMessageId: 'assistant-1',
+      assistantContent: '我已经帮你总结好了。',
+      toolCalls: [],
+      toolResults: [],
     });
 
     expect(invokeHook).toHaveBeenCalledWith({
@@ -818,6 +827,89 @@ describe('PluginRuntimeService', () => {
         modelId: 'gpt-5.2',
         assistantMessageId: 'assistant-1',
         assistantContent: '我已经帮你总结好了。',
+        toolCalls: [],
+        toolResults: [],
+      },
+    });
+  });
+
+  it('applies chat:after-model assistant content mutations in sequence', async () => {
+    const rewriteHook = jest.fn().mockResolvedValue({
+      action: 'mutate',
+      assistantContent: '这是插件润色后的最终回复。',
+    });
+    const observeHook = jest.fn().mockResolvedValue(null);
+
+    await service.registerPlugin({
+      manifest: {
+        ...builtinManifest,
+        id: 'builtin.a-rewrite-after-model',
+        tools: [],
+        hooks: [
+          {
+            name: 'chat:after-model',
+          },
+        ],
+      },
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        invokeHook: rewriteHook,
+      }),
+    });
+    await service.registerPlugin({
+      manifest: {
+        ...builtinManifest,
+        id: 'builtin.b-observe-after-model',
+        tools: [],
+        hooks: [
+          {
+            name: 'chat:after-model',
+          },
+        ],
+      },
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        invokeHook: observeHook,
+      }),
+    });
+
+    await expect(
+      service.runChatAfterModelHooks({
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        payload: {
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          assistantMessageId: 'assistant-1',
+          assistantContent: '原始回复。',
+          toolCalls: [],
+          toolResults: [],
+        } satisfies ChatAfterModelHookPayload,
+      }),
+    ).resolves.toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      assistantMessageId: 'assistant-1',
+      assistantContent: '这是插件润色后的最终回复。',
+      toolCalls: [],
+      toolResults: [],
+    });
+
+    expect(observeHook).toHaveBeenCalledWith({
+      hookName: 'chat:after-model',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      payload: {
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+        assistantMessageId: 'assistant-1',
+        assistantContent: '这是插件润色后的最终回复。',
         toolCalls: [],
         toolResults: [],
       },

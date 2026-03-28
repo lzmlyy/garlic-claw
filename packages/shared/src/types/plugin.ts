@@ -494,6 +494,22 @@ export interface ChatAfterModelHookPayload {
   }>;
 }
 
+/** 聊天模型后 Hook 透传当前结果，不做改写。 */
+export interface ChatAfterModelHookPassResult {
+  action: 'pass';
+}
+
+/** 聊天模型后 Hook 改写当前 assistant 最终回复。 */
+export interface ChatAfterModelHookMutateResult {
+  action: 'mutate';
+  assistantContent?: string;
+}
+
+/** 聊天模型后 Hook 的返回。 */
+export type ChatAfterModelHookResult =
+  | ChatAfterModelHookPassResult
+  | ChatAfterModelHookMutateResult;
+
 /** cron 定时触发时的 Hook 输入。 */
 export interface PluginCronTickPayload {
   job: PluginCronJobSummary;

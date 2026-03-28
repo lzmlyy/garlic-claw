@@ -1,6 +1,8 @@
 import type {
   ActionConfig,
   ChatAfterModelHookPayload,
+  ChatAfterModelHookMutateResult,
+  ChatAfterModelHookPassResult,
   ChatBeforeModelHookMutateResult,
   ChatBeforeModelRequest,
   ChatBeforeModelHookPayload,
@@ -215,6 +217,13 @@ type NormalizedChatBeforeModelHookResult =
   | ChatBeforeModelHookPassResult
   | ChatBeforeModelHookMutateResult
   | ChatBeforeModelHookShortCircuitResult;
+
+/**
+ * 归一化后的聊天模型后 Hook 返回。
+ */
+type NormalizedChatAfterModelHookResult =
+  | ChatAfterModelHookPassResult
+  | ChatAfterModelHookMutateResult;
 
 /**
  * 统一插件运行时。
@@ -746,17 +755,35 @@ export class PluginRuntimeService {
   /**
    * 运行所有聊天模型后 Hook。
    * @param input Hook 调用上下文与载荷
-   * @returns 无返回值
+   * @returns 顺序应用所有 mutate 后的最终载荷
    */
   async runChatAfterModelHooks(input: {
     context: PluginCallContext;
     payload: ChatAfterModelHookPayload;
-  }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
-      hookName: 'chat:after-model',
-      context: input.context,
-      payload: input.payload,
-    });
+  }): Promise<ChatAfterModelHookPayload> {
+    let payload = cloneChatAfterModelPayload(input.payload);
+
+    for (const record of this.listHookRecords('chat:after-model', input.context)) {
+      try {
+        const rawResult = await this.invokePluginHook({
+          pluginId: record.manifest.id,
+          hookName: 'chat:after-model',
+          context: input.context,
+          payload: toJsonValue(payload),
+        });
+        const hookResult = this.normalizeChatAfterModelHookResult(rawResult);
+
+        if (!hookResult || hookResult.action === 'pass') {
+          continue;
+        }
+
+        payload = this.applyChatAfterModelMutation(payload, hookResult);
+      } catch {
+        // 单个 Hook 失败已由 invokePluginHook 记录；这里继续执行后续插件。
+      }
+    }
+
+    return payload;
   }
 
   /**
@@ -1031,6 +1058,38 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 将插件返回的聊天后 Hook 结果归一为统一结构。
+   * @param result 插件原始返回值
+   * @returns 归一化后的 Hook 结果
+   */
+  private normalizeChatAfterModelHookResult(
+    result: JsonValue | null | undefined,
+  ): NormalizedChatAfterModelHookResult | null {
+    if (result === null || typeof result === 'undefined') {
+      return null;
+    }
+    if (!isJsonObjectValue(result)) {
+      throw new Error('chat:after-model Hook 返回值必须是对象');
+    }
+    if (result.action === 'pass') {
+      return { action: 'pass' };
+    }
+    if (result.action === 'mutate') {
+      if (
+        'assistantContent' in result
+        && result.assistantContent !== null
+        && typeof result.assistantContent !== 'string'
+      ) {
+        throw new Error('chat:after-model Hook 的 assistantContent 必须是字符串或 null');
+      }
+
+      return result as unknown as ChatAfterModelHookMutateResult;
+    }
+
+    throw new Error('chat:after-model Hook 返回了未知 action');
+  }
+
+  /**
    * 将一条 mutate 结果应用到当前请求快照。
    * @param currentRequest 当前请求
    * @param mutation 变更结果
@@ -1081,6 +1140,28 @@ export class PluginRuntimeService {
     }
 
     return nextRequest;
+  }
+
+  /**
+   * 将一条聊天后 mutate 结果应用到当前完成态载荷。
+   * @param currentPayload 当前完成态载荷
+   * @param mutation 变更结果
+   * @returns 新的完成态载荷
+   */
+  private applyChatAfterModelMutation(
+    currentPayload: ChatAfterModelHookPayload,
+    mutation: ChatAfterModelHookMutateResult,
+  ): ChatAfterModelHookPayload {
+    const nextPayload = cloneChatAfterModelPayload(currentPayload);
+
+    if (
+      'assistantContent' in mutation
+      && typeof mutation.assistantContent === 'string'
+    ) {
+      nextPayload.assistantContent = mutation.assistantContent;
+    }
+
+    return nextPayload;
   }
 
   /**
@@ -1758,6 +1839,28 @@ function cloneChatBeforeModelRequest(
     ...(typeof request.maxOutputTokens === 'number'
       ? { maxOutputTokens: request.maxOutputTokens }
       : {}),
+  };
+}
+
+/**
+ * 复制聊天模型后 Hook 载荷，避免插件变更污染原对象。
+ * @param payload 原始完成态载荷
+ * @returns 新的载荷副本
+ */
+function cloneChatAfterModelPayload(
+  payload: ChatAfterModelHookPayload,
+): ChatAfterModelHookPayload {
+  return {
+    providerId: payload.providerId,
+    modelId: payload.modelId,
+    assistantMessageId: payload.assistantMessageId,
+    assistantContent: payload.assistantContent,
+    toolCalls: payload.toolCalls.map((toolCall) => ({
+      ...toolCall,
+    })),
+    toolResults: payload.toolResults.map((toolResult) => ({
+      ...toolResult,
+    })),
   };
 }
 

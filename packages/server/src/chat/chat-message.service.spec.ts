@@ -658,4 +658,244 @@ describe('ChatMessageService', () => {
       },
     });
   });
+
+  it('returns a patched completion snapshot when chat:after-model rewrites the final assistant content', async () => {
+    const userMessage = {
+      id: 'user-message-1',
+      role: 'user',
+      content: '帮我润色回复',
+      partsJson: JSON.stringify([
+        {
+          type: 'text',
+          text: '帮我润色回复',
+        },
+      ]),
+      status: 'completed',
+    };
+    const assistantMessage = {
+      id: 'assistant-message-1',
+      role: 'assistant',
+      content: '',
+      status: 'pending',
+    };
+    const modelConfig = {
+      id: 'gpt-5.2',
+      providerId: 'openai',
+      name: 'GPT 5.2',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: true,
+        toolCall: true,
+      },
+      api: {
+        id: 'gpt-5.2',
+        url: 'https://example.com/v1',
+        npm: '@ai-sdk/openai',
+      },
+    };
+
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      messages: [],
+    });
+    aiProvider.getModelConfig.mockReturnValue(modelConfig);
+    prisma.message.create
+      .mockResolvedValueOnce(userMessage)
+      .mockResolvedValueOnce(assistantMessage);
+    prisma.conversation.update.mockResolvedValue(null);
+    modelInvocation.prepareResolved.mockResolvedValue({
+      modelConfig,
+      model: { provider: 'openai', modelId: 'gpt-5.2' },
+      sdkMessages: [],
+    });
+    pluginRuntime.runChatBeforeModelHooks.mockResolvedValue({
+      action: 'continue',
+      request: {
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+        systemPrompt: '你是 Garlic Claw',
+        messages: [
+          {
+            role: 'user',
+            content: '帮我润色回复',
+          },
+        ],
+        availableTools: [],
+      },
+    });
+    pluginRuntime.runChatAfterModelHooks.mockResolvedValue({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      assistantMessageId: 'assistant-message-1',
+      assistantContent: '这是插件润色后的最终回复。',
+      toolCalls: [],
+      toolResults: [],
+    });
+
+    await service.startMessageGeneration('user-1', 'conversation-1', {
+      content: '帮我润色回复',
+      parts: [
+        {
+          type: 'text',
+          text: '帮我润色回复',
+        },
+      ],
+      provider: 'openai',
+      model: 'gpt-5.2',
+    } as never);
+
+    const taskConfig = chatTaskService.startTask.mock.calls[0]?.[0];
+    expect(taskConfig).toBeDefined();
+
+    await expect(
+      taskConfig.onComplete({
+        assistantMessageId: 'assistant-message-1',
+        conversationId: 'conversation-1',
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+        content: '原始模型回复。',
+        toolCalls: [],
+        toolResults: [],
+      }),
+    ).resolves.toEqual({
+      assistantMessageId: 'assistant-message-1',
+      conversationId: 'conversation-1',
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      content: '这是插件润色后的最终回复。',
+      toolCalls: [],
+      toolResults: [],
+    });
+  });
+
+  it('returns a patched completed assistant message when chat:after-model rewrites a short-circuited reply', async () => {
+    const userMessage = {
+      id: 'user-message-1',
+      role: 'user',
+      content: '帮我快速回复',
+      partsJson: JSON.stringify([
+        {
+          type: 'text',
+          text: '帮我快速回复',
+        },
+      ]),
+      status: 'completed',
+    };
+    const assistantMessage = {
+      id: 'assistant-message-1',
+      role: 'assistant',
+      content: '',
+      status: 'pending',
+      provider: 'openai',
+      model: 'gpt-5.2',
+    };
+    const completedAssistantMessage = {
+      ...assistantMessage,
+      content: '这是插件润色后的最终回复。',
+      status: 'completed',
+      provider: 'anthropic',
+      model: 'claude-3-7-sonnet',
+      error: null,
+      toolCalls: null,
+      toolResults: null,
+    };
+    const modelConfig = {
+      id: 'gpt-5.2',
+      providerId: 'openai',
+      name: 'GPT 5.2',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: true,
+        toolCall: true,
+      },
+      api: {
+        id: 'gpt-5.2',
+        url: 'https://example.com/v1',
+        npm: '@ai-sdk/openai',
+      },
+    };
+
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      messages: [],
+    });
+    aiProvider.getModelConfig.mockReturnValue(modelConfig);
+    prisma.message.create
+      .mockResolvedValueOnce(userMessage)
+      .mockResolvedValueOnce(assistantMessage);
+    prisma.message.update
+      .mockResolvedValueOnce({
+        ...assistantMessage,
+        content: '插件已经直接回复。',
+        status: 'completed',
+        provider: 'anthropic',
+        model: 'claude-3-7-sonnet',
+        error: null,
+        toolCalls: null,
+        toolResults: null,
+      })
+      .mockResolvedValueOnce(completedAssistantMessage);
+    prisma.conversation.update.mockResolvedValue(null);
+    pluginRuntime.runChatBeforeModelHooks.mockResolvedValue({
+      action: 'short-circuit',
+      request: {
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+        systemPrompt: '你是 Garlic Claw',
+        messages: [
+          {
+            role: 'user',
+            content: '帮我快速回复',
+          },
+        ],
+        availableTools: [],
+      },
+      assistantContent: '插件已经直接回复。',
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+    });
+    pluginRuntime.runChatAfterModelHooks.mockResolvedValue({
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      assistantMessageId: 'assistant-message-1',
+      assistantContent: '这是插件润色后的最终回复。',
+      toolCalls: [],
+      toolResults: [],
+    });
+    pluginRuntime.listTools.mockReturnValue([]);
+
+    await expect(
+      service.startMessageGeneration('user-1', 'conversation-1', {
+        content: '帮我快速回复',
+        parts: [
+          {
+            type: 'text',
+            text: '帮我快速回复',
+          },
+        ],
+        provider: 'openai',
+        model: 'gpt-5.2',
+      } as never),
+    ).resolves.toEqual({
+      userMessage,
+      assistantMessage: completedAssistantMessage,
+    });
+
+    expect(prisma.message.update).toHaveBeenLastCalledWith({
+      where: {
+        id: 'assistant-message-1',
+      },
+      data: {
+        content: '这是插件润色后的最终回复。',
+        provider: 'anthropic',
+        model: 'claude-3-7-sonnet',
+        status: 'completed',
+        error: null,
+        toolCalls: null,
+        toolResults: null,
+      },
+    });
+  });
 });

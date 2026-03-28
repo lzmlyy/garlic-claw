@@ -150,6 +150,79 @@ describe('ChatTaskService', () => {
     });
   });
 
+  it('persists a patched completion snapshot and emits a message patch before finish', async () => {
+    const events: ChatTaskEvent[] = [];
+    const onComplete = jest.fn().mockResolvedValue({
+      assistantMessageId: 'assistant-1',
+      conversationId: 'conversation-1',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+      content: '插件润色后的最终回复',
+      toolCalls: [
+        { toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
+      ],
+      toolResults: [
+        { toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
+      ],
+    });
+
+    service.startTask({
+      assistantMessageId: 'assistant-1',
+      conversationId: 'conversation-1',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+      createStream: () => ({
+        fullStream: createStream([
+          { type: 'text-delta', text: '原始' },
+          { type: 'text-delta', text: '回复' },
+          { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
+          { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
+          { type: 'finish' },
+        ]),
+      }),
+      onComplete,
+    });
+
+    const unsubscribe = service.subscribe('assistant-1', (event: ChatTaskEvent) => {
+      events.push(event);
+    });
+
+    await service.waitForTask('assistant-1');
+    unsubscribe();
+
+    expect(prisma.message.update).toHaveBeenNthCalledWith(
+      7,
+      expect.objectContaining({
+        where: { id: 'assistant-1' },
+        data: expect.objectContaining({
+          content: '插件润色后的最终回复',
+          status: 'completed',
+        }),
+      }),
+    );
+    expect(events).toEqual(
+      expect.arrayContaining([
+        {
+          type: 'message-patch',
+          messageId: 'assistant-1',
+          content: '插件润色后的最终回复',
+        },
+        {
+          type: 'finish',
+          messageId: 'assistant-1',
+          status: 'completed',
+        },
+      ]),
+    );
+    const messagePatchIndex = events.findIndex(
+      (event) => String(event.type) === 'message-patch',
+    );
+    const finishIndex = events.findIndex((event) => event.type === 'finish');
+
+    expect(messagePatchIndex).toBeGreaterThanOrEqual(0);
+    expect(messagePatchIndex).toBeLessThan(finishIndex);
+  });
+
   it('marks the task as stopped when stopTask is called', async () => {
     const events: ChatTaskEvent[] = [];
 

@@ -89,6 +89,11 @@ export type ChatTaskEvent =
       output: JsonValue;
     }
   | {
+      type: 'message-patch';
+      messageId: string;
+      content: string;
+    }
+  | {
       type: 'finish';
       messageId: string;
       status: ChatMessageStatus;

@@ -176,6 +176,11 @@ export function applySseEvent(
         ],
         status: 'streaming',
       }))
+    case 'message-patch':
+      return updateMessageState(messages, event.messageId, (message) => ({
+        ...message,
+        content: event.content,
+      }))
     case 'finish':
       return updateMessageState(messages, event.messageId, (message) => ({
         ...message,

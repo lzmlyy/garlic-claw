@@ -481,15 +481,15 @@ export class ChatMessageService {
   /**
    * 在 assistant 成功完成后运行统一插件 Hook。
    * @param input 当前用户、会话与最终 assistant 快照
-   * @returns 无返回值
+   * @returns 可能被插件改写后的最终 assistant 快照
    */
   private async applyChatAfterModelHooks(input: {
     userId: string;
     conversationId: string;
     activePersonaId: string;
     result: CompletedChatTaskResult;
-  }): Promise<void> {
-    await this.pluginRuntime.runChatAfterModelHooks({
+  }): Promise<CompletedChatTaskResult> {
+    const patchedPayload = await this.pluginRuntime.runChatAfterModelHooks({
       context: {
         source: 'chat-hook',
         userId: input.userId,
@@ -507,6 +507,19 @@ export class ChatMessageService {
         toolResults: input.result.toolResults,
       },
     });
+
+    if (
+      !patchedPayload
+      || typeof patchedPayload.assistantContent !== 'string'
+      || patchedPayload.assistantContent === input.result.content
+    ) {
+      return input.result;
+    }
+
+    return {
+      ...input.result,
+      content: patchedPayload.assistantContent,
+    };
   }
 
   /**
@@ -536,7 +549,7 @@ export class ChatMessageService {
       },
     });
     await this.touchConversation(input.conversationId);
-    await this.applyChatAfterModelHooks({
+    const patchedResult = await this.applyChatAfterModelHooks({
       userId: input.userId,
       conversationId: input.conversationId,
       activePersonaId: input.activePersonaId,
@@ -550,6 +563,24 @@ export class ChatMessageService {
         toolResults: [],
       },
     });
-    return assistantMessage;
+
+    if (patchedResult.content === assistantMessage.content) {
+      return assistantMessage;
+    }
+
+    const patchedAssistantMessage = await this.prisma.message.update({
+      where: { id: input.assistantMessageId },
+      data: {
+        content: patchedResult.content,
+        provider: patchedResult.providerId,
+        model: patchedResult.modelId,
+        status: 'completed',
+        error: null,
+        toolCalls: null,
+        toolResults: null,
+      },
+    });
+    await this.touchConversation(input.conversationId);
+    return patchedAssistantMessage;
   }
 }
