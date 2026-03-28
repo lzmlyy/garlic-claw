@@ -16,7 +16,7 @@
     </div>
     <div v-else class="plugin-list">
       <button
-        v-for="plugin in plugins"
+        v-for="plugin in orderedPlugins"
         :key="plugin.name"
         type="button"
         class="plugin-item"
@@ -46,9 +46,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { PluginInfo } from '@garlic-claw/shared'
 
-defineProps<{
+const props = defineProps<{
   plugins: PluginInfo[]
   loading: boolean
   selectedPluginName: string | null
@@ -59,6 +60,17 @@ defineEmits<{
   (event: 'refresh'): void
   (event: 'select', pluginName: string): void
 }>()
+
+const orderedPlugins = computed(() =>
+  [...props.plugins].sort((left, right) => {
+    const weightDiff = pluginSortWeight(left) - pluginSortWeight(right)
+    if (weightDiff !== 0) {
+      return weightDiff
+    }
+
+    return (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
+  }),
+)
 
 /**
  * 生成插件健康状态的展示文案。
@@ -111,6 +123,30 @@ function runtimePressureLabel(plugin: PluginInfo): string | null {
 function isPluginBusy(plugin: PluginInfo): boolean {
   const pressure = plugin.health?.runtimePressure
   return !!pressure && pressure.activeExecutions >= pressure.maxConcurrentExecutions
+}
+
+/**
+ * 计算插件在侧栏中的排序优先级。
+ * @param plugin 插件摘要
+ * @returns 越小越靠前
+ */
+function pluginSortWeight(plugin: PluginInfo): number {
+  if (isPluginBusy(plugin)) {
+    return 0
+  }
+
+  switch (plugin.health?.status) {
+    case 'error':
+      return 1
+    case 'degraded':
+      return 2
+    case 'healthy':
+      return 3
+    case 'offline':
+      return 4
+    default:
+      return 5
+  }
 }
 </script>
 
