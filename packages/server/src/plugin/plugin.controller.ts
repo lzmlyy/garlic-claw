@@ -42,7 +42,8 @@ import { PluginService } from './plugin.service';
 @ApiTags('Plugins')
 @ApiBearerAuth()
 @Controller('plugins')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'super_admin')
 export class PluginController {
   constructor(
     private pluginService: PluginService,
@@ -258,7 +259,7 @@ function parsePluginCapabilities(raw: string | null): PluginCapability[] {
     return [];
   }
 
-  return JSON.parse(raw) as PluginCapability[];
+  return safeJsonParse(raw, []);
 }
 
 /**
@@ -271,7 +272,7 @@ function parsePluginPermissions(raw: string | null): PluginPermission[] | undefi
     return undefined;
   }
 
-  return JSON.parse(raw) as PluginPermission[];
+  return safeJsonParse<PluginPermission[]>(raw, []);
 }
 
 /**
@@ -284,7 +285,7 @@ function parsePluginHooks(raw: string | null): PluginHookDescriptor[] | undefine
     return undefined;
   }
 
-  return JSON.parse(raw) as PluginHookDescriptor[];
+  return safeJsonParse<PluginHookDescriptor[]>(raw, []);
 }
 
 /**
@@ -297,7 +298,7 @@ function parsePluginRoutes(raw: string | null): PluginRouteDescriptor[] | undefi
     return undefined;
   }
 
-  return JSON.parse(raw) as PluginRouteDescriptor[];
+  return safeJsonParse<PluginRouteDescriptor[]>(raw, []);
 }
 
 /**
@@ -380,4 +381,18 @@ function parsePluginEventQuery(raw: {
     ...(keyword ? { keyword } : {}),
     ...(cursor ? { cursor } : {}),
   };
+}
+
+/**
+ * 安全解析 JSON；解析失败时回退默认值。
+ * @param raw 原始 JSON 字符串
+ * @param fallback 解析失败时的回退值
+ * @returns 解析结果或回退值
+ */
+function safeJsonParse<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
 }

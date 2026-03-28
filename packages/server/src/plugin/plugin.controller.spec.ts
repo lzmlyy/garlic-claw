@@ -327,6 +327,48 @@ describe('PluginController', () => {
     ]);
   });
 
+  it('falls back to safe defaults when persisted plugin manifest json is malformed', async () => {
+    pluginService.findAll.mockResolvedValue([
+      {
+        id: 'plugin-3',
+        name: 'remote.broken-manifest',
+        displayName: 'Broken Manifest',
+        description: '损坏的持久化清单',
+        deviceType: 'pc',
+        runtimeKind: 'remote',
+        status: 'offline',
+        capabilities: '{not-json',
+        permissions: '{not-json',
+        hooks: '{not-json',
+        routes: '{not-json',
+        version: '1.0.0',
+        healthStatus: 'unknown',
+        failureCount: 0,
+        consecutiveFailures: 0,
+        lastError: null,
+        lastErrorAt: null,
+        lastSuccessAt: null,
+        lastCheckedAt: null,
+        lastSeenAt: null,
+        createdAt: new Date('2026-03-27T12:10:00.000Z'),
+        updatedAt: new Date('2026-03-27T12:10:00.000Z'),
+      },
+    ]);
+    pluginRuntime.listPlugins.mockReturnValue([]);
+    pluginCronService.listCronJobs.mockResolvedValue([]);
+
+    await expect(controller.listPlugins()).resolves.toEqual([
+      expect.objectContaining({
+        name: 'remote.broken-manifest',
+        capabilities: [],
+        permissions: [],
+        hooks: [],
+        routes: [],
+        supportedActions: ['health-check'],
+      }),
+    ]);
+  });
+
   it('returns plugin health and recent event logs', async () => {
     pluginService.getPluginHealth.mockResolvedValue({
       status: 'degraded',

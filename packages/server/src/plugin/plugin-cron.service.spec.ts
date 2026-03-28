@@ -242,6 +242,40 @@ describe('PluginCronService', () => {
     });
   });
 
+  it('falls back to undefined when persisted cron data json is malformed', async () => {
+    const brokenJobRecord = createCronJobRecord({
+      id: 'cron-job-broken',
+      pluginName: 'builtin.cron-heartbeat',
+      name: 'broken-data',
+      cron: '15m',
+      description: '损坏的 cron data',
+      source: 'host',
+      dataJson: '{not-json',
+    });
+
+    prisma.pluginCronJob.findMany.mockResolvedValue([brokenJobRecord]);
+
+    await expect(
+      service.listCronJobs('builtin.cron-heartbeat'),
+    ).resolves.toEqual([
+      {
+        id: 'cron-job-broken',
+        pluginId: 'builtin.cron-heartbeat',
+        name: 'broken-data',
+        cron: '15m',
+        description: '损坏的 cron data',
+        source: 'host',
+        enabled: true,
+        data: undefined,
+        lastRunAt: null,
+        lastError: null,
+        lastErrorAt: null,
+        createdAt: '2026-03-27T13:00:00.000Z',
+        updatedAt: '2026-03-27T13:00:00.000Z',
+      },
+    ]);
+  });
+
   it('records failures when cron:tick execution throws', async () => {
     const jobRecord = createCronJobRecord({
       id: 'cron-job-3',

@@ -126,6 +126,10 @@ describe('PluginGateway', () => {
         limit: 3,
       },
     };
+    (gateway as any).activeRequestContexts.set('runtime-request-1', {
+      ws,
+      context: payload.context,
+    });
 
     pluginRuntime.callHost.mockResolvedValue([
       {
@@ -170,6 +174,92 @@ describe('PluginGateway', () => {
           },
         ],
       },
+    });
+  });
+
+  it('rejects remote host api calls that forge execution-scoped context', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+      authenticated: true,
+      manifest: remoteManifest,
+    };
+
+    await (gateway as any).handleMessage(
+      ws,
+      conn,
+      {
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_CALL,
+        requestId: 'request-2',
+        payload: {
+          method: 'memory.search',
+          context: {
+            source: 'chat-tool',
+            userId: 'user-9',
+            conversationId: 'conversation-9',
+          },
+          params: {
+            query: '越权读取',
+          },
+        } satisfies HostCallPayload,
+      },
+    );
+
+    expect(pluginRuntime.callHost).not.toHaveBeenCalled();
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}')).toEqual({
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.HOST_ERROR,
+      requestId: 'request-2',
+      payload: {
+        error: 'Host API memory.search 缺少已授权的调用上下文',
+      },
+    });
+  });
+
+  it('allows connection-scoped host api calls without trusting plugin-supplied user context', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+      authenticated: true,
+      manifest: remoteManifest,
+    };
+
+    pluginRuntime.callHost.mockResolvedValue({
+      id: 'remote.pc-host',
+      name: 'PC Host',
+    });
+
+    await (gateway as any).handleMessage(
+      ws,
+      conn,
+      {
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_CALL,
+        requestId: 'request-3',
+        payload: {
+          method: 'plugin.self.get',
+          context: {
+            source: 'chat-tool',
+            userId: 'forged-user',
+            conversationId: 'forged-conversation',
+          },
+          params: {},
+        } satisfies HostCallPayload,
+      },
+    );
+
+    expect(pluginRuntime.callHost).toHaveBeenCalledWith({
+      pluginId: 'remote.pc-host',
+      context: {
+        source: 'plugin',
+      },
+      method: 'plugin.self.get',
+      params: {},
     });
   });
 
@@ -421,6 +511,127 @@ describe('PluginGateway', () => {
     ).resolves.toBeUndefined();
 
     expect(ws.close).toHaveBeenCalled();
+  });
+
+  it('replaces older authenticated connections with the same plugin name without unregistering the new one', async () => {
+    const oldSocket = createSocketStub();
+    const newSocket = createSocketStub();
+    const oldConnection = {
+      ws: oldSocket,
+      pluginName: '',
+      deviceType: '',
+      authenticated: false,
+      manifest: null,
+      lastHeartbeatAt: 0,
+    };
+    const newConnection = {
+      ws: newSocket,
+      pluginName: '',
+      deviceType: '',
+      authenticated: false,
+      manifest: null,
+      lastHeartbeatAt: 0,
+    };
+    jwtService.verify.mockReturnValue({
+      sub: 'plugin-token',
+      role: 'admin',
+    });
+
+    await (gateway as any).handleAuth(oldSocket, oldConnection, {
+      token: 'token-1',
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+    });
+    await (gateway as any).handleAuth(newSocket, newConnection, {
+      token: 'token-2',
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+    });
+
+    expect(oldSocket.close).toHaveBeenCalled();
+    expect((gateway as any).connectionByPluginId.get('remote.pc-host')).toBe(newConnection);
+
+    await (gateway as any).handleDisconnect(oldConnection);
+
+    expect(pluginRuntime.unregisterPlugin).not.toHaveBeenCalled();
+    expect((gateway as any).connectionByPluginId.get('remote.pc-host')).toBe(newConnection);
+  });
+
+  it('rejects websocket authentication for non-admin tokens', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: '',
+      deviceType: '',
+      authenticated: false,
+      manifest: null,
+      lastHeartbeatAt: 0,
+    };
+    jwtService.verify.mockReturnValue({
+      sub: 'user-1',
+      role: 'user',
+    });
+
+    await (gateway as any).handleAuth(ws, conn, {
+      token: 'token-user',
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+    });
+
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: WS_TYPE.AUTH,
+        action: WS_ACTION.AUTH_FAIL,
+        payload: {
+          error: '只有管理员可以接入远程插件',
+        },
+      }),
+    );
+    expect(ws.close).toHaveBeenCalled();
+    expect(conn.authenticated).toBe(false);
+  });
+
+  it('rejects pending remote requests immediately when the websocket disconnects', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+      authenticated: true,
+      manifest: remoteManifest,
+      lastHeartbeatAt: Date.now(),
+    };
+
+    await (gateway as any).handleMessage(
+      ws,
+      conn,
+      {
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.REGISTER,
+        payload: {
+          manifest: remoteManifest,
+        } satisfies RegisterPayload,
+      },
+    );
+
+    const registerCall = pluginRuntime.registerPlugin.mock.calls[0]?.[0];
+    const resultPromise = registerCall.transport.executeTool({
+      toolName: 'list_directory',
+      params: {
+        dirPath: 'C:\\\\',
+      },
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+    });
+
+    await (gateway as any).handleDisconnect(conn);
+
+    await expect(resultPromise).rejects.toThrow('插件连接已断开');
+    expect((gateway as any).pendingRequests.size).toBe(0);
+    expect((gateway as any).activeRequestContexts.size).toBe(0);
   });
 
   it('performs a remote health check by pinging the websocket', async () => {

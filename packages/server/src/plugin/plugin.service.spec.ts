@@ -667,6 +667,63 @@ describe('PluginService', () => {
       },
     });
   });
+
+  it('falls back to safe defaults when persisted plugin json is malformed', async () => {
+    prisma.plugin.findUnique.mockResolvedValue(
+      createPluginRecord({
+        name: 'builtin.broken-json',
+        permissions: '{not-json',
+        hooks: '{not-json',
+        routes: '{not-json',
+        configSchema: '{not-json',
+        config: '{not-json',
+        conversationScopes: '{not-json',
+      }),
+    );
+    prisma.pluginStorage.findUnique.mockResolvedValue(
+      createPluginStorageRecord({
+        pluginId: 'plugin-1',
+        key: 'broken.value',
+        valueJson: '{not-json',
+      }),
+    );
+    prisma.pluginStorage.findMany.mockResolvedValue([
+      createPluginStorageRecord({
+        pluginId: 'plugin-1',
+        key: 'broken.value',
+        valueJson: '{not-json',
+      }),
+    ]);
+
+    await expect(service.getPluginConfig('builtin.broken-json')).resolves.toEqual({
+      schema: null,
+      values: {},
+    });
+    await expect(service.getPluginScope('builtin.broken-json')).resolves.toEqual({
+      defaultEnabled: true,
+      conversations: {},
+    });
+    await expect(service.getPluginSelfInfo('builtin.broken-json')).resolves.toEqual({
+      id: 'builtin.broken-json',
+      name: 'builtin.broken-json',
+      runtimeKind: 'builtin',
+      version: '1.0.0',
+      permissions: [],
+      hooks: [],
+      routes: [],
+    });
+    await expect(
+      service.getPluginStorage('builtin.broken-json', 'broken.value'),
+    ).resolves.toBeNull();
+    await expect(
+      service.listPluginStorage('builtin.broken-json', 'broken.'),
+    ).resolves.toEqual([
+      {
+        key: 'broken.value',
+        value: null,
+      },
+    ]);
+  });
 });
 
 /**

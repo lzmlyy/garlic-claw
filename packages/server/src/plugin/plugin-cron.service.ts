@@ -532,7 +532,13 @@ export class PluginCronService implements OnModuleDestroy {
       return undefined;
     }
 
-    return JSON.parse(raw) as JsonValue;
+    try {
+      return JSON.parse(raw) as JsonValue;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`插件 cron data JSON 无效，已回退为空值: ${message}`);
+      return undefined;
+    }
   }
 
   /**

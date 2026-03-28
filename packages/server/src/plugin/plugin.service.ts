@@ -267,7 +267,11 @@ export class PluginService {
       return null;
     }
 
-    return JSON.parse(entry.valueJson) as JsonValue;
+    return this.parseStoredJsonValue(
+      entry.valueJson,
+      null,
+      `pluginStorage:${name}:${key}`,
+    );
   }
 
   /**
@@ -344,7 +348,11 @@ export class PluginService {
 
     return entries.map((entry) => ({
       key: entry.key,
-      value: JSON.parse(entry.valueJson) as JsonValue,
+      value: this.parseStoredJsonValue(
+        entry.valueJson,
+        null,
+        `pluginStorage:${name}:${entry.key}`,
+      ),
     }));
   }
 
@@ -675,7 +683,7 @@ export class PluginService {
       return null;
     }
 
-    return JSON.parse(raw) as PluginConfigSchema;
+    return this.safeParse(raw, null, 'plugin.configSchema');
   }
 
   /**
@@ -806,7 +814,7 @@ export class PluginService {
       return [];
     }
 
-    return JSON.parse(raw) as PluginManifest['permissions'];
+    return this.safeParse(raw, [], 'plugin.permissions');
   }
 
   /**
@@ -819,7 +827,7 @@ export class PluginService {
       return [];
     }
 
-    return JSON.parse(raw) as NonNullable<PluginManifest['hooks']>;
+    return this.safeParse(raw, [], 'plugin.hooks');
   }
 
   /**
@@ -832,7 +840,7 @@ export class PluginService {
       return [];
     }
 
-    return JSON.parse(raw) as PluginRouteDescriptor[];
+    return this.safeParse(raw, [], 'plugin.routes');
   }
 
   /**
@@ -845,7 +853,7 @@ export class PluginService {
       return {};
     }
 
-    const parsed = JSON.parse(raw) as JsonValue;
+    const parsed = this.parseStoredJsonValue(raw, {}, 'plugin.jsonObject');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return {};
     }
@@ -863,7 +871,7 @@ export class PluginService {
       return null;
     }
 
-    const parsed = JSON.parse(raw) as JsonValue;
+    const parsed = this.parseStoredJsonValue(raw, null, 'plugin.nullableJsonObject');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return null;
     }
@@ -1081,6 +1089,38 @@ export class PluginService {
     }
 
     return where;
+  }
+
+  /**
+   * 安全解析任意持久化 JSON 值，解析失败时记录告警并回退默认值。
+   * @param raw 原始 JSON 字符串
+   * @param fallback 回退值
+   * @param label 日志标签
+   * @returns 解析结果或回退值
+   */
+  private parseStoredJsonValue<T extends JsonValue | JsonObject | null>(
+    raw: string,
+    fallback: T,
+    label: string,
+  ): T {
+    return this.safeParse(raw, fallback, label);
+  }
+
+  /**
+   * 安全解析 JSON 并在失败时记录日志。
+   * @param raw 原始 JSON 字符串
+   * @param fallback 回退值
+   * @param label 日志标签
+   * @returns 解析结果或回退值
+   */
+  private safeParse<T>(raw: string, fallback: T, label: string): T {
+    try {
+      return JSON.parse(raw) as T;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`${label} JSON 无效，已回退默认值: ${message}`);
+      return fallback;
+    }
   }
 
   /**

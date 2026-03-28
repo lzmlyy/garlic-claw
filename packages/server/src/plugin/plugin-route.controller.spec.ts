@@ -18,6 +18,7 @@ describe('PluginRouteController', () => {
       status: 200,
       headers: {
         'x-plugin-route': 'ok',
+        'set-cookie': 'session=1',
       },
       body: {
         ok: true,
@@ -32,6 +33,7 @@ describe('PluginRouteController', () => {
       },
       headers: {
         authorization: 'Bearer token',
+        cookie: 'refreshToken=secret',
         'x-request-id': 'req-1',
       },
       body: undefined,
@@ -57,7 +59,6 @@ describe('PluginRouteController', () => {
         path: 'inspect/context',
         method: 'GET',
         headers: {
-          authorization: 'Bearer token',
           'x-request-id': 'req-1',
         },
         query: {
@@ -73,6 +74,7 @@ describe('PluginRouteController', () => {
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.setHeader).toHaveBeenCalledWith('x-plugin-route', 'ok');
+    expect(res.setHeader).not.toHaveBeenCalledWith('set-cookie', 'session=1');
   });
 });
 

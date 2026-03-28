@@ -6,6 +6,7 @@ import {
   type HookInvokePayload,
   type HookResultPayload,
   type HostCallPayload,
+  type PluginHostMethod,
   type HostResultPayload,
   type JsonValue,
   type PluginCallContext,
@@ -44,6 +45,34 @@ const HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
 const HEARTBEAT_TIMEOUT_MS = 90_000;
 
 /**
+ * 允许远程插件在无运行时上下文时直接调用的 Host API。
+ */
+const CONNECTION_SCOPED_HOST_METHODS = new Set<PluginHostMethod>([
+  'config.get',
+  'cron.delete',
+  'cron.list',
+  'cron.register',
+  'kb.get',
+  'kb.list',
+  'kb.search',
+  'log.write',
+  'persona.current.get',
+  'persona.get',
+  'persona.list',
+  'plugin.self.get',
+  'provider.current.get',
+  'provider.get',
+  'provider.list',
+  'provider.model.get',
+  'state.get',
+  'state.set',
+  'storage.delete',
+  'storage.get',
+  'storage.list',
+  'storage.set',
+]);
+
+/**
  * 远程插件连接状态。
  */
 interface PluginConnection {
@@ -71,6 +100,18 @@ interface PendingRequest {
   reject: (reason: Error) => void;
   /** 超时计时器。 */
   timer: ReturnType<typeof setTimeout>;
+  /** 请求所属的 WebSocket 连接。 */
+  ws: WebSocket;
+}
+
+/**
+ * 远程插件当前已获授权的运行时上下文。
+ */
+interface ActiveRequestContext {
+  /** 请求所属的 WebSocket 连接。 */
+  ws: WebSocket;
+  /** 由宿主发出的上下文快照。 */
+  context: PluginCallContext;
 }
 
 /**
@@ -113,6 +154,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private readonly connections = new Map<WebSocket, PluginConnection>();
   private readonly connectionByPluginId = new Map<string, PluginConnection>();
   private readonly pendingRequests = new Map<string, PendingRequest>();
+  private readonly activeRequestContexts = new Map<string, ActiveRequestContext>();
   private heartbeatInterval!: ReturnType<typeof setInterval>;
 
   constructor(
@@ -138,8 +180,9 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     clearInterval(this.heartbeatInterval);
-    for (const [, pending] of this.pendingRequests) {
+    for (const [requestId, pending] of this.pendingRequests) {
       clearTimeout(pending.timer);
+      this.activeRequestContexts.delete(requestId);
       pending.reject(new Error('服务器关闭'));
     }
     this.pendingRequests.clear();
@@ -434,16 +477,25 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     try {
       const secret = this.configService.get<string>('JWT_SECRET', 'fallback-secret');
-      this.jwtService.verify(payload.token, { secret });
+      const verified = this.jwtService.verify<{ role?: string }>(payload.token, { secret });
+      if (verified.role !== 'admin' && verified.role !== 'super_admin') {
+        throw new Error('只有管理员可以接入远程插件');
+      }
+      const previousConnection = this.connectionByPluginId.get(payload.pluginName);
       conn.authenticated = true;
       conn.pluginName = payload.pluginName;
       conn.deviceType = payload.deviceType;
       conn.lastHeartbeatAt = Date.now();
       this.connectionByPluginId.set(payload.pluginName, conn);
+      if (previousConnection && previousConnection.ws !== ws) {
+        this.logger.warn(`插件 "${payload.pluginName}" 已存在旧连接，当前将其替换`);
+        previousConnection.ws.close();
+      }
       this.send(ws, WS_TYPE.AUTH, WS_ACTION.AUTH_OK, {});
       this.logger.log(`Plugin "${payload.pluginName}" authenticated`);
-    } catch {
-      this.send(ws, WS_TYPE.AUTH, WS_ACTION.AUTH_FAIL, { error: 'Invalid token' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid token';
+      this.send(ws, WS_TYPE.AUTH, WS_ACTION.AUTH_FAIL, { error: message });
       ws.close();
     }
   }
@@ -492,9 +544,14 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
     const payload = msg.payload as HostCallPayload;
     try {
+      const context = this.resolveHostCallContext(
+        conn,
+        payload.method,
+        payload.context,
+      );
       const result = await this.pluginRuntime.callHost({
         pluginId: conn.pluginName,
-        context: payload.context ?? { source: 'plugin' },
+        context,
         method: payload.method,
         params: payload.params,
       });
@@ -512,7 +569,14 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
    */
   private async handleDisconnect(conn: PluginConnection): Promise<void> {
     this.connections.delete(conn.ws);
+    this.rejectPendingRequestsForSocket(conn.ws, new Error('插件连接已断开'));
     if (!conn.pluginName) {
+      return;
+    }
+
+    const activeConnection = this.connectionByPluginId.get(conn.pluginName);
+    if (activeConnection?.ws !== conn.ws) {
+      this.logger.log(`插件 "${conn.pluginName}" 的旧连接已断开`);
       return;
     }
 
@@ -595,13 +659,21 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     }
 
     const requestId = crypto.randomUUID();
+    const activeContext = extractPluginCallContext(payload);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(requestId);
+        this.activeRequestContexts.delete(requestId);
         reject(new Error(`插件请求超时: ${action}`));
       }, timeoutMs);
 
-      this.pendingRequests.set(requestId, { resolve, reject, timer });
+      this.pendingRequests.set(requestId, { resolve, reject, timer, ws });
+      if (activeContext) {
+        this.activeRequestContexts.set(requestId, {
+          ws,
+          context: clonePluginCallContext(activeContext),
+        });
+      }
       this.send(ws, type, action, payload, requestId);
     });
   }
@@ -688,6 +760,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
     clearTimeout(pending.timer);
     this.pendingRequests.delete(requestId);
+    this.activeRequestContexts.delete(requestId);
     pending.resolve(data);
   }
 
@@ -712,7 +785,80 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
     clearTimeout(pending.timer);
     this.pendingRequests.delete(requestId);
+    this.activeRequestContexts.delete(requestId);
     pending.reject(new Error(error));
+  }
+
+  /**
+   * 在连接断开时失败该连接下所有等待中的远程请求。
+   * @param ws 断开的 WebSocket 连接
+   * @param error 失败原因
+   */
+  private rejectPendingRequestsForSocket(ws: WebSocket, error: Error): void {
+    for (const [requestId, pending] of this.pendingRequests) {
+      if (pending.ws !== ws) {
+        continue;
+      }
+
+      clearTimeout(pending.timer);
+      this.pendingRequests.delete(requestId);
+      this.activeRequestContexts.delete(requestId);
+      pending.reject(error);
+    }
+  }
+
+  /**
+   * 归一化远程插件发起的 Host API 上下文，避免插件伪造任意 user/conversation。
+   * @param conn 当前远程插件连接
+   * @param method Host API 方法
+   * @param context 远程插件提交的上下文
+   * @returns 可安全传递给 runtime 的上下文
+   */
+  private resolveHostCallContext(
+    conn: PluginConnection,
+    method: PluginHostMethod,
+    context?: PluginCallContext,
+  ): PluginCallContext {
+    const approvedContext = this.findApprovedRequestContext(conn.ws, context);
+    if (approvedContext) {
+      return approvedContext;
+    }
+
+    if (CONNECTION_SCOPED_HOST_METHODS.has(method)) {
+      return {
+        source: 'plugin',
+      };
+    }
+
+    throw new Error(`Host API ${method} 缺少已授权的调用上下文`);
+  }
+
+  /**
+   * 查找当前连接已获授权的宿主调用上下文。
+   * @param ws 当前远程插件连接
+   * @param context 远程插件提交的上下文
+   * @returns 命中的宿主上下文；不存在时返回 null
+   */
+  private findApprovedRequestContext(
+    ws: WebSocket,
+    context?: PluginCallContext,
+  ): PluginCallContext | null {
+    if (!context) {
+      return null;
+    }
+
+    for (const active of this.activeRequestContexts.values()) {
+      if (active.ws !== ws) {
+        continue;
+      }
+      if (!sameAuthorizedContext(active.context, context)) {
+        continue;
+      }
+
+      return clonePluginCallContext(active.context);
+    }
+
+    return null;
   }
 
   /**
@@ -771,3 +917,68 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 }
 
 export { DeviceType } from '@garlic-claw/shared';
+
+/**
+ * 从远程请求负载中提取插件调用上下文。
+ * @param payload 任意协议负载
+ * @returns 上下文；不存在时返回 undefined
+ */
+function extractPluginCallContext(
+  payload: PluginGatewayPayload,
+): PluginCallContext | undefined {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return undefined;
+  }
+  if (!('context' in payload)) {
+    return undefined;
+  }
+
+  const context = (payload as { context?: unknown }).context;
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    return undefined;
+  }
+  if (typeof (context as { source?: unknown }).source !== 'string') {
+    return undefined;
+  }
+
+  return context as PluginCallContext;
+}
+
+/**
+ * 比较两个上下文是否拥有相同的授权边界。
+ * @param left 宿主下发的上下文
+ * @param right 远程插件回传的上下文
+ * @returns 是否属于同一授权上下文
+ */
+function sameAuthorizedContext(
+  left: PluginCallContext,
+  right: PluginCallContext,
+): boolean {
+  return left.source === right.source
+    && left.userId === right.userId
+    && left.conversationId === right.conversationId
+    && left.automationId === right.automationId
+    && left.cronJobId === right.cronJobId
+    && left.activeProviderId === right.activeProviderId
+    && left.activeModelId === right.activeModelId
+    && left.activePersonaId === right.activePersonaId;
+}
+
+/**
+ * 复制插件调用上下文，避免共享可变对象。
+ * @param context 原始上下文
+ * @returns 新的上下文副本
+ */
+function clonePluginCallContext(context: PluginCallContext): PluginCallContext {
+  return {
+    source: context.source,
+    ...(context.userId ? { userId: context.userId } : {}),
+    ...(context.conversationId ? { conversationId: context.conversationId } : {}),
+    ...(context.automationId ? { automationId: context.automationId } : {}),
+    ...(context.cronJobId ? { cronJobId: context.cronJobId } : {}),
+    ...(context.activeProviderId ? { activeProviderId: context.activeProviderId } : {}),
+    ...(context.activeModelId ? { activeModelId: context.activeModelId } : {}),
+    ...(context.activePersonaId ? { activePersonaId: context.activePersonaId } : {}),
+    ...(context.metadata ? { metadata: { ...context.metadata } } : {}),
+  };
+}

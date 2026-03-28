@@ -16,6 +16,18 @@ import { toJsonValue } from '../common/utils/json-value';
 import type { PluginCallContext, PluginRouteRequest } from '@garlic-claw/shared';
 import { PluginRuntimeService } from './plugin-runtime.service';
 
+const BLOCKED_PLUGIN_REQUEST_HEADERS = new Set([
+  'authorization',
+  'cookie',
+]);
+
+const BLOCKED_PLUGIN_RESPONSE_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'set-cookie',
+  'transfer-encoding',
+]);
+
 @ApiTags('Plugin Routes')
 @ApiBearerAuth()
 @Controller('plugin-routes')
@@ -55,6 +67,9 @@ export class PluginRouteController {
 
     res.status(result.status);
     for (const [header, value] of Object.entries(result.headers ?? {})) {
+      if (isBlockedPluginResponseHeader(header)) {
+        continue;
+      }
       res.setHeader(header, value);
     }
 
@@ -128,6 +143,9 @@ function readConversationId(
 function normalizeHeaders(headers: Request['headers']): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
+    if (isBlockedPluginRequestHeader(key)) {
+      continue;
+    }
     if (typeof value === 'string') {
       result[key] = value;
       continue;
@@ -151,4 +169,22 @@ function normalizeRequestBody(body: unknown): JsonValue | null {
   }
 
   return toJsonValue(body);
+}
+
+/**
+ * 判断一个请求头是否不应转发给插件。
+ * @param header 请求头名
+ * @returns 是否应当屏蔽
+ */
+function isBlockedPluginRequestHeader(header: string): boolean {
+  return BLOCKED_PLUGIN_REQUEST_HEADERS.has(header.toLowerCase());
+}
+
+/**
+ * 判断一个插件返回头是否不应直接写回客户端。
+ * @param header 响应头名
+ * @returns 是否应当屏蔽
+ */
+function isBlockedPluginResponseHeader(header: string): boolean {
+  return BLOCKED_PLUGIN_RESPONSE_HEADERS.has(header.toLowerCase());
 }
