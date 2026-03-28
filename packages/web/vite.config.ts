@@ -3,6 +3,10 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [vue()],
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.spec.ts'],
+  },
   server: {
     port: 23333,
     proxy: {
