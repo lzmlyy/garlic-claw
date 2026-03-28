@@ -158,6 +158,9 @@ function buildConfigPayload(
 
     const raw = (stringDraft[field.key] ?? '').trim()
     if (!raw) {
+      if (field.required) {
+        throw new Error(`${field.key} 为必填项`)
+      }
       continue
     }
 
