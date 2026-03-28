@@ -58,6 +58,15 @@ export function getPluginCrons(name: string) {
   return request<PluginCronJobSummary[]>(`/plugins/${encodeURIComponent(name)}/crons`)
 }
 
+export function deletePluginCron(name: string, jobId: string) {
+  return request<boolean>(
+    `/plugins/${encodeURIComponent(name)}/crons/${encodeURIComponent(jobId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
+}
+
 export function listPluginStorage(name: string, prefix?: string) {
   const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
   return request<PluginStorageEntry[]>(

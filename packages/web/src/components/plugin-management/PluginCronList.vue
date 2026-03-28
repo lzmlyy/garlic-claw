@@ -19,6 +19,16 @@
           <div class="cron-meta">
             <span class="cron-source">{{ job.source }}</span>
             <span class="cron-pill">{{ job.cron }}</span>
+            <button
+              v-if="job.source === 'host'"
+              type="button"
+              class="cron-action danger-button"
+              data-test="cron-delete-button"
+              :disabled="deletingJobId === job.id"
+              @click="$emit('delete', job.id)"
+            >
+              {{ deletingJobId === job.id ? '删除中...' : '删除' }}
+            </button>
           </div>
         </div>
         <p class="cron-description">{{ job.description ?? '未提供额外说明。' }}</p>
@@ -37,6 +47,11 @@ import type { PluginCronJobSummary } from '@garlic-claw/shared'
 
 defineProps<{
   jobs: PluginCronJobSummary[]
+  deletingJobId: string | null
+}>()
+
+defineEmits<{
+  (event: 'delete', jobId: string): void
 }>()
 
 /**
@@ -110,7 +125,8 @@ function formatTime(value: string | null): string {
 }
 
 .cron-source,
-.cron-pill {
+.cron-pill,
+.cron-action {
   display: inline-flex;
   align-items: center;
   padding: 0.2rem 0.5rem;
@@ -127,6 +143,16 @@ function formatTime(value: string | null): string {
   background: rgba(124, 106, 246, 0.16);
   color: var(--accent-hover);
   font-family: 'JetBrains Mono', monospace;
+}
+
+.cron-action {
+  border: 1px solid rgba(224, 85, 85, 0.24);
+  background: rgba(224, 85, 85, 0.08);
+  cursor: pointer;
+}
+
+.danger-button {
+  color: var(--danger);
 }
 
 .cron-status {

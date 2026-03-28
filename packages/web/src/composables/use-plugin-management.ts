@@ -28,6 +28,7 @@ export function usePluginManagement() {
   const savingStorage = ref(false)
   const savingScope = ref(false)
   const runningAction = ref<PluginActionName | null>(null)
+  const deletingCronJobId = ref<string | null>(null)
   const deletingStorageKey = ref<string | null>(null)
   const deleting = ref(false)
   const error = ref<string | null>(null)
@@ -230,6 +231,32 @@ export function usePluginManagement() {
   }
 
   /**
+   * 删除一个 host 来源的 cron job。
+   * @param jobId 待删除 job ID
+   */
+  async function deleteCronJob(jobId: string) {
+    if (!selectedPlugin.value) {
+      return
+    }
+    if (!window.confirm(`确认删除 cron job ${jobId} 吗？`)) {
+      return
+    }
+
+    deletingCronJobId.value = jobId
+    error.value = null
+    notice.value = null
+    try {
+      await api.deletePluginCron(selectedPlugin.value.name, jobId)
+      notice.value = 'Cron job 已删除'
+      await refreshSelectedDetails(selectedPlugin.value.name)
+    } catch (caughtError) {
+      error.value = toErrorMessage(caughtError, '删除 cron job 失败')
+    } finally {
+      deletingCronJobId.value = null
+    }
+  }
+
+  /**
    * 保存当前插件作用域设置，并刷新列表与详情。
    * @param scope 新作用域设置
    */
@@ -333,6 +360,7 @@ export function usePluginManagement() {
     savingStorage,
     savingScope,
     runningAction,
+    deletingCronJobId,
     deletingStorageKey,
     deleting,
     error,
@@ -351,6 +379,7 @@ export function usePluginManagement() {
     selectPlugin,
     refreshSelectedDetails,
     refreshPluginStorage,
+    deleteCronJob,
     saveConfig,
     saveStorageEntry,
     saveScope,

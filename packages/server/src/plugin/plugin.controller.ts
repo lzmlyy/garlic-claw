@@ -191,6 +191,16 @@ export class PluginController {
     return this.pluginCronService.listCronJobs(name);
   }
 
+  @Delete(':name/crons/:jobId')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
+  deletePluginCron(
+    @Param('name') name: string,
+    @Param('jobId') jobId: string,
+  ): Promise<boolean> {
+    return this.pluginCronService.deleteCron(name, jobId);
+  }
+
   @Put(':name/scopes')
   @UseGuards(RolesGuard)
   @Roles('admin', 'super_admin')

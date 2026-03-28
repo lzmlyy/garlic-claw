@@ -151,6 +151,8 @@
           <PluginCronList
             class="detail-span"
             :jobs="selectedCronJobs"
+            :deleting-job-id="deletingCronJobId"
+            @delete="deleteCronJob"
           />
           <PluginRouteList
             class="detail-span"
@@ -187,6 +189,7 @@ const {
   savingStorage,
   savingScope,
   runningAction,
+  deletingCronJobId,
   deletingStorageKey,
   deleting,
   error,
@@ -205,6 +208,7 @@ const {
   selectPlugin,
   refreshSelectedDetails,
   refreshPluginStorage,
+  deleteCronJob,
   saveConfig,
   saveStorageEntry,
   saveScope,

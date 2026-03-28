@@ -25,6 +25,7 @@ describe('PluginController', () => {
 
   const pluginCronService = {
     listCronJobs: jest.fn(),
+    deleteCron: jest.fn(),
   };
 
   const pluginAdmin = {
@@ -332,6 +333,19 @@ describe('PluginController', () => {
         createdAt: '2026-03-27T12:00:00.000Z',
       },
     ]);
+  });
+
+  it('deletes host cron jobs through the cron service', async () => {
+    pluginCronService.deleteCron.mockResolvedValue(true);
+
+    await expect(
+      (controller as any).deletePluginCron('builtin.cron-heartbeat', 'cron-job-2'),
+    ).resolves.toBe(true);
+
+    expect(pluginCronService.deleteCron).toHaveBeenCalledWith(
+      'builtin.cron-heartbeat',
+      'cron-job-2',
+    );
   });
 
   it('lists, writes, and deletes plugin storage entries through the plugin service', async () => {
