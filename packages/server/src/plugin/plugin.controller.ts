@@ -1,4 +1,5 @@
 import type {
+  PluginActionName,
   PluginActionResult,
   PluginCapability,
   PluginConfigSnapshot,
@@ -67,6 +68,8 @@ export class PluginController {
       version: runtimePlugins.get(p.name)?.manifest.version ?? p.version ?? undefined,
       permissions: runtimePlugins.get(p.name)?.manifest.permissions
         ?? parsePluginPermissions(p.permissions),
+      supportedActions: runtimePlugins.get(p.name)?.supportedActions
+        ?? resolvePersistedSupportedActions(),
       crons: await this.pluginCronService.listCronJobs(p.name),
       hooks: runtimePlugins.get(p.name)?.manifest.hooks ?? parsePluginHooks(p.hooks),
       routes: runtimePlugins.get(p.name)?.manifest.routes ?? parsePluginRoutes(p.routes),
@@ -251,4 +254,12 @@ function serializePluginHealth(
       ? plugin.lastCheckedAt.toISOString()
       : null,
   };
+}
+
+/**
+ * 为未接入当前 runtime 的插件记录提供保守治理动作回退。
+ * @returns 最小治理动作列表
+ */
+function resolvePersistedSupportedActions(): PluginActionName[] {
+  return ['health-check'];
 }

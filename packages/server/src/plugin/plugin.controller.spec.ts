@@ -155,6 +155,7 @@ describe('PluginController', () => {
         pluginId: 'builtin.memory-context',
         runtimeKind: 'builtin',
         deviceType: 'builtin',
+        supportedActions: ['health-check', 'reload'],
         manifest: {
           id: 'builtin.memory-context',
           name: 'Memory Context',
@@ -200,6 +201,7 @@ describe('PluginController', () => {
       name: 'builtin.memory-context',
       connected: true,
       runtimeKind: 'builtin',
+      supportedActions: ['health-check', 'reload'],
       version: '1.0.0',
       permissions: ['memory:read', 'config:read'],
       routes: [
@@ -223,6 +225,60 @@ describe('PluginController', () => {
     expect(pluginCronService.listCronJobs).toHaveBeenCalledWith(
       'builtin.memory-context',
     );
+  });
+
+  it('returns runtime-declared governance actions instead of letting the client guess by runtime kind', async () => {
+    pluginService.findAll.mockResolvedValue([
+      {
+        id: 'plugin-2',
+        name: 'remote.pc-host',
+        displayName: 'Remote PC Host',
+        description: '远程 PC 插件',
+        deviceType: 'pc',
+        runtimeKind: 'remote',
+        status: 'online',
+        capabilities: '[]',
+        permissions: '[]',
+        hooks: '[]',
+        routes: '[]',
+        version: '1.0.0',
+        healthStatus: 'healthy',
+        failureCount: 0,
+        consecutiveFailures: 0,
+        lastError: null,
+        lastErrorAt: null,
+        lastSuccessAt: null,
+        lastCheckedAt: null,
+        lastSeenAt: new Date('2026-03-27T12:10:00.000Z'),
+        createdAt: new Date('2026-03-27T12:10:00.000Z'),
+        updatedAt: new Date('2026-03-27T12:10:00.000Z'),
+      },
+    ]);
+    pluginRuntime.listPlugins.mockReturnValue([
+      {
+        pluginId: 'remote.pc-host',
+        runtimeKind: 'remote',
+        deviceType: 'pc',
+        supportedActions: ['health-check', 'reload', 'reconnect'],
+        manifest: {
+          id: 'remote.pc-host',
+          name: 'Remote PC Host',
+          version: '1.0.0',
+          runtime: 'remote',
+          permissions: [],
+          tools: [],
+        },
+      },
+    ]);
+    pluginCronService.listCronJobs.mockResolvedValue([]);
+
+    const result = await controller.listPlugins();
+
+    expect(result[0]?.supportedActions).toEqual([
+      'health-check',
+      'reload',
+      'reconnect',
+    ]);
   });
 
   it('returns plugin health and recent event logs', async () => {

@@ -223,6 +223,7 @@ export interface PluginSelfInfo {
   crons?: PluginCronDescriptor[];
   hooks?: PluginHookDescriptor[];
   routes?: PluginRouteDescriptor[];
+  supportedActions?: PluginActionName[];
 }
 
 /** 插件治理动作执行结果。 */
@@ -607,6 +608,7 @@ export interface PluginInfo {
   runtimeKind?: PluginRuntimeKind;
   version?: string;
   permissions?: PluginPermission[];
+  supportedActions?: PluginActionName[];
   crons?: PluginCronJobSummary[];
   hooks?: PluginHookDescriptor[];
   routes?: PluginRouteDescriptor[];

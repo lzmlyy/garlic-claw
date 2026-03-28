@@ -19,6 +19,7 @@ import type {
   PluginRouteRequest,
   PluginRouteResponse,
   PluginRuntimeKind,
+  PluginSelfInfo,
   PluginSubagentRunResult,
   TriggerConfig,
 } from '@garlic-claw/shared';
@@ -86,6 +87,15 @@ const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | nu
 };
 
 /**
+ * 插件治理动作展示顺序。
+ */
+const PLUGIN_ACTION_ORDER: PluginActionName[] = [
+  'health-check',
+  'reload',
+  'reconnect',
+];
+
+/**
  * 插件传输适配器接口。
  *
  * 输入:
@@ -151,6 +161,12 @@ export interface PluginTransport {
    * @returns 健康检查结果
    */
   checkHealth?(): Promise<{ ok: boolean }> | { ok: boolean };
+
+  /**
+   * 声明当前 transport 支持的治理动作。
+   * @returns 动作列表
+   */
+  listSupportedActions?(): PluginActionName[];
 }
 
 /**
@@ -329,12 +345,14 @@ export class PluginRuntimeService {
     runtimeKind: PluginRuntimeKind;
     deviceType: string;
     manifest: PluginManifest;
+    supportedActions: PluginActionName[];
   }> {
     return [...this.records.entries()].map(([pluginId, record]) => ({
       pluginId,
       runtimeKind: record.runtimeKind,
       deviceType: record.deviceType,
       manifest: record.manifest,
+      supportedActions: this.listSupportedActionsForRecord(record),
     }));
   }
 
@@ -537,6 +555,10 @@ export class PluginRuntimeService {
     method: HostCallPayload['method'];
     params: JsonObject;
   }): Promise<JsonValue> {
+    if (input.method === 'plugin.self.get') {
+      return toJsonValue(await this.buildPluginSelfInfo(input.pluginId));
+    }
+
     const record = this.getRecordOrThrow(input.pluginId);
     const requiredPermission = HOST_METHOD_PERMISSION_MAP[input.method];
     if (requiredPermission && !record.manifest.permissions.includes(requiredPermission)) {
@@ -607,6 +629,20 @@ export class PluginRuntimeService {
     }
 
     return this.hostService.call(input);
+  }
+
+  /**
+   * 读取某个插件当前声明的治理动作。
+   * @param pluginId 插件 ID
+   * @returns 归一化后的治理动作列表
+   */
+  listSupportedActions(pluginId: string): PluginActionName[] {
+    const record = this.records.get(pluginId);
+    if (!record) {
+      return ['health-check'];
+    }
+
+    return this.listSupportedActionsForRecord(record);
   }
 
   /**
@@ -742,6 +778,39 @@ export class PluginRuntimeService {
     }
 
     return record;
+  }
+
+  /**
+   * 构造插件自省信息，优先读取 runtime 中的实时声明。
+   * @param pluginId 插件 ID
+   * @returns 可返回给插件自身的摘要
+   */
+  private async buildPluginSelfInfo(pluginId: string): Promise<PluginSelfInfo> {
+    const record = this.records.get(pluginId);
+    if (!record) {
+      const plugin = await this.pluginService.getPluginSelfInfo(pluginId);
+      return {
+        ...plugin,
+        supportedActions: ['health-check'],
+      };
+    }
+
+    return {
+      id: record.manifest.id,
+      name: record.manifest.name,
+      runtimeKind: record.runtimeKind,
+      permissions: [...record.manifest.permissions],
+      hooks: [...(record.manifest.hooks ?? [])],
+      routes: [...(record.manifest.routes ?? [])],
+      supportedActions: this.listSupportedActionsForRecord(record),
+      ...(record.manifest.version ? { version: record.manifest.version } : {}),
+      ...(record.manifest.description
+        ? { description: record.manifest.description }
+        : {}),
+      ...(record.manifest.crons
+        ? { crons: [...record.manifest.crons] }
+        : {}),
+    };
   }
 
   /**
@@ -1645,6 +1714,20 @@ export class PluginRuntimeService {
           reject(error);
         });
     });
+  }
+
+  /**
+   * 读取单个插件记录当前声明的治理动作。
+   * @param record 运行时插件记录
+   * @returns 归一化后的治理动作列表
+   */
+  private listSupportedActionsForRecord(
+    record: PluginRuntimeRecord,
+  ): PluginActionName[] {
+    const actions = record.transport.listSupportedActions?.() ?? ['health-check'];
+    const actionSet = new Set<PluginActionName>(actions);
+
+    return PLUGIN_ACTION_ORDER.filter((action) => actionSet.has(action));
   }
 }
 

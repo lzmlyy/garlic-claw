@@ -5,6 +5,7 @@ import type {
   ChatBeforeModelHookPayload,
   ChatBeforeModelHookResult,
   HostCallPayload,
+  PluginActionName,
   PluginCallContext,
   PluginKbEntryDetail,
   PluginKbEntrySummary,
@@ -510,6 +511,22 @@ export class BuiltinPluginTransport implements PluginTransport {
     }
 
     return this.governance.checkHealth();
+  }
+
+  /**
+   * 返回当前内建插件真实支持的治理动作。
+   * @returns 治理动作列表
+   */
+  listSupportedActions(): PluginActionName[] {
+    const actions: PluginActionName[] = ['health-check'];
+    if (this.governance?.reload) {
+      actions.push('reload');
+    }
+    if (this.governance?.reconnect) {
+      actions.push('reconnect');
+    }
+
+    return actions;
   }
 
   /**

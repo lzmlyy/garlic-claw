@@ -141,6 +141,7 @@ describe('PluginRuntimeService', () => {
     reload?: jest.Mock;
     reconnect?: jest.Mock;
     checkHealth?: jest.Mock;
+    listSupportedActions?: jest.Mock;
   }) {
     return {
       executeTool: jest.fn(),
@@ -173,6 +174,67 @@ describe('PluginRuntimeService', () => {
       'builtin.memory-tools',
       [],
     );
+  });
+
+  it('surfaces transport-declared governance actions in runtime plugin listings', async () => {
+    const listSupportedActions = jest.fn().mockReturnValue([
+      'health-check',
+      'reload',
+      'reconnect',
+    ]);
+
+    await service.registerPlugin({
+      manifest: builtinManifest,
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        listSupportedActions,
+      }),
+    });
+
+    expect(service.listPlugins()).toEqual([
+      expect.objectContaining({
+        pluginId: 'builtin.memory-tools',
+        supportedActions: ['health-check', 'reload', 'reconnect'],
+      }),
+    ]);
+  });
+
+  it('returns plugin self summaries with runtime-declared governance actions through plugin.self.get', async () => {
+    await service.registerPlugin({
+      manifest: builtinManifest,
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        listSupportedActions: jest.fn().mockReturnValue([
+          'health-check',
+          'reload',
+        ]),
+      }),
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.memory-tools',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'plugin.self.get' as never,
+        params: {},
+      }),
+    ).resolves.toEqual({
+      id: 'builtin.memory-tools',
+      name: 'Memory Tools',
+      runtimeKind: 'builtin',
+      version: '1.0.0',
+      permissions: ['memory:read', 'memory:write', 'state:read', 'state:write'],
+      hooks: [
+        {
+          name: 'chat:before-model',
+        },
+      ],
+      routes: [],
+      supportedActions: ['health-check', 'reload'],
+    });
   });
 
   it('syncs declared cron jobs on register and unregister', async () => {

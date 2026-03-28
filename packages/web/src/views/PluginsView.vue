@@ -38,30 +38,14 @@
               {{ detailLoading ? '同步中...' : '刷新详情' }}
             </button>
             <button
+              v-for="action in selectedPluginActions"
+              :key="action.name"
               type="button"
               class="ghost-button"
               :disabled="runningAction !== null"
-              @click="runAction('health-check')"
+              @click="runAction(action.name)"
             >
-              {{ runningAction === 'health-check' ? '检查中...' : '健康检查' }}
-            </button>
-            <button
-              v-if="selectedPlugin.runtimeKind === 'builtin'"
-              type="button"
-              class="ghost-button"
-              :disabled="runningAction !== null"
-              @click="runAction('reload')"
-            >
-              {{ runningAction === 'reload' ? '重载中...' : '重载插件' }}
-            </button>
-            <button
-              v-if="selectedPlugin.runtimeKind === 'remote'"
-              type="button"
-              class="ghost-button"
-              :disabled="runningAction !== null"
-              @click="runAction('reconnect')"
-            >
-              {{ runningAction === 'reconnect' ? '重连中...' : '请求重连' }}
+              {{ runningAction === action.name ? action.pendingLabel : action.label }}
             </button>
             <button
               type="button"
@@ -175,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import type { PluginHealthSnapshot, PluginInfo } from '@garlic-claw/shared'
+import type { PluginActionName, PluginHealthSnapshot, PluginInfo } from '@garlic-claw/shared'
 import { computed } from 'vue'
 import PluginConfigForm from '../components/plugin-management/PluginConfigForm.vue'
 import PluginCronList from '../components/plugin-management/PluginCronList.vue'
@@ -215,9 +199,30 @@ const {
 const selectedPluginHighlights = computed(() =>
   selectedPlugin.value ? pluginHighlights(selectedPlugin.value) : [],
 )
+const selectedPluginActions = computed(() =>
+  selectedPlugin.value ? pluginActions(selectedPlugin.value) : [],
+)
 const selectedCronJobs = computed(() =>
   cronJobs.value.length > 0 ? cronJobs.value : selectedPlugin.value?.crons ?? [],
 )
+
+const ACTION_LABELS: Record<PluginActionName, {
+  label: string
+  pendingLabel: string
+}> = {
+  'health-check': {
+    label: '健康检查',
+    pendingLabel: '检查中...',
+  },
+  reload: {
+    label: '重载插件',
+    pendingLabel: '重载中...',
+  },
+  reconnect: {
+    label: '请求重连',
+    pendingLabel: '重连中...',
+  },
+}
 
 /**
  * 把 ISO 时间转成人类可读文案。
@@ -298,6 +303,25 @@ function pluginHighlights(plugin: PluginInfo): string[] {
   }
 
   return highlights
+}
+
+/**
+ * 把插件声明的治理动作映射成页面按钮配置。
+ * @param plugin 当前插件
+ * @returns 动作按钮列表
+ */
+function pluginActions(plugin: PluginInfo): Array<{
+  name: PluginActionName
+  label: string
+  pendingLabel: string
+}> {
+  const supportedActions = plugin.supportedActions ?? ['health-check']
+
+  return supportedActions.map((action) => ({
+    name: action,
+    label: ACTION_LABELS[action].label,
+    pendingLabel: ACTION_LABELS[action].pendingLabel,
+  }))
 }
 </script>
 

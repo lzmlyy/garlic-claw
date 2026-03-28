@@ -10,6 +10,7 @@ describe('PluginAdminService', () => {
   const pluginRuntime = {
     runPluginAction: jest.fn(),
     checkPluginHealth: jest.fn(),
+    listSupportedActions: jest.fn(),
   };
 
   let service: PluginAdminService;
@@ -27,6 +28,10 @@ describe('PluginAdminService', () => {
       name: 'builtin.memory-context',
       runtimeKind: 'builtin',
     });
+    pluginRuntime.listSupportedActions.mockReturnValue([
+      'health-check',
+      'reload',
+    ]);
     pluginRuntime.runPluginAction.mockResolvedValue(undefined);
 
     await expect(
@@ -56,6 +61,11 @@ describe('PluginAdminService', () => {
       name: 'remote.pc-host',
       runtimeKind: 'remote',
     });
+    pluginRuntime.listSupportedActions.mockReturnValue([
+      'health-check',
+      'reload',
+      'reconnect',
+    ]);
     pluginRuntime.runPluginAction.mockResolvedValue(undefined);
 
     await expect(
@@ -85,6 +95,11 @@ describe('PluginAdminService', () => {
       name: 'remote.pc-host',
       runtimeKind: 'remote',
     });
+    pluginRuntime.listSupportedActions.mockReturnValue([
+      'health-check',
+      'reload',
+      'reconnect',
+    ]);
     pluginRuntime.checkPluginHealth.mockResolvedValue({
       ok: false,
     });
@@ -108,15 +123,19 @@ describe('PluginAdminService', () => {
     );
   });
 
-  it('still rejects reconnect for builtin plugins before dispatching runtime actions', async () => {
+  it('rejects reconnect when the runtime-declared action set does not include it', async () => {
     pluginService.findByName.mockResolvedValue({
-      name: 'builtin.memory-context',
-      runtimeKind: 'builtin',
+      name: 'remote.pc-host',
+      runtimeKind: 'remote',
     });
+    pluginRuntime.listSupportedActions.mockReturnValue([
+      'health-check',
+      'reload',
+    ]);
 
     await expect(
-      service.runAction('builtin.memory-context', 'reconnect'),
-    ).rejects.toThrow('只有远程插件支持 reconnect');
+      service.runAction('remote.pc-host', 'reconnect'),
+    ).rejects.toThrow('插件 remote.pc-host 不支持治理动作 reconnect');
 
     expect(pluginRuntime.runPluginAction).not.toHaveBeenCalled();
   });

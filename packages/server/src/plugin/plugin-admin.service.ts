@@ -44,6 +44,13 @@ export class PluginAdminService {
       throw new NotFoundException(`Plugin not found: ${pluginId}`);
     }
 
+    const supportedActions = this.pluginRuntime.listSupportedActions(pluginId);
+    if (!supportedActions.includes(action)) {
+      throw new BadRequestException(
+        `插件 ${pluginId} 不支持治理动作 ${action}`,
+      );
+    }
+
     switch (action) {
       case 'reload':
         await this.pluginRuntime.runPluginAction({
@@ -69,10 +76,6 @@ export class PluginAdminService {
         return this.createAcceptedResult(pluginId, action, '已触发远程插件重连');
 
       case 'reconnect':
-        if (plugin.runtimeKind !== 'remote') {
-          throw new BadRequestException('只有远程插件支持 reconnect');
-        }
-
         await this.pluginRuntime.runPluginAction({
           pluginId,
           action: 'reconnect',

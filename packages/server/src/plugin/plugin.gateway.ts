@@ -550,6 +550,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
       reload: () => this.disconnectPlugin(conn.pluginName),
       reconnect: () => this.disconnectPlugin(conn.pluginName),
       checkHealth: () => this.checkPluginHealth(conn.pluginName),
+      listSupportedActions: () => ['health-check', 'reload', 'reconnect'],
     };
   }
 

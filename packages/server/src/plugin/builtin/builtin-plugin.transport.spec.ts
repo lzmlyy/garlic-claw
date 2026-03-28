@@ -24,6 +24,21 @@ describe('BuiltinPluginTransport', () => {
     jest.clearAllMocks();
   });
 
+  it('reports builtin governance actions from declared handlers instead of exposing all transport methods', () => {
+    const transport = new BuiltinPluginTransport(
+      createMemoryToolsPlugin(),
+      hostService as never,
+      {
+        reload: jest.fn(),
+      },
+    );
+
+    expect(transport.listSupportedActions()).toEqual([
+      'health-check',
+      'reload',
+    ]);
+  });
+
   it('executes memory tools through the unified host api facade', async () => {
     hostService.call
       .mockResolvedValueOnce({

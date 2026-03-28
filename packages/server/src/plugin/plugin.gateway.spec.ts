@@ -96,6 +96,13 @@ describe('PluginGateway', () => {
         payload: {},
       }),
     );
+    expect(
+      pluginRuntime.registerPlugin.mock.calls[0]?.[0].transport.listSupportedActions(),
+    ).toEqual([
+      'health-check',
+      'reload',
+      'reconnect',
+    ]);
   });
 
   it('handles host api calls from remote plugins and returns the result over websocket', async () => {
