@@ -51,4 +51,44 @@ describe('PluginCronList', () => {
       ['cron-host-1'],
     ])
   })
+
+  it('renders more accurate cron status text and last error time', () => {
+    const wrapper = mount(PluginCronList, {
+      props: {
+        jobs: [
+          {
+            id: 'cron-host-2',
+            pluginId: 'builtin.cron-heartbeat',
+            name: 'failing cleanup',
+            cron: '30m',
+            source: 'host',
+            enabled: true,
+            lastRunAt: null,
+            lastError: 'remote timeout',
+            lastErrorAt: '2026-03-28T08:00:00.000Z',
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+          {
+            id: 'cron-manifest-2',
+            pluginId: 'builtin.cron-heartbeat',
+            name: 'never-run heartbeat',
+            cron: '10s',
+            source: 'manifest',
+            enabled: true,
+            lastRunAt: null,
+            lastError: null,
+            lastErrorAt: null,
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+        ],
+        deletingJobId: null,
+      },
+    })
+
+    expect(wrapper.text()).toContain('状态：失败')
+    expect(wrapper.text()).toContain('最后错误时间')
+    expect(wrapper.text()).toContain('状态：未运行')
+  })
 })

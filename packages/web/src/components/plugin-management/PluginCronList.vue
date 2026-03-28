@@ -34,9 +34,12 @@
         <p class="cron-description">{{ job.description ?? '未提供额外说明。' }}</p>
         <div class="cron-status">
           <span>最近执行：{{ formatTime(job.lastRunAt) }}</span>
-          <span>状态：{{ job.lastError ? '失败' : '正常' }}</span>
+          <span>状态：{{ cronStatusLabel(job) }}</span>
         </div>
         <p v-if="job.lastError" class="cron-error">{{ job.lastError }}</p>
+        <p v-if="job.lastErrorAt" class="cron-error-time">
+          最后错误时间：{{ formatTime(job.lastErrorAt) }}
+        </p>
       </li>
     </ul>
   </section>
@@ -65,6 +68,22 @@ function formatTime(value: string | null): string {
   }
 
   return new Date(value).toLocaleString()
+}
+
+/**
+ * 生成 cron job 的更准确运行状态文案。
+ * @param job cron job 摘要
+ * @returns 状态文本
+ */
+function cronStatusLabel(job: PluginCronJobSummary): string {
+  if (job.lastError) {
+    return '失败'
+  }
+  if (job.lastRunAt) {
+    return '正常'
+  }
+
+  return '未运行'
 }
 </script>
 
@@ -164,6 +183,11 @@ function formatTime(value: string | null): string {
 .cron-error {
   color: #ffd5d5;
   font-size: 0.84rem;
+}
+
+.cron-error-time {
+  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 
 @media (max-width: 720px) {
