@@ -8,6 +8,7 @@
       <button
         type="button"
         class="ghost-button"
+        data-test="scope-save-button"
         :disabled="saving || !scope"
         @click="submit"
       >
@@ -15,6 +16,7 @@
       </button>
     </div>
 
+    <p v-if="formError" class="section-error">{{ formError }}</p>
     <p v-if="!scope" class="section-empty">当前还没有可编辑的作用域数据。</p>
 
     <template v-else>
@@ -26,7 +28,14 @@
       <div class="scope-list">
         <div class="scope-list-header">
           <strong>会话覆盖</strong>
-          <button type="button" class="ghost-button" @click="addConversationRow">新增会话</button>
+          <button
+            type="button"
+            class="ghost-button"
+            data-test="scope-add-row-button"
+            @click="addConversationRow"
+          >
+            新增会话
+          </button>
         </div>
 
         <div v-if="rows.length === 0" class="section-empty">
@@ -73,10 +82,12 @@ const emit = defineEmits<{
 
 const defaultEnabled = ref(true)
 const rows = ref<ScopeRow[]>([])
+const formError = ref<string | null>(null)
 
 watch(
   () => props.scope,
   (scope) => {
+    formError.value = null
     defaultEnabled.value = scope?.defaultEnabled ?? true
     rows.value = Object.entries(scope?.conversations ?? {}).map(
       ([conversationId, enabled]) => ({
@@ -92,6 +103,7 @@ watch(
  * 新增一个空的会话覆盖行。
  */
 function addConversationRow() {
+  formError.value = null
   rows.value.push({
     conversationId: '',
     enabled: true,
@@ -103,6 +115,7 @@ function addConversationRow() {
  * @param index 行下标
  */
 function removeConversationRow(index: number) {
+  formError.value = null
   rows.value.splice(index, 1)
 }
 
@@ -110,19 +123,42 @@ function removeConversationRow(index: number) {
  * 把当前草稿提交为标准作用域对象。
  */
 function submit() {
+  try {
+    emit('save', {
+      defaultEnabled: defaultEnabled.value,
+      conversations: buildScopeConversations(rows.value),
+    })
+    formError.value = null
+  } catch (error) {
+    formError.value = error instanceof Error ? error.message : '作用域配置无效'
+  }
+}
+
+/**
+ * 将当前行草稿收敛为标准作用域覆盖对象。
+ * @param scopeRows 会话覆盖草稿
+ * @returns 标准 conversations 映射
+ */
+function buildScopeConversations(
+  scopeRows: ScopeRow[],
+): PluginScopeSettings['conversations'] {
   const conversations: PluginScopeSettings['conversations'] = {}
-  for (const row of rows.value) {
+  const seen = new Set<string>()
+
+  for (const row of scopeRows) {
     const conversationId = row.conversationId.trim()
     if (!conversationId) {
-      continue
+      throw new Error('conversation id 不能为空')
     }
+    if (seen.has(conversationId)) {
+      throw new Error('conversation id 不能重复')
+    }
+
+    seen.add(conversationId)
     conversations[conversationId] = row.enabled
   }
 
-  emit('save', {
-    defaultEnabled: defaultEnabled.value,
-    conversations,
-  })
+  return conversations
 }
 </script>
 
@@ -151,6 +187,11 @@ function submit() {
 .section-empty {
   color: var(--text-muted);
   font-size: 0.82rem;
+}
+
+.section-error {
+  color: var(--danger);
+  font-size: 0.85rem;
 }
 
 .ghost-button {
