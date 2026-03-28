@@ -174,7 +174,7 @@ function buildConfigPayload(
         break
       }
       case 'array': {
-        const parsed = JSON.parse(raw) as JsonValue
+        const parsed = parseStructuredField(field.key, raw, 'array')
         if (!Array.isArray(parsed)) {
           throw new Error(`${field.key} 必须是 JSON 数组`)
         }
@@ -182,7 +182,7 @@ function buildConfigPayload(
         break
       }
       case 'object': {
-        const parsed = JSON.parse(raw) as JsonValue
+        const parsed = parseStructuredField(field.key, raw, 'object')
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
           throw new Error(`${field.key} 必须是 JSON 对象`)
         }
@@ -196,6 +196,25 @@ function buildConfigPayload(
   }
 
   return result
+}
+
+/**
+ * 解析配置表单中的结构化 JSON 字段。
+ * @param key 字段名
+ * @param raw 原始输入文本
+ * @param expected 期望结构
+ * @returns 解析后的 JSON 值
+ */
+function parseStructuredField(
+  key: string,
+  raw: string,
+  expected: 'array' | 'object',
+): JsonValue {
+  try {
+    return JSON.parse(raw) as JsonValue
+  } catch {
+    throw new Error(`${key} 必须是有效 JSON ${expected === 'array' ? '数组' : '对象'}`)
+  }
 }
 </script>
 
