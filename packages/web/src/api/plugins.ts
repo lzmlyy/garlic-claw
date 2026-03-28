@@ -1,4 +1,4 @@
-import { request } from './base'
+import { request, requestWithMetadata } from './base'
 import type {
   JsonValue,
   PluginActionName,
@@ -125,7 +125,7 @@ export function invokePluginRoute(
     requestOptions.body = JSON.stringify(options.body)
   }
 
-  return request<JsonValue>(
+  return requestWithMetadata<JsonValue>(
     `/plugin-routes/${encodeURIComponent(pluginName)}/${normalizedPath}${querySuffix}`,
     requestOptions,
   )

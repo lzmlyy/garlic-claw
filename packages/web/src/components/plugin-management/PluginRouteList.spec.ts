@@ -13,8 +13,14 @@ vi.mock('../../api/plugins', () => ({
 describe('PluginRouteList', () => {
   it('invokes the selected plugin route and renders the JSON response', async () => {
     invokePluginRoute.mockResolvedValue({
-      ok: true,
-      route: 'inspect/context',
+      status: 201,
+      headers: {
+        'x-route-source': 'plugin',
+      },
+      body: {
+        ok: true,
+        route: 'inspect/context',
+      },
     })
 
     const wrapper = mount(PluginRouteList, {
@@ -41,7 +47,9 @@ describe('PluginRouteList', () => {
         query: '',
       },
     )
+    expect(wrapper.text()).toContain('HTTP 201')
     expect(wrapper.text()).toContain('"ok": true')
     expect(wrapper.text()).toContain('inspect/context')
+    expect(wrapper.text()).toContain('x-route-source')
   })
 })

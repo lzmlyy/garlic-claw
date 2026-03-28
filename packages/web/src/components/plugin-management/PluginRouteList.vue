@@ -82,6 +82,10 @@
       </div>
 
       <p v-if="responseError" class="tester-error">{{ responseError }}</p>
+      <div v-if="responseStatus !== null" class="tester-meta">
+        <strong>HTTP {{ responseStatus }}</strong>
+      </div>
+      <pre v-if="responseHeadersText" class="tester-headers">{{ responseHeadersText }}</pre>
       <pre v-if="responseText" class="tester-response">{{ responseText }}</pre>
     </div>
   </section>
@@ -102,6 +106,8 @@ const selectedMethod = ref<PluginRouteMethod>('GET')
 const queryText = ref('')
 const bodyText = ref('')
 const responseText = ref('')
+const responseStatus = ref<number | null>(null)
+const responseHeadersText = ref('')
 const responseError = ref<string | null>(null)
 const running = ref(false)
 
@@ -135,12 +141,16 @@ async function runSelectedRoute() {
   if (!selectedPath.value) {
     responseError.value = '当前没有可调用的 route'
     responseText.value = ''
+    responseStatus.value = null
+    responseHeadersText.value = ''
     return
   }
 
   running.value = true
   responseError.value = null
   responseText.value = ''
+  responseStatus.value = null
+  responseHeadersText.value = ''
   try {
     const result = await invokePluginRoute(
       props.pluginName,
@@ -155,7 +165,9 @@ async function runSelectedRoute() {
           : {}),
       },
     )
-    responseText.value = formatResponse(result)
+    responseStatus.value = result.status
+    responseHeadersText.value = formatHeaders(result.headers)
+    responseText.value = formatResponse(result.body)
   } catch (error) {
     responseError.value = error instanceof Error ? error.message : '调用 Route 失败'
   } finally {
@@ -172,6 +184,17 @@ function formatResponse(value: JsonValue): string {
   return typeof value === 'string'
     ? value
     : JSON.stringify(value, null, 2)
+}
+
+/**
+ * 将响应头统一格式化成可读文本。
+ * @param headers 响应头
+ * @returns 文本化结果
+ */
+function formatHeaders(headers: Record<string, string>): string {
+  return Object.keys(headers).length === 0
+    ? ''
+    : JSON.stringify(headers, null, 2)
 }
 
 /**
@@ -325,6 +348,12 @@ function parseRequestBody(raw: string): JsonValue | null {
   font-size: 0.84rem;
 }
 
+.tester-meta {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.tester-headers,
 .tester-response {
   padding: 0.85rem;
   border-radius: 8px;
