@@ -125,5 +125,6 @@ describe('PluginsView', () => {
     expect(wrapper.text()).toContain('可消费并改写模型结果')
     expect(wrapper.text()).toContain('可定时执行任务')
     expect(wrapper.text()).toContain('可暴露宿主内 JSON Route')
+    expect(wrapper.text()).toContain('最后检查')
   })
 })

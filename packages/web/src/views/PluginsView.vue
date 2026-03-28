@@ -68,6 +68,7 @@
             <span class="summary-label">健康状态</span>
             <strong>{{ healthText(healthSnapshot ?? selectedPlugin.health) }}</strong>
             <p>最后成功：{{ formatTime((healthSnapshot ?? selectedPlugin.health)?.lastSuccessAt ?? null) }}</p>
+            <p>最后检查：{{ formatTime((healthSnapshot ?? selectedPlugin.health)?.lastCheckedAt ?? null) }}</p>
           </article>
           <article class="summary-card">
             <span class="summary-label">失败统计</span>
@@ -120,6 +121,7 @@
         <div v-if="(healthSnapshot ?? selectedPlugin.health)?.lastError" class="error-card">
           <strong>最近错误</strong>
           <p>{{ (healthSnapshot ?? selectedPlugin.health)?.lastError }}</p>
+          <p>最后错误时间：{{ formatTime((healthSnapshot ?? selectedPlugin.health)?.lastErrorAt ?? null) }}</p>
         </div>
 
         <div class="detail-grid">
