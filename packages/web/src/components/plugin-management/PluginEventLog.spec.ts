@@ -88,4 +88,20 @@ describe('PluginEventLog', () => {
       },
     ]])
   })
+
+  it('shows an empty-result message when the current server-side query returns no events', () => {
+    const wrapper = mount(PluginEventLog, {
+      props: {
+        events: [],
+        loading: false,
+        query: {
+          limit: 50,
+          type: 'tool:overloaded',
+        },
+        nextCursor: null,
+      },
+    })
+
+    expect(wrapper.text()).toContain('当前筛选下没有事件日志。')
+  })
 })

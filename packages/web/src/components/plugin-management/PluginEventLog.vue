@@ -61,6 +61,9 @@
     </div>
 
     <div v-if="loading && events.length === 0" class="section-empty">加载中...</div>
+    <div v-else-if="events.length === 0 && hasActiveQueryFilters" class="section-empty">
+      当前筛选下没有事件日志。
+    </div>
     <div v-else-if="events.length === 0" class="section-empty">
       当前还没有事件日志。
     </div>
@@ -89,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { PluginEventQuery, PluginEventRecord } from '@garlic-claw/shared'
 
 const props = defineProps<{
@@ -109,6 +112,9 @@ const selectedLimit = ref(props.query.limit ?? 50)
 const levelFilter = ref<'all' | 'info' | 'warn' | 'error'>('all')
 const typeFilter = ref('')
 const searchFilter = ref('')
+const hasActiveQueryFilters = computed(() =>
+  Boolean(props.query.level || props.query.type || props.query.keyword),
+)
 
 watch(
   () => props.query,
