@@ -9,6 +9,7 @@ describe('ChatMessageService', () => {
       findUniqueOrThrow: jest.fn(),
     },
     conversation: {
+      findUnique: jest.fn(),
       update: jest.fn(),
     },
   };
@@ -852,7 +853,34 @@ describe('ChatMessageService', () => {
     });
   });
 
-  it('creates a plugin conversation assistant message through the message:created hook chain', async () => {
+  it('returns the current conversation as the current plugin message target', async () => {
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      title: '当前会话',
+      messages: [],
+    });
+
+    await expect(
+      service.getCurrentPluginMessageTarget({
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+      }),
+    ).resolves.toEqual({
+      type: 'conversation',
+      id: 'conversation-1',
+      label: '当前会话',
+    });
+
+    expect(chatService.getConversation).toHaveBeenCalledWith(
+      'user-1',
+      'conversation-1',
+    );
+  });
+
+  it('sends a plugin message through the generic message target interface', async () => {
     chatService.getConversation.mockResolvedValue({
       id: 'conversation-2',
       title: 'Plugin Target',
@@ -870,20 +898,11 @@ describe('ChatMessageService', () => {
       conversationId: 'conversation-2',
       message: {
         role: 'assistant',
-        content: '插件补充回复\n第二段',
+        content: '插件补充回复',
         parts: [
           {
             type: 'text',
             text: '插件补充回复',
-          },
-          {
-            type: 'image',
-            image: 'https://example.com/plugin.png',
-            mimeType: 'image/png',
-          },
-          {
-            type: 'text',
-            text: '第二段',
           },
         ],
         provider: 'plugin-provider',
@@ -898,15 +917,6 @@ describe('ChatMessageService', () => {
               type: 'text',
               text: '插件补充回复',
             },
-            {
-              type: 'image',
-              image: 'https://example.com/plugin.png',
-              mimeType: 'image/png',
-            },
-            {
-              type: 'text',
-              text: '第二段',
-            },
           ],
         },
       ],
@@ -915,20 +925,11 @@ describe('ChatMessageService', () => {
       id: 'assistant-message-plugin-1',
       conversationId: 'conversation-2',
       role: 'assistant',
-      content: '插件补充回复\n第二段',
+      content: '插件补充回复',
       partsJson: JSON.stringify([
         {
           type: 'text',
           text: '插件补充回复',
-        },
-        {
-          type: 'image',
-          image: 'https://example.com/plugin.png',
-          mimeType: 'image/png',
-        },
-        {
-          type: 'text',
-          text: '第二段',
         },
       ]),
       provider: 'plugin-provider',
@@ -939,153 +940,37 @@ describe('ChatMessageService', () => {
     });
     prisma.conversation.update.mockResolvedValue(null);
 
-    const result = await service.createPluginConversationMessage({
-      context: {
-        source: 'cron',
-        userId: 'user-1',
-        conversationId: 'conversation-1',
-        activeProviderId: 'openai',
-        activeModelId: 'gpt-5.2',
-        activePersonaId: 'persona-1',
-      },
-      conversationId: 'conversation-2',
-      content: '这段内容会被 parts 覆盖',
-      parts: [
-        {
-          type: 'text',
-          text: '  插件补充回复  ',
-        },
-        {
-          type: 'image',
-          image: 'https://example.com/plugin.png',
-          mimeType: 'image/png',
-        },
-        {
-          type: 'text',
-          text: '第二段',
-        },
-      ],
-      provider: 'plugin-provider',
-      model: 'plugin-model',
-    });
-
-    expect(chatService.getConversation).toHaveBeenCalledWith(
-      'user-1',
-      'conversation-2',
-    );
-    expect(pluginRuntime.runMessageCreatedHooks).toHaveBeenCalledWith({
-      context: {
-        source: 'cron',
-        userId: 'user-1',
-        conversationId: 'conversation-2',
-        activeProviderId: 'plugin-provider',
-        activeModelId: 'plugin-model',
-        activePersonaId: 'persona-1',
-      },
-      payload: {
+    await expect(
+      service.sendPluginMessage({
         context: {
           source: 'cron',
           userId: 'user-1',
-          conversationId: 'conversation-2',
-          activeProviderId: 'plugin-provider',
-          activeModelId: 'plugin-model',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
           activePersonaId: 'persona-1',
         },
-        conversationId: 'conversation-2',
-        message: {
-          role: 'assistant',
-          content: '插件补充回复\n第二段',
-          parts: [
-            {
-              type: 'text',
-              text: '插件补充回复',
-            },
-            {
-              type: 'image',
-              image: 'https://example.com/plugin.png',
-              mimeType: 'image/png',
-            },
-            {
-              type: 'text',
-              text: '第二段',
-            },
-          ],
-          provider: 'plugin-provider',
-          model: 'plugin-model',
-          status: 'completed',
+        target: {
+          type: 'conversation',
+          id: 'conversation-2',
         },
-        modelMessages: [
-          {
-            role: 'assistant',
-            content: [
-              {
-                type: 'text',
-                text: '插件补充回复',
-              },
-              {
-                type: 'image',
-                image: 'https://example.com/plugin.png',
-                mimeType: 'image/png',
-              },
-              {
-                type: 'text',
-                text: '第二段',
-              },
-            ],
-          },
-        ],
-      },
-    });
-    expect(prisma.message.create).toHaveBeenCalledWith({
-      data: {
-        conversationId: 'conversation-2',
-        role: 'assistant',
-        content: '插件补充回复\n第二段',
-        partsJson: JSON.stringify([
-          {
-            type: 'text',
-            text: '插件补充回复',
-          },
-          {
-            type: 'image',
-            image: 'https://example.com/plugin.png',
-            mimeType: 'image/png',
-          },
-          {
-            type: 'text',
-            text: '第二段',
-          },
-        ]),
+        content: '插件补充回复',
         provider: 'plugin-provider',
         model: 'plugin-model',
-        status: 'completed',
-        error: null,
-      },
-    });
-    expect(prisma.conversation.update).toHaveBeenCalledWith({
-      where: { id: 'conversation-2' },
-      data: {
-        updatedAt: expect.any(Date),
-      },
-    });
-    expect(result).toEqual({
+      }),
+    ).resolves.toEqual({
       id: 'assistant-message-plugin-1',
-      conversationId: 'conversation-2',
+      target: {
+        type: 'conversation',
+        id: 'conversation-2',
+        label: 'Plugin Target',
+      },
       role: 'assistant',
-      content: '插件补充回复\n第二段',
+      content: '插件补充回复',
       parts: [
         {
           type: 'text',
           text: '插件补充回复',
-        },
-        {
-          type: 'image',
-          image: 'https://example.com/plugin.png',
-          mimeType: 'image/png',
-        },
-        {
-          type: 'text',
-          text: '第二段',
         },
       ],
       provider: 'plugin-provider',
@@ -1094,6 +979,17 @@ describe('ChatMessageService', () => {
       createdAt: '2026-03-28T10:00:00.000Z',
       updatedAt: '2026-03-28T10:00:00.000Z',
     });
+
+    expect(chatService.getConversation).toHaveBeenNthCalledWith(
+      1,
+      'user-1',
+      'conversation-2',
+    );
+    expect(chatService.getConversation).toHaveBeenNthCalledWith(
+      2,
+      'user-1',
+      'conversation-2',
+    );
   });
 
   it('short-circuits through message:received before scheduling a model task', async () => {

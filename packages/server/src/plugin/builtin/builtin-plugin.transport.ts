@@ -12,8 +12,6 @@ import type {
   PluginKbEntrySummary,
   PluginCronDescriptor,
   PluginCronJobSummary,
-  PluginConversationMessageCreateParams,
-  PluginConversationMessageInfo,
   PluginConversationSessionInfo,
   PluginConversationSessionKeepParams,
   PluginConversationSessionStartParams,
@@ -21,6 +19,9 @@ import type {
   PluginLlmGenerateParams,
   PluginLlmGenerateResult,
   PluginManifest,
+  PluginMessageSendInfo,
+  PluginMessageSendParams,
+  PluginMessageTargetInfo,
   PluginPersonaCurrentInfo,
   PluginPersonaSummary,
   PluginProviderCurrentInfo,
@@ -126,13 +127,17 @@ interface BuiltinPluginHostFacade {
   getConversation(): Promise<JsonValue>;
 
   /**
-   * 主动向当前或指定会话追加一条 assistant 消息。
-   * @param input 目标会话与消息内容
-   * @returns 已创建的消息摘要
+   * 读取当前消息目标摘要。
+   * @returns 当前目标；不存在时返回 null
    */
-  createConversationMessage(
-    input: PluginConversationMessageCreateParams,
-  ): Promise<PluginConversationMessageInfo>;
+  getCurrentMessageTarget(): Promise<PluginMessageTargetInfo | null>;
+
+  /**
+   * 主动向当前或指定消息目标发送一条 assistant 消息。
+   * @param input 目标与消息内容
+   * @returns 已发送的消息摘要
+   */
+  sendMessage(input: PluginMessageSendParams): Promise<PluginMessageSendInfo>;
 
   /**
    * 为当前会话启动等待态，多轮用户消息会优先交给当前插件处理。
@@ -652,8 +657,15 @@ export class BuiltinPluginTransport implements PluginTransport {
           method: 'conversation.get',
           params: {},
         }),
-      createConversationMessage: ({
-        conversationId,
+      getCurrentMessageTarget: () =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'message.target.current.get',
+          params: {},
+        }) as unknown as Promise<PluginMessageTargetInfo | null>,
+      sendMessage: ({
+        target,
         content,
         parts,
         provider,
@@ -662,15 +674,15 @@ export class BuiltinPluginTransport implements PluginTransport {
         this.hostService.call({
           pluginId: this.definition.manifest.id,
           context,
-          method: 'conversation.message.create',
+          method: 'message.send',
           params: {
-            ...(conversationId ? { conversationId } : {}),
+            ...(target ? { target: target as unknown as JsonValue } : {}),
             ...(typeof content === 'string' ? { content } : {}),
             ...(parts ? { parts: parts as unknown as JsonValue } : {}),
             ...(typeof provider === 'string' ? { provider } : {}),
             ...(typeof model === 'string' ? { model } : {}),
           },
-        }) as unknown as Promise<PluginConversationMessageInfo>,
+        }) as unknown as Promise<PluginMessageSendInfo>,
       startConversationSession: ({
         timeoutMs,
         captureHistory,

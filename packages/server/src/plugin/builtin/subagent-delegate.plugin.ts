@@ -1,5 +1,6 @@
 import type { PluginSubagentRunResult } from '@garlic-claw/shared';
 import type { JsonValue } from '../../common/types/json-value';
+import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
 
 /**
@@ -177,7 +178,7 @@ function normalizeMaxSteps(value?: number): number {
  * @returns 简化后的执行摘要
  */
 function toDelegateSummary(result: PluginSubagentRunResult) {
-  return {
+  return toJsonValue({
     providerId: result.providerId,
     modelId: result.modelId,
     text: result.text,
@@ -186,5 +187,5 @@ function toDelegateSummary(result: PluginSubagentRunResult) {
     ...(result.finishReason !== undefined
       ? { finishReason: result.finishReason }
       : {}),
-  };
+  });
 }

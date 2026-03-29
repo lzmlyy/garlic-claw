@@ -22,13 +22,14 @@ import {
   type PluginCapability,
   type PluginCronDescriptor,
   type PluginCronJobSummary,
-  type PluginConversationMessageCreateParams,
-  type PluginConversationMessageInfo,
   type PluginConversationSessionInfo,
   type PluginConversationSessionKeepParams,
   type PluginConversationSessionStartParams,
   type PluginHookName,
   type PluginMessageKind,
+  type PluginMessageSendInfo,
+  type PluginMessageSendParams,
+  type PluginMessageTargetInfo,
   type PluginLlmGenerateParams,
   type PluginLlmGenerateResult,
   type PluginManifest,
@@ -144,13 +145,17 @@ export interface PluginHostFacade {
   getConversation(): Promise<JsonValue>;
 
   /**
-   * 主动向当前或指定会话追加一条 assistant 消息。
-   * @param input 目标会话与消息内容
-   * @returns 已创建的消息摘要
+   * 读取当前消息目标摘要。
+   * @returns 当前目标；不存在时返回 null
    */
-  createConversationMessage(
-    input: PluginConversationMessageCreateParams,
-  ): Promise<PluginConversationMessageInfo>;
+  getCurrentMessageTarget(): Promise<PluginMessageTargetInfo | null>;
+
+  /**
+   * 主动向当前或指定消息目标发送一条 assistant 消息。
+   * @param input 目标与消息内容
+   * @returns 已发送的消息摘要
+   */
+  sendMessage(input: PluginMessageSendParams): Promise<PluginMessageSendInfo>;
 
   /**
    * 为当前会话启动等待态，多轮用户消息会优先交给当前插件处理。
@@ -1204,16 +1209,22 @@ export class PluginClient {
           this.sendHostCall('memory.search', { query, limit }, context),
         getConversation: () =>
           this.sendHostCall('conversation.get', {}, context),
-        createConversationMessage: ({
-          conversationId,
+        getCurrentMessageTarget: () =>
+          this.sendHostCall(
+            'message.target.current.get',
+            {},
+            context,
+          ) as unknown as Promise<PluginMessageTargetInfo | null>,
+        sendMessage: ({
+          target,
           content,
           parts,
           provider,
           model,
         }) => {
           const params: JsonObject = {};
-          if (conversationId) {
-            params.conversationId = conversationId;
+          if (target) {
+            params.target = target as unknown as JsonValue;
           }
           if (typeof content === 'string') {
             params.content = content;
@@ -1229,10 +1240,10 @@ export class PluginClient {
           }
 
           return this.sendHostCall(
-            'conversation.message.create',
+            'message.send',
             params,
             context,
-          ) as unknown as Promise<PluginConversationMessageInfo>;
+          ) as unknown as Promise<PluginMessageSendInfo>;
         },
         startConversationSession: ({
           timeoutMs,

@@ -1692,24 +1692,34 @@ describe('BuiltinPluginTransport', () => {
     });
   });
 
-  it('exposes conversation.message.create through the builtin host facade', async () => {
-    hostService.call.mockResolvedValue({
-      id: 'assistant-message-plugin-1',
-      conversationId: 'conversation-2',
-      role: 'assistant',
-      content: '插件补充回复',
-      parts: [
-        {
-          type: 'text',
-          text: '插件补充回复',
+  it('exposes message.target.current.get and message.send through the builtin host facade', async () => {
+    hostService.call
+      .mockResolvedValueOnce({
+        type: 'conversation',
+        id: 'conversation-1',
+        label: '当前会话',
+      })
+      .mockResolvedValueOnce({
+        id: 'assistant-message-plugin-1',
+        target: {
+          type: 'conversation',
+          id: 'conversation-2',
+          label: '目标会话',
         },
-      ],
-      provider: 'openai',
-      model: 'gpt-5.2',
-      status: 'completed',
-      createdAt: '2026-03-28T10:00:00.000Z',
-      updatedAt: '2026-03-28T10:00:00.000Z',
-    });
+        role: 'assistant',
+        content: '插件补充回复',
+        parts: [
+          {
+            type: 'text',
+            text: '插件补充回复',
+          },
+        ],
+        provider: 'openai',
+        model: 'gpt-5.2',
+        status: 'completed',
+        createdAt: '2026-03-28T10:00:00.000Z',
+        updatedAt: '2026-03-28T10:00:00.000Z',
+      });
 
     const definition: BuiltinPluginDefinition = {
       manifest: {
@@ -1717,19 +1727,23 @@ describe('BuiltinPluginTransport', () => {
         name: 'Response Recorder',
         version: '1.0.0',
         runtime: 'builtin',
-        permissions: ['conversation:write'],
+        permissions: ['conversation:read', 'conversation:write'],
         tools: [
           {
             name: 'push_reply',
-            description: '主动向会话追加回复',
+            description: '主动向目标发消息',
             parameters: {},
           },
         ],
       },
       tools: {
-        push_reply: async (_params, { host }) =>
-          host.createConversationMessage({
-            conversationId: 'conversation-2',
+        push_reply: async (_params, { host }) => {
+          const currentTarget = await host.getCurrentMessageTarget();
+          const sentMessage = await host.sendMessage({
+            target: {
+              type: 'conversation',
+              id: 'conversation-2',
+            },
             content: '插件补充回复',
             parts: [
               {
@@ -1739,7 +1753,13 @@ describe('BuiltinPluginTransport', () => {
             ],
             provider: 'openai',
             model: 'gpt-5.2',
-          }) as never,
+          });
+
+          return {
+            currentTarget,
+            sentMessage,
+          } as never;
+        },
       },
     };
 
@@ -1760,7 +1780,7 @@ describe('BuiltinPluginTransport', () => {
       },
     });
 
-    expect(hostService.call).toHaveBeenCalledWith({
+    expect(hostService.call).toHaveBeenNthCalledWith(1, {
       pluginId: 'builtin.response-recorder',
       context: {
         source: 'cron',
@@ -1769,9 +1789,24 @@ describe('BuiltinPluginTransport', () => {
         activeProviderId: 'openai',
         activeModelId: 'gpt-5.2',
       },
-      method: 'conversation.message.create',
+      method: 'message.target.current.get',
+      params: {},
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(2, {
+      pluginId: 'builtin.response-recorder',
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+      method: 'message.send',
       params: {
-        conversationId: 'conversation-2',
+        target: {
+          type: 'conversation',
+          id: 'conversation-2',
+        },
         content: '插件补充回复',
         parts: [
           {
@@ -1784,21 +1819,32 @@ describe('BuiltinPluginTransport', () => {
       },
     });
     expect(result).toEqual({
-      id: 'assistant-message-plugin-1',
-      conversationId: 'conversation-2',
-      role: 'assistant',
-      content: '插件补充回复',
-      parts: [
-        {
-          type: 'text',
-          text: '插件补充回复',
+      currentTarget: {
+        type: 'conversation',
+        id: 'conversation-1',
+        label: '当前会话',
+      },
+      sentMessage: {
+        id: 'assistant-message-plugin-1',
+        target: {
+          type: 'conversation',
+          id: 'conversation-2',
+          label: '目标会话',
         },
-      ],
-      provider: 'openai',
-      model: 'gpt-5.2',
-      status: 'completed',
-      createdAt: '2026-03-28T10:00:00.000Z',
-      updatedAt: '2026-03-28T10:00:00.000Z',
+        role: 'assistant',
+        content: '插件补充回复',
+        parts: [
+          {
+            type: 'text',
+            text: '插件补充回复',
+          },
+        ],
+        provider: 'openai',
+        model: 'gpt-5.2',
+        status: 'completed',
+        createdAt: '2026-03-28T10:00:00.000Z',
+        updatedAt: '2026-03-28T10:00:00.000Z',
+      },
     });
   });
 

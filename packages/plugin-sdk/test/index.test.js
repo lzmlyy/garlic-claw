@@ -11,6 +11,8 @@ const WS_TYPE = {
 };
 
 const WS_ACTION = {
+  HOST_CALL: 'host_call',
+  HOST_RESULT: 'host_result',
   HOOK_INVOKE: 'hook_invoke',
   HOOK_RESULT: 'hook_result',
 };
@@ -215,4 +217,139 @@ test('falls back to a broad hook descriptor when filters cannot be merged safely
 
   assert.ok(messageHook);
   assert.equal(messageHook.filter, undefined);
+});
+
+test('execution context exposes message target lookup and generic send host APIs', async () => {
+  const client = createClient();
+  const sent = [];
+
+  client.ws = {
+    readyState: 1,
+  };
+  client.send = (type, action, payload, requestId) => {
+    sent.push({
+      type,
+      action,
+      payload,
+      requestId,
+    });
+
+    if (payload.method === 'message.target.current.get') {
+      queueMicrotask(() => {
+        void client.handleMessage({
+          type: WS_TYPE.PLUGIN,
+          action: WS_ACTION.HOST_RESULT,
+          requestId,
+          payload: {
+            data: {
+              type: 'conversation',
+              id: 'conv-1',
+              label: '当前会话',
+            },
+          },
+        });
+      });
+      return;
+    }
+
+    queueMicrotask(() => {
+      void client.handleMessage({
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_RESULT,
+        requestId,
+        payload: {
+          data: {
+            id: 'assistant-message-plugin-1',
+            target: {
+              type: 'conversation',
+              id: 'conv-2',
+              label: '目标会话',
+            },
+            role: 'assistant',
+            content: '插件补充回复',
+            parts: [
+              {
+                type: 'text',
+                text: '插件补充回复',
+              },
+            ],
+            status: 'completed',
+            createdAt: '2026-03-28T10:00:00.000Z',
+            updatedAt: '2026-03-28T10:00:00.000Z',
+          },
+        },
+      });
+    });
+  };
+
+  const executionContext = client.createExecutionContext({
+    source: 'cron',
+    conversationId: 'conv-1',
+  });
+  const currentTarget = await executionContext.host.getCurrentMessageTarget();
+  const sentMessage = await executionContext.host.sendMessage({
+    target: {
+      type: 'conversation',
+      id: 'conv-2',
+    },
+    content: '插件补充回复',
+  });
+
+  assert.deepEqual(currentTarget, {
+    type: 'conversation',
+    id: 'conv-1',
+    label: '当前会话',
+  });
+  assert.deepEqual(sentMessage, {
+    id: 'assistant-message-plugin-1',
+    target: {
+      type: 'conversation',
+      id: 'conv-2',
+      label: '目标会话',
+    },
+    role: 'assistant',
+    content: '插件补充回复',
+    parts: [
+      {
+        type: 'text',
+        text: '插件补充回复',
+      },
+    ],
+    status: 'completed',
+    createdAt: '2026-03-28T10:00:00.000Z',
+    updatedAt: '2026-03-28T10:00:00.000Z',
+  });
+  assert.equal(sent.length, 2);
+  assert.deepEqual(sent[0], {
+    type: WS_TYPE.PLUGIN,
+    action: WS_ACTION.HOST_CALL,
+    payload: {
+      method: 'message.target.current.get',
+      params: {},
+      context: {
+        source: 'cron',
+        conversationId: 'conv-1',
+      },
+    },
+    requestId: sent[0].requestId,
+  });
+  assert.deepEqual(sent[1], {
+    type: WS_TYPE.PLUGIN,
+    action: WS_ACTION.HOST_CALL,
+    payload: {
+      method: 'message.send',
+      params: {
+        target: {
+          type: 'conversation',
+          id: 'conv-2',
+        },
+        content: '插件补充回复',
+      },
+      context: {
+        source: 'cron',
+        conversationId: 'conv-1',
+      },
+    },
+    requestId: sent[1].requestId,
+  });
 });

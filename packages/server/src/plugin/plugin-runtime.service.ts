@@ -41,6 +41,9 @@ import type {
   PluginLifecycleHookInfo,
   PluginLlmMessage,
   PluginManifest,
+  PluginMessageSendInfo,
+  PluginMessageTargetInfo,
+  PluginMessageTargetRef,
   PluginMessageHookInfo,
   PluginPermission,
   PluginLoadedHookPayload,
@@ -50,6 +53,16 @@ import type {
   PluginRuntimePressureSnapshot,
   PluginRuntimeKind,
   PluginSelfInfo,
+  PluginSubagentRequest,
+  PluginSubagentToolCall,
+  PluginSubagentToolResult,
+  SubagentAfterRunHookMutateResult,
+  SubagentAfterRunHookPassResult,
+  SubagentAfterRunHookPayload,
+  SubagentBeforeRunHookMutateResult,
+  SubagentBeforeRunHookPassResult,
+  SubagentBeforeRunHookPayload,
+  SubagentBeforeRunHookShortCircuitResult,
   PluginSubagentRunResult,
   PluginUnloadedHookPayload,
   ResponseAfterSendHookPayload,
@@ -102,7 +115,6 @@ const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | nu
   'cron.list': 'cron:read',
   'cron.register': 'cron:write',
   'conversation.get': 'conversation:read',
-  'conversation.message.create': 'conversation:write',
   'conversation.session.finish': 'conversation:write',
   'conversation.session.get': 'conversation:write',
   'conversation.session.keep': 'conversation:write',
@@ -115,6 +127,8 @@ const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | nu
   'llm.generate': 'llm:generate',
   'llm.generate-text': 'llm:generate',
   'log.write': 'log:write',
+  'message.send': 'conversation:write',
+  'message.target.current.get': 'conversation:read',
   'memory.search': 'memory:read',
   'memory.save': 'memory:write',
   'persona.activate': 'persona:write',
@@ -238,14 +252,17 @@ interface PluginRuntimeRecord {
  * 宿主侧会话消息写入器。
  */
 interface PluginConversationMessageWriter {
-  createPluginConversationMessage(input: {
+  getCurrentPluginMessageTarget(input: {
     context: PluginCallContext;
-    conversationId?: string;
+  }): Promise<PluginMessageTargetInfo | null>;
+  sendPluginMessage(input: {
+    context: PluginCallContext;
+    target?: PluginMessageTargetRef | null;
     content?: string;
     parts?: ChatMessagePart[];
     provider?: string;
     model?: string;
-  }): Promise<JsonValue>;
+  }): Promise<PluginMessageSendInfo>;
 }
 
 /**
@@ -438,6 +455,21 @@ type NormalizedToolAfterCallHookResult =
 type NormalizedResponseBeforeSendHookResult =
   | ResponseBeforeSendHookPassResult
   | ResponseBeforeSendHookMutateResult;
+
+/**
+ * 归一化后的子代理运行前 Hook 返回。
+ */
+type NormalizedSubagentBeforeRunHookResult =
+  | SubagentBeforeRunHookPassResult
+  | SubagentBeforeRunHookMutateResult
+  | SubagentBeforeRunHookShortCircuitResult;
+
+/**
+ * 归一化后的子代理运行后 Hook 返回。
+ */
+type NormalizedSubagentAfterRunHookResult =
+  | SubagentAfterRunHookPassResult
+  | SubagentAfterRunHookMutateResult;
 
 /**
  * 统一插件运行时。
@@ -1017,36 +1049,42 @@ export class PluginRuntimeService {
         this.requireString(input.params, 'jobId', 'cron.delete'),
       );
     }
-    if (input.method === 'conversation.message.create') {
+    if (input.method === 'message.target.current.get') {
       const chatMessageService = await this.getChatMessageService();
-      return chatMessageService.createPluginConversationMessage({
+      return toJsonValue(await chatMessageService.getCurrentPluginMessageTarget({
         context: input.context,
-        conversationId: this.readOptionalString(
+      }));
+    }
+    if (input.method === 'message.send') {
+      const chatMessageService = await this.getChatMessageService();
+      return toJsonValue(await chatMessageService.sendPluginMessage({
+        context: input.context,
+        target: this.readOptionalMessageTarget(
           input.params,
-          'conversationId',
-          'conversation.message.create',
+          'target',
+          'message.send',
         ),
         content: this.readOptionalString(
           input.params,
           'content',
-          'conversation.message.create',
+          'message.send',
         ),
         parts: this.readOptionalChatMessageParts(
           input.params,
           'parts',
-          'conversation.message.create',
+          'message.send',
         ),
         provider: this.readOptionalString(
           input.params,
           'provider',
-          'conversation.message.create',
+          'message.send',
         ),
         model: this.readOptionalString(
           input.params,
           'model',
-          'conversation.message.create',
+          'message.send',
         ),
-      });
+      }));
     }
     if (input.method === 'conversation.session.start') {
       return toJsonValue(this.startConversationSession({
@@ -1730,6 +1768,93 @@ export class PluginRuntimeService {
       context: input.context,
       payload: input.payload,
     });
+  }
+
+  /**
+   * 运行所有子代理执行前 Hook。
+   * @param input Hook 调用上下文与载荷
+   * @returns 最终请求或短路结果
+   */
+  async runSubagentBeforeRunHooks(input: {
+    context: PluginCallContext;
+    payload: SubagentBeforeRunHookPayload;
+  }): Promise<
+    | { action: 'continue'; payload: SubagentBeforeRunHookPayload }
+    | { action: 'short-circuit'; result: PluginSubagentRunResult }
+  > {
+    let payload = cloneSubagentBeforeRunPayload(input.payload);
+
+    for (const record of this.listHookRecords('subagent:before-run', input.context)) {
+      try {
+        const rawResult = await this.invokePluginHook({
+          pluginId: record.manifest.id,
+          hookName: 'subagent:before-run',
+          context: input.context,
+          payload: toJsonValue(payload),
+        });
+        const hookResult = this.normalizeSubagentBeforeRunHookResult(rawResult);
+
+        if (!hookResult || hookResult.action === 'pass') {
+          continue;
+        }
+        if (hookResult.action === 'short-circuit') {
+          return {
+            action: 'short-circuit',
+            result: this.buildSubagentHookResult({
+              providerId: hookResult.providerId ?? payload.request.providerId,
+              modelId: hookResult.modelId ?? payload.request.modelId,
+              text: hookResult.text,
+              finishReason: hookResult.finishReason,
+              toolCalls: hookResult.toolCalls,
+              toolResults: hookResult.toolResults,
+            }),
+          };
+        }
+
+        payload = this.applySubagentBeforeRunMutation(payload, hookResult);
+      } catch {
+        // 单个 Hook 失败已由 invokePluginHook 记录；这里继续执行后续插件。
+      }
+    }
+
+    return {
+      action: 'continue',
+      payload,
+    };
+  }
+
+  /**
+   * 运行所有子代理执行后 Hook。
+   * @param input Hook 调用上下文与载荷
+   * @returns 顺序应用所有 mutate 后的最终载荷
+   */
+  async runSubagentAfterRunHooks(input: {
+    context: PluginCallContext;
+    payload: SubagentAfterRunHookPayload;
+  }): Promise<SubagentAfterRunHookPayload> {
+    let payload = cloneSubagentAfterRunPayload(input.payload);
+
+    for (const record of this.listHookRecords('subagent:after-run', input.context)) {
+      try {
+        const rawResult = await this.invokePluginHook({
+          pluginId: record.manifest.id,
+          hookName: 'subagent:after-run',
+          context: input.context,
+          payload: toJsonValue(payload),
+        });
+        const hookResult = this.normalizeSubagentAfterRunHookResult(rawResult);
+
+        if (!hookResult || hookResult.action === 'pass') {
+          continue;
+        }
+
+        payload = this.applySubagentAfterRunMutation(payload, hookResult);
+      } catch {
+        // 单个 Hook 失败已由 invokePluginHook 记录；这里继续执行后续插件。
+      }
+    }
+
+    return payload;
   }
 
   /**
@@ -2649,6 +2774,126 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 将插件返回的子代理执行前 Hook 结果归一为统一结构。
+   * @param result 插件原始返回值
+   * @returns 归一化后的 Hook 结果
+   */
+  private normalizeSubagentBeforeRunHookResult(
+    result: JsonValue | null | undefined,
+  ): NormalizedSubagentBeforeRunHookResult | null {
+    if (result === null || typeof result === 'undefined') {
+      return null;
+    }
+    if (!isJsonObjectValue(result)) {
+      throw new Error('subagent:before-run Hook 返回值必须是对象');
+    }
+    if (result.action === 'pass') {
+      return { action: 'pass' };
+    }
+    if (result.action === 'mutate') {
+      if ('providerId' in result && result.providerId !== null && typeof result.providerId !== 'string') {
+        throw new Error('subagent:before-run Hook 的 providerId 必须是字符串或 null');
+      }
+      if ('modelId' in result && result.modelId !== null && typeof result.modelId !== 'string') {
+        throw new Error('subagent:before-run Hook 的 modelId 必须是字符串或 null');
+      }
+      if ('system' in result && result.system !== null && typeof result.system !== 'string') {
+        throw new Error('subagent:before-run Hook 的 system 必须是字符串或 null');
+      }
+      if ('messages' in result && !isPluginLlmMessageArray(result.messages)) {
+        throw new Error('subagent:before-run Hook 的 messages 必须是统一消息数组');
+      }
+      if ('toolNames' in result && result.toolNames !== null && !isStringArray(result.toolNames)) {
+        throw new Error('subagent:before-run Hook 的 toolNames 必须是字符串数组或 null');
+      }
+      if ('variant' in result && result.variant !== null && typeof result.variant !== 'string') {
+        throw new Error('subagent:before-run Hook 的 variant 必须是字符串或 null');
+      }
+      if ('providerOptions' in result && result.providerOptions !== null && !isJsonObjectValue(result.providerOptions)) {
+        throw new Error('subagent:before-run Hook 的 providerOptions 必须是对象或 null');
+      }
+      if ('headers' in result && result.headers !== null && !isStringRecord(result.headers)) {
+        throw new Error('subagent:before-run Hook 的 headers 必须是字符串字典或 null');
+      }
+      if ('maxOutputTokens' in result && result.maxOutputTokens !== null && typeof result.maxOutputTokens !== 'number') {
+        throw new Error('subagent:before-run Hook 的 maxOutputTokens 必须是数字或 null');
+      }
+      if ('maxSteps' in result && result.maxSteps !== null && typeof result.maxSteps !== 'number') {
+        throw new Error('subagent:before-run Hook 的 maxSteps 必须是数字或 null');
+      }
+
+      return result as unknown as SubagentBeforeRunHookMutateResult;
+    }
+    if (result.action === 'short-circuit') {
+      if (typeof result.text !== 'string') {
+        throw new Error('subagent:before-run Hook 的 text 必须是字符串');
+      }
+      if ('providerId' in result && result.providerId !== null && typeof result.providerId !== 'string') {
+        throw new Error('subagent:before-run Hook 的 providerId 必须是字符串或 null');
+      }
+      if ('modelId' in result && result.modelId !== null && typeof result.modelId !== 'string') {
+        throw new Error('subagent:before-run Hook 的 modelId 必须是字符串或 null');
+      }
+      if ('finishReason' in result && result.finishReason !== null && typeof result.finishReason !== 'string') {
+        throw new Error('subagent:before-run Hook 的 finishReason 必须是字符串或 null');
+      }
+      if ('toolCalls' in result && !isPluginSubagentToolCallArray(result.toolCalls)) {
+        throw new Error('subagent:before-run Hook 的 toolCalls 必须是工具调用数组');
+      }
+      if ('toolResults' in result && !isPluginSubagentToolResultArray(result.toolResults)) {
+        throw new Error('subagent:before-run Hook 的 toolResults 必须是工具结果数组');
+      }
+
+      return result as unknown as SubagentBeforeRunHookShortCircuitResult;
+    }
+
+    throw new Error('subagent:before-run Hook 返回了未知 action');
+  }
+
+  /**
+   * 将插件返回的子代理执行后 Hook 结果归一为统一结构。
+   * @param result 插件原始返回值
+   * @returns 归一化后的 Hook 结果
+   */
+  private normalizeSubagentAfterRunHookResult(
+    result: JsonValue | null | undefined,
+  ): NormalizedSubagentAfterRunHookResult | null {
+    if (result === null || typeof result === 'undefined') {
+      return null;
+    }
+    if (!isJsonObjectValue(result)) {
+      throw new Error('subagent:after-run Hook 返回值必须是对象');
+    }
+    if (result.action === 'pass') {
+      return { action: 'pass' };
+    }
+    if (result.action === 'mutate') {
+      if ('text' in result && typeof result.text !== 'string') {
+        throw new Error('subagent:after-run Hook 的 text 必须是字符串');
+      }
+      if ('providerId' in result && result.providerId !== null && typeof result.providerId !== 'string') {
+        throw new Error('subagent:after-run Hook 的 providerId 必须是字符串或 null');
+      }
+      if ('modelId' in result && result.modelId !== null && typeof result.modelId !== 'string') {
+        throw new Error('subagent:after-run Hook 的 modelId 必须是字符串或 null');
+      }
+      if ('finishReason' in result && result.finishReason !== null && typeof result.finishReason !== 'string') {
+        throw new Error('subagent:after-run Hook 的 finishReason 必须是字符串或 null');
+      }
+      if ('toolCalls' in result && !isPluginSubagentToolCallArray(result.toolCalls)) {
+        throw new Error('subagent:after-run Hook 的 toolCalls 必须是工具调用数组');
+      }
+      if ('toolResults' in result && !isPluginSubagentToolResultArray(result.toolResults)) {
+        throw new Error('subagent:after-run Hook 的 toolResults 必须是工具结果数组');
+      }
+
+      return result as unknown as SubagentAfterRunHookMutateResult;
+    }
+
+    throw new Error('subagent:after-run Hook 返回了未知 action');
+  }
+
+  /**
    * 将插件返回的工具调用前 Hook 结果归一为统一结构。
    * @param result 插件原始返回值
    * @returns 归一化后的 Hook 结果
@@ -2868,6 +3113,100 @@ export class PluginRuntimeService {
     }
     if ('results' in mutation && Array.isArray(mutation.results)) {
       nextPayload.results = cloneJsonValueArray(mutation.results);
+    }
+
+    return nextPayload;
+  }
+
+  /**
+   * 将一条子代理执行前 mutate 结果应用到当前载荷。
+   * @param currentPayload 当前子代理执行前载荷
+   * @param mutation 变更结果
+   * @returns 新的载荷快照
+   */
+  private applySubagentBeforeRunMutation(
+    currentPayload: SubagentBeforeRunHookPayload,
+    mutation: SubagentBeforeRunHookMutateResult,
+  ): SubagentBeforeRunHookPayload {
+    const nextPayload = cloneSubagentBeforeRunPayload(currentPayload);
+
+    if ('providerId' in mutation) {
+      nextPayload.request.providerId = mutation.providerId ?? undefined;
+    }
+    if ('modelId' in mutation) {
+      nextPayload.request.modelId = mutation.modelId ?? undefined;
+    }
+    if ('system' in mutation) {
+      nextPayload.request.system = mutation.system ?? undefined;
+    }
+    if ('messages' in mutation && Array.isArray(mutation.messages)) {
+      nextPayload.request.messages = clonePluginLlmMessages(mutation.messages);
+    }
+    if ('toolNames' in mutation) {
+      nextPayload.request.toolNames = mutation.toolNames === null
+        ? undefined
+        : [...(mutation.toolNames ?? [])];
+    }
+    if ('variant' in mutation) {
+      nextPayload.request.variant = mutation.variant ?? undefined;
+    }
+    if ('providerOptions' in mutation) {
+      nextPayload.request.providerOptions = mutation.providerOptions === null
+        ? undefined
+        : mutation.providerOptions
+          ? { ...mutation.providerOptions }
+          : undefined;
+    }
+    if ('headers' in mutation) {
+      nextPayload.request.headers = mutation.headers === null
+        ? undefined
+        : mutation.headers
+          ? { ...mutation.headers }
+          : undefined;
+    }
+    if ('maxOutputTokens' in mutation) {
+      nextPayload.request.maxOutputTokens = mutation.maxOutputTokens ?? undefined;
+    }
+    if ('maxSteps' in mutation && typeof mutation.maxSteps === 'number') {
+      nextPayload.request.maxSteps = normalizePositiveInteger(mutation.maxSteps, 1);
+    }
+
+    return nextPayload;
+  }
+
+  /**
+   * 将一条子代理执行后 mutate 结果应用到当前载荷。
+   * @param currentPayload 当前子代理执行后载荷
+   * @param mutation 变更结果
+   * @returns 新的载荷快照
+   */
+  private applySubagentAfterRunMutation(
+    currentPayload: SubagentAfterRunHookPayload,
+    mutation: SubagentAfterRunHookMutateResult,
+  ): SubagentAfterRunHookPayload {
+    const nextPayload = cloneSubagentAfterRunPayload(currentPayload);
+
+    if ('providerId' in mutation && typeof mutation.providerId === 'string') {
+      nextPayload.result.providerId = mutation.providerId;
+    }
+    if ('modelId' in mutation && typeof mutation.modelId === 'string') {
+      nextPayload.result.modelId = mutation.modelId;
+    }
+    if ('text' in mutation && typeof mutation.text === 'string') {
+      nextPayload.result.text = mutation.text;
+      nextPayload.result.message = {
+        role: 'assistant',
+        content: mutation.text,
+      };
+    }
+    if ('finishReason' in mutation) {
+      nextPayload.result.finishReason = mutation.finishReason ?? null;
+    }
+    if ('toolCalls' in mutation && Array.isArray(mutation.toolCalls)) {
+      nextPayload.result.toolCalls = clonePluginSubagentToolCalls(mutation.toolCalls);
+    }
+    if ('toolResults' in mutation && Array.isArray(mutation.toolResults)) {
+      nextPayload.result.toolResults = clonePluginSubagentToolResults(mutation.toolResults);
     }
 
     return nextPayload;
@@ -3703,6 +4042,115 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 从参数对象读取可选消息目标。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns 归一化后的消息目标；缺失时返回 undefined
+   */
+  private readOptionalMessageTarget(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): PluginMessageTargetRef | undefined {
+    const value = params[key];
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (!isJsonObjectValue(value)) {
+      throw new BadRequestException(`${method} 的 ${key} 必须是对象`);
+    }
+    if (value.type !== 'conversation') {
+      throw new BadRequestException(`${method} 的 ${key}.type 当前只支持 conversation`);
+    }
+    if (typeof value.id !== 'string' || !value.id.trim()) {
+      throw new BadRequestException(`${method} 的 ${key}.id 必须是非空字符串`);
+    }
+
+    return {
+      type: 'conversation',
+      id: value.id.trim(),
+    };
+  }
+
+  /**
+   * 从 Host API 参数中读取并归一化一份子代理请求。
+   * @param params 参数对象
+   * @param method 当前 Host API 方法名
+   * @returns 统一子代理请求快照
+   */
+  private readSubagentRequest(
+    params: JsonObject,
+    method: string,
+  ): PluginSubagentRequest {
+    return {
+      ...(this.readOptionalString(params, 'providerId', method)
+        ? { providerId: this.readOptionalString(params, 'providerId', method) }
+        : {}),
+      ...(this.readOptionalString(params, 'modelId', method)
+        ? { modelId: this.readOptionalString(params, 'modelId', method) }
+        : {}),
+      ...(this.readOptionalString(params, 'system', method)
+        ? { system: this.readOptionalString(params, 'system', method) }
+        : {}),
+      messages: this.readLlmMessages(params, method),
+      ...(this.readOptionalStringArray(params, 'toolNames', method)
+        ? { toolNames: this.readOptionalStringArray(params, 'toolNames', method) }
+        : {}),
+      ...(this.readOptionalString(params, 'variant', method)
+        ? { variant: this.readOptionalString(params, 'variant', method) }
+        : {}),
+      ...(this.readOptionalObject(params, 'providerOptions', method)
+        ? { providerOptions: this.readOptionalObject(params, 'providerOptions', method) }
+        : {}),
+      ...(this.readOptionalStringRecord(params, 'headers', method)
+        ? { headers: this.readOptionalStringRecord(params, 'headers', method) }
+        : {}),
+      ...(typeof this.readOptionalNumber(params, 'maxOutputTokens', method) === 'number'
+        ? { maxOutputTokens: this.readOptionalNumber(params, 'maxOutputTokens', method) }
+        : {}),
+      maxSteps: normalizePositiveInteger(
+        this.readOptionalNumber(params, 'maxSteps', method),
+        5,
+      ),
+    };
+  }
+
+  /**
+   * 构造一个统一的子代理执行结果，并在缺失模型信息时回退到宿主默认解析。
+   * @param input 原始结果字段
+   * @returns 标准化后的子代理结果
+   */
+  private buildSubagentHookResult(input: {
+    providerId?: string;
+    modelId?: string;
+    text: string;
+    finishReason?: string | null;
+    toolCalls?: PluginSubagentToolCall[];
+    toolResults?: PluginSubagentToolResult[];
+  }): PluginSubagentRunResult {
+    const modelConfig = this.aiModelExecution.resolveModelConfig(
+      input.providerId,
+      input.modelId,
+    );
+
+    return {
+      providerId: String(modelConfig.providerId),
+      modelId: String(modelConfig.id),
+      text: input.text,
+      message: {
+        role: 'assistant',
+        content: input.text,
+      },
+      ...(typeof input.finishReason !== 'undefined'
+        ? { finishReason: input.finishReason }
+        : {}),
+      toolCalls: clonePluginSubagentToolCalls(input.toolCalls ?? []),
+      toolResults: clonePluginSubagentToolResults(input.toolResults ?? []),
+    };
+  }
+
+  /**
    * 执行一次宿主侧 subagent 调用。
    * @param input 调用参数
    * @returns subagent 最终结果
@@ -3712,66 +4160,56 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     params: JsonObject;
   }): Promise<PluginSubagentRunResult> {
-    const providerId = this.readOptionalString(input.params, 'providerId', 'subagent.run');
-    const modelId = this.readOptionalString(input.params, 'modelId', 'subagent.run');
-    const system = this.readOptionalString(input.params, 'system', 'subagent.run');
-    const variant = this.readOptionalString(input.params, 'variant', 'subagent.run');
-    const providerOptions = this.readOptionalObject(
-      input.params,
-      'providerOptions',
-      'subagent.run',
-    );
-    const headers = this.readOptionalStringRecord(
-      input.params,
-      'headers',
-      'subagent.run',
-    );
-    const maxOutputTokens = this.readOptionalNumber(
-      input.params,
-      'maxOutputTokens',
-      'subagent.run',
-    );
-    const maxSteps = normalizePositiveInteger(
-      this.readOptionalNumber(input.params, 'maxSteps', 'subagent.run'),
-      5,
-    );
-    const toolNames = this.readOptionalStringArray(
-      input.params,
-      'toolNames',
-      'subagent.run',
-    );
-    const messages = this.readLlmMessages(input.params, 'subagent.run');
-    const modelConfig = this.aiModelExecution.resolveModelConfig(providerId, modelId);
+    const initialRequest = this.readSubagentRequest(input.params, 'subagent.run');
+    const beforeRunResult = await this.runSubagentBeforeRunHooks({
+      context: input.context,
+      payload: {
+        context: {
+          ...input.context,
+        },
+        pluginId: input.pluginId,
+        request: cloneSubagentRequest(initialRequest),
+      },
+    });
+    if (beforeRunResult.action === 'short-circuit') {
+      return beforeRunResult.result;
+    }
 
-    if (hasImagePart(messages) && !modelConfig.capabilities.input.image) {
+    const request = beforeRunResult.payload.request;
+    const modelConfig = this.aiModelExecution.resolveModelConfig(
+      request.providerId,
+      request.modelId,
+    );
+
+    if (hasImagePart(request.messages) && !modelConfig.capabilities.input.image) {
       throw new BadRequestException('subagent.run 当前模型不支持图片输入');
     }
 
     const prepared = this.aiModelExecution.prepareResolved({
       modelConfig,
-      sdkMessages: toAiSdkMessages(messages as unknown as ChatRuntimeMessage[]),
+      sdkMessages: toAiSdkMessages(request.messages as unknown as ChatRuntimeMessage[]),
     });
     const tools = this.buildSubagentToolSet({
       pluginId: input.pluginId,
       context: input.context,
       providerId: String(modelConfig.providerId),
       modelId: String(modelConfig.id),
-      toolNames,
+      toolNames: request.toolNames,
     });
     const executed = this.aiModelExecution.streamPrepared({
       prepared,
-      system,
+      system: request.system,
       tools,
-      stopWhen: createStepLimit(maxSteps),
-      variant,
-      providerOptions,
-      headers,
-      maxOutputTokens,
+      stopWhen: createStepLimit(request.maxSteps),
+      variant: request.variant,
+      providerOptions: request.providerOptions,
+      headers: request.headers,
+      maxOutputTokens: request.maxOutputTokens,
     });
 
     let text = '';
-    const toolCalls: PluginSubagentRunResult['toolCalls'] = [];
-    const toolResults: PluginSubagentRunResult['toolResults'] = [];
+    const toolCalls: PluginSubagentToolCall[] = [];
+    const toolResults: PluginSubagentToolResult[] = [];
 
     for await (const part of executed.result.fullStream) {
       if (part.type === 'text-delta') {
@@ -3796,8 +4234,7 @@ export class PluginRuntimeService {
     }
 
     const finishReason = await executed.result.finishReason;
-
-    return {
+    const result: PluginSubagentRunResult = {
       providerId: String(modelConfig.providerId),
       modelId: String(modelConfig.id),
       text,
@@ -3813,6 +4250,24 @@ export class PluginRuntimeService {
       toolCalls,
       toolResults,
     };
+
+    const afterRunPayload = await this.runSubagentAfterRunHooks({
+      context: input.context,
+      payload: {
+        context: {
+          ...input.context,
+        },
+        pluginId: input.pluginId,
+        request: {
+          ...cloneSubagentRequest(request),
+          providerId: String(modelConfig.providerId),
+          modelId: String(modelConfig.id),
+        },
+        result,
+      },
+    });
+
+    return afterRunPayload.result;
   }
 
   /**
@@ -4272,6 +4727,119 @@ function cloneResponseBeforeSendHookPayload(
 }
 
 /**
+ * 复制子代理执行前 Hook 载荷。
+ * @param payload 原始载荷
+ * @returns 新的载荷副本
+ */
+function cloneSubagentBeforeRunPayload(
+  payload: SubagentBeforeRunHookPayload,
+): SubagentBeforeRunHookPayload {
+  return {
+    context: {
+      ...payload.context,
+    },
+    pluginId: payload.pluginId,
+    request: cloneSubagentRequest(payload.request),
+  };
+}
+
+/**
+ * 复制子代理执行后 Hook 载荷。
+ * @param payload 原始载荷
+ * @returns 新的载荷副本
+ */
+function cloneSubagentAfterRunPayload(
+  payload: SubagentAfterRunHookPayload,
+): SubagentAfterRunHookPayload {
+  return {
+    context: {
+      ...payload.context,
+    },
+    pluginId: payload.pluginId,
+    request: cloneSubagentRequest(payload.request),
+    result: cloneSubagentRunResult(payload.result),
+  };
+}
+
+/**
+ * 复制子代理请求快照。
+ * @param request 原始请求
+ * @returns 新的请求副本
+ */
+function cloneSubagentRequest(
+  request: PluginSubagentRequest,
+): PluginSubagentRequest {
+  return {
+    ...(request.providerId ? { providerId: request.providerId } : {}),
+    ...(request.modelId ? { modelId: request.modelId } : {}),
+    ...(typeof request.system === 'string' ? { system: request.system } : {}),
+    messages: clonePluginLlmMessages(request.messages),
+    ...(request.toolNames ? { toolNames: [...request.toolNames] } : {}),
+    ...(typeof request.variant === 'string' ? { variant: request.variant } : {}),
+    ...(request.providerOptions ? { providerOptions: { ...request.providerOptions } } : {}),
+    ...(request.headers ? { headers: { ...request.headers } } : {}),
+    ...(typeof request.maxOutputTokens === 'number'
+      ? { maxOutputTokens: request.maxOutputTokens }
+      : {}),
+    maxSteps: request.maxSteps,
+  };
+}
+
+/**
+ * 复制子代理执行结果。
+ * @param result 原始结果
+ * @returns 新的结果副本
+ */
+function cloneSubagentRunResult(
+  result: PluginSubagentRunResult,
+): PluginSubagentRunResult {
+  return {
+    providerId: result.providerId,
+    modelId: result.modelId,
+    text: result.text,
+    message: {
+      role: 'assistant',
+      content: result.message.content,
+    },
+    ...(typeof result.finishReason !== 'undefined'
+      ? { finishReason: result.finishReason }
+      : {}),
+    toolCalls: clonePluginSubagentToolCalls(result.toolCalls),
+    toolResults: clonePluginSubagentToolResults(result.toolResults),
+  };
+}
+
+/**
+ * 复制子代理工具调用数组。
+ * @param toolCalls 原始工具调用数组
+ * @returns 深拷贝后的工具调用数组
+ */
+function clonePluginSubagentToolCalls(
+  toolCalls: PluginSubagentToolCall[],
+): PluginSubagentToolCall[] {
+  return toolCalls.map((toolCall) => ({
+    toolCallId: toolCall.toolCallId,
+    toolName: toolCall.toolName,
+    input: toJsonValue(toolCall.input),
+  }));
+}
+
+/**
+ * 复制子代理工具结果数组。
+ * @param toolResults 原始工具结果数组
+ * @returns 深拷贝后的工具结果数组
+ */
+function clonePluginSubagentToolResults(
+  toolResults: PluginSubagentToolResult[],
+): PluginSubagentToolResult[] {
+  return toolResults.map((toolResult) => ({
+    toolCallId: toolResult.toolCallId,
+    toolName: toolResult.toolName,
+    output: toJsonValue(toolResult.output),
+  }));
+}
+
+/**
  * 复制自动化动作列表。
  * @param actions 原始动作数组
  * @returns 新的动作数组
@@ -4486,6 +5054,36 @@ function isActionConfigArray(value: JsonValue | undefined): boolean {
       }
       return true;
     });
+}
+
+/**
+ * 判断一个值是否为子代理工具调用数组。
+ * @param value 原始值
+ * @returns 是否为合法工具调用数组
+ */
+function isPluginSubagentToolCallArray(value: JsonValue | undefined): boolean {
+  return Array.isArray(value)
+    && value.every((toolCall) =>
+      isJsonObjectValue(toolCall)
+      && typeof toolCall.toolCallId === 'string'
+      && typeof toolCall.toolName === 'string'
+      && Object.prototype.hasOwnProperty.call(toolCall, 'input'),
+    );
+}
+
+/**
+ * 判断一个值是否为子代理工具结果数组。
+ * @param value 原始值
+ * @returns 是否为合法工具结果数组
+ */
+function isPluginSubagentToolResultArray(value: JsonValue | undefined): boolean {
+  return Array.isArray(value)
+    && value.every((toolResult) =>
+      isJsonObjectValue(toolResult)
+      && typeof toolResult.toolCallId === 'string'
+      && typeof toolResult.toolName === 'string'
+      && Object.prototype.hasOwnProperty.call(toolResult, 'output'),
+    );
 }
 
 /**

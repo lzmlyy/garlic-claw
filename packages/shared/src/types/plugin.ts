@@ -50,6 +50,8 @@ export type PluginHookName =
   | 'message:deleted'
   | 'automation:before-run'
   | 'automation:after-run'
+  | 'subagent:before-run'
+  | 'subagent:after-run'
   | 'tool:before-call'
   | 'tool:after-call'
   | 'response:before-send'
@@ -453,6 +455,20 @@ export interface PluginSubagentRunParams {
   maxSteps?: number;
 }
 
+/** 子代理工具调用摘要。 */
+export interface PluginSubagentToolCall {
+  toolCallId: string;
+  toolName: string;
+  input: JsonValue;
+}
+
+/** 子代理工具结果摘要。 */
+export interface PluginSubagentToolResult {
+  toolCallId: string;
+  toolName: string;
+  output: JsonValue;
+}
+
 /** 插件侧统一 Subagent 运行结果。 */
 export interface PluginSubagentRunResult {
   providerId: string;
@@ -463,17 +479,96 @@ export interface PluginSubagentRunResult {
     content: string;
   };
   finishReason?: string | null;
-  toolCalls: Array<{
-    toolCallId: string;
-    toolName: string;
-    input: JsonValue;
-  }>;
-  toolResults: Array<{
-    toolCallId: string;
-    toolName: string;
-    output: JsonValue;
-  }>;
+  toolCalls: PluginSubagentToolCall[];
+  toolResults: PluginSubagentToolResult[];
 }
+
+/** 子代理运行时可改写的请求快照。 */
+export interface PluginSubagentRequest {
+  providerId?: string;
+  modelId?: string;
+  system?: string;
+  messages: PluginLlmMessage[];
+  toolNames?: string[];
+  variant?: string;
+  providerOptions?: JsonObject;
+  headers?: Record<string, string>;
+  maxOutputTokens?: number;
+  maxSteps: number;
+}
+
+/** 子代理运行前 Hook 的输入。 */
+export interface SubagentBeforeRunHookPayload {
+  context: PluginCallContext;
+  pluginId: string;
+  request: PluginSubagentRequest;
+}
+
+/** 子代理运行前 Hook 不改写当前请求。 */
+export interface SubagentBeforeRunHookPassResult {
+  action: 'pass';
+}
+
+/** 子代理运行前 Hook 改写当前请求。 */
+export interface SubagentBeforeRunHookMutateResult {
+  action: 'mutate';
+  providerId?: string;
+  modelId?: string;
+  system?: string | null;
+  messages?: PluginLlmMessage[];
+  toolNames?: string[] | null;
+  variant?: string | null;
+  providerOptions?: JsonObject | null;
+  headers?: Record<string, string> | null;
+  maxOutputTokens?: number | null;
+  maxSteps?: number | null;
+}
+
+/** 子代理运行前 Hook 直接短路本轮执行。 */
+export interface SubagentBeforeRunHookShortCircuitResult {
+  action: 'short-circuit';
+  text: string;
+  providerId?: string;
+  modelId?: string;
+  finishReason?: string | null;
+  toolCalls?: PluginSubagentToolCall[];
+  toolResults?: PluginSubagentToolResult[];
+}
+
+/** 子代理运行前 Hook 的返回。 */
+export type SubagentBeforeRunHookResult =
+  | SubagentBeforeRunHookPassResult
+  | SubagentBeforeRunHookMutateResult
+  | SubagentBeforeRunHookShortCircuitResult;
+
+/** 子代理运行后 Hook 的输入。 */
+export interface SubagentAfterRunHookPayload {
+  context: PluginCallContext;
+  pluginId: string;
+  request: PluginSubagentRequest;
+  result: PluginSubagentRunResult;
+}
+
+/** 子代理运行后 Hook 透传当前结果。 */
+export interface SubagentAfterRunHookPassResult {
+  action: 'pass';
+}
+
+/** 子代理运行后 Hook 改写最终结果。 */
+export interface SubagentAfterRunHookMutateResult {
+  action: 'mutate';
+  text?: string;
+  providerId?: string;
+  modelId?: string;
+  finishReason?: string | null;
+  toolCalls?: PluginSubagentToolCall[];
+  toolResults?: PluginSubagentToolResult[];
+}
+
+/** 子代理运行后 Hook 的返回。 */
+export type SubagentAfterRunHookResult =
+  | SubagentAfterRunHookPassResult
+  | SubagentAfterRunHookMutateResult;
 
 /** 聊天模型前 Hook 可见的工具摘要。 */
 export interface PluginAvailableToolSummary {
@@ -659,19 +754,33 @@ export interface PluginMessageHookInfo {
   status?: ChatMessageStatus;
 }
 
-/** 插件主动创建会话消息的参数。 */
-export interface PluginConversationMessageCreateParams {
-  conversationId?: string;
+/** 当前宿主支持的单用户消息目标类型。 */
+export type PluginMessageTargetType = 'conversation';
+
+/** 插件可引用的消息目标。 */
+export interface PluginMessageTargetRef {
+  type: PluginMessageTargetType;
+  id: string;
+}
+
+/** 插件可见的消息目标摘要。 */
+export interface PluginMessageTargetInfo extends PluginMessageTargetRef {
+  label?: string;
+}
+
+/** 插件主动发送一条消息的参数。 */
+export interface PluginMessageSendParams {
+  target?: PluginMessageTargetRef | null;
   content?: string | null;
   parts?: ChatMessagePart[] | null;
   provider?: string | null;
   model?: string | null;
 }
 
-/** 插件主动创建的会话消息摘要。 */
-export interface PluginConversationMessageInfo {
+/** 插件主动发送后的消息摘要。 */
+export interface PluginMessageSendInfo {
   id: string;
-  conversationId: string;
+  target: PluginMessageTargetInfo;
   role: 'assistant';
   content: string;
   parts: ChatMessagePart[];
@@ -1030,7 +1139,6 @@ export type PluginHostMethod =
   | 'cron.list'
   | 'cron.register'
   | 'conversation.get'
-  | 'conversation.message.create'
   | 'conversation.session.finish'
   | 'conversation.session.get'
   | 'conversation.session.keep'
@@ -1043,6 +1151,8 @@ export type PluginHostMethod =
   | 'llm.generate'
   | 'llm.generate-text'
   | 'log.write'
+  | 'message.send'
+  | 'message.target.current.get'
   | 'memory.search'
   | 'memory.save'
   | 'persona.activate'

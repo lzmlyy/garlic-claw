@@ -3,7 +3,10 @@ import type {
   ChatBeforeModelRequest,
   ChatMessagePart,
   PluginCallContext,
-  PluginConversationMessageInfo,
+  PluginMessageSendInfo,
+  PluginMessageSendParams,
+  PluginMessageTargetInfo,
+  PluginMessageTargetRef,
   PluginResponseSource,
 } from '@garlic-claw/shared';
 import { AiProviderService } from '../ai/ai-provider.service';
@@ -60,6 +63,22 @@ interface AppliedChatBeforeModelShortCircuitResult {
   providerId: string;
   modelId: string;
   reason?: string;
+}
+
+/**
+ * 当前 conversation 目标下已写入的 assistant 消息摘要。
+ */
+interface ConversationTargetMessageRecord {
+  id: string;
+  conversationId: string;
+  role: 'assistant';
+  content: string;
+  parts: ChatMessagePart[];
+  provider?: string | null;
+  model?: string | null;
+  status: 'pending' | 'streaming' | 'completed' | 'stopped' | 'error';
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -478,18 +497,18 @@ export class ChatMessageService {
     return { success: true };
   }
 
-  /** 供插件主动向当前或指定会话追加一条已完成的 assistant 消息。 */
-  async createPluginConversationMessage(input: {
+  /** 向指定 conversation 目标追加一条已完成的 assistant 消息。 */
+  private async appendConversationTargetMessage(input: {
     context: PluginCallContext;
     conversationId?: string;
     content?: string | null;
     parts?: ChatMessagePart[] | null;
     provider?: string | null;
     model?: string | null;
-  }): Promise<PluginConversationMessageInfo> {
+  }): Promise<ConversationTargetMessageRecord> {
     const targetConversationId = input.conversationId ?? input.context.conversationId;
     if (!targetConversationId) {
-      throw new BadRequestException('conversation.message.create 需要 conversationId 上下文');
+      throw new BadRequestException('message.send 需要 conversationId 上下文');
     }
 
     await this.ensureConversationAccess(input.context, targetConversationId);
@@ -500,7 +519,7 @@ export class ChatMessageService {
     });
     if (!normalizedAssistant.content && normalizedAssistant.parts.length === 0) {
       throw new BadRequestException(
-        'conversation.message.create 需要非空 content 或 parts',
+        'message.send 需要非空 content 或 parts',
       );
     }
 
@@ -573,6 +592,61 @@ export class ChatMessageService {
     };
   }
 
+  /** 供插件读取当前消息目标摘要；当前实现映射为当前会话。 */
+  async getCurrentPluginMessageTarget(input: {
+    context: PluginCallContext;
+  }): Promise<PluginMessageTargetInfo | null> {
+    if (!input.context.conversationId) {
+      return null;
+    }
+
+    return this.resolvePluginMessageTarget(input.context, {
+      type: 'conversation',
+      id: input.context.conversationId,
+    });
+  }
+
+  /** 供插件向当前或指定单用户消息目标发送一条 assistant 消息。 */
+  async sendPluginMessage(input: {
+    context: PluginCallContext;
+    target?: PluginMessageTargetRef | null;
+    content?: string | null;
+    parts?: ChatMessagePart[] | null;
+    provider?: string | null;
+    model?: string | null;
+  }): Promise<PluginMessageSendInfo> {
+    const target = await this.resolveSendMessageTarget(input.context, input.target);
+    if (target.type !== 'conversation') {
+      throw new BadRequestException(`message.send 当前不支持目标类型 ${target.type}`);
+    }
+
+    const sentMessage = await this.appendConversationTargetMessage({
+      context: input.context,
+      conversationId: target.id,
+      content: input.content,
+      parts: input.parts,
+      provider: input.provider,
+      model: input.model,
+    });
+
+    return {
+      id: sentMessage.id,
+      target,
+      role: sentMessage.role,
+      content: sentMessage.content,
+      parts: sentMessage.parts,
+      ...(typeof sentMessage.provider !== 'undefined'
+        ? { provider: sentMessage.provider }
+        : {}),
+      ...(typeof sentMessage.model !== 'undefined'
+        ? { model: sentMessage.model }
+        : {}),
+      status: sentMessage.status,
+      createdAt: sentMessage.createdAt,
+      updatedAt: sentMessage.updatedAt,
+    };
+  }
+
   /** 读取对话中的一条消息并校验所有权，输出对话与消息。 */
   private async getOwnedMessage(userId: string, conversationId: string, messageId: string) {
     const conversation = await this.chatService.getConversation(userId, conversationId);
@@ -610,6 +684,88 @@ export class ChatMessageService {
     if (!conversation) {
       throw new NotFoundException('Conversation not found');
     }
+  }
+
+  /**
+   * 解析插件当前可见的会话消息目标，并返回带标题的安全摘要。
+   * @param context 插件调用上下文
+   * @param target 目标引用
+   * @returns 归一化后的目标摘要
+   */
+  private async resolvePluginMessageTarget(
+    context: PluginCallContext,
+    target: PluginMessageTargetRef,
+  ): Promise<PluginMessageTargetInfo> {
+    if (target.type !== 'conversation') {
+      throw new BadRequestException(`当前不支持消息目标类型 ${target.type}`);
+    }
+
+    const conversation = await this.getConversationTargetRecord(context, target.id);
+    return {
+      type: 'conversation',
+      id: conversation.id,
+      label: conversation.title,
+    };
+  }
+
+  /**
+   * 解析 `message.send` 应写入的目标；未显式提供时回退到当前上下文。
+   * @param context 插件调用上下文
+   * @param target 可选显式目标
+   * @returns 可写入的目标摘要
+   */
+  private async resolveSendMessageTarget(
+    context: PluginCallContext,
+    target?: PluginMessageSendParams['target'],
+  ): Promise<PluginMessageTargetInfo> {
+    if (target) {
+      return this.resolvePluginMessageTarget(context, target);
+    }
+    if (context.conversationId) {
+      return this.resolvePluginMessageTarget(context, {
+        type: 'conversation',
+        id: context.conversationId,
+      });
+    }
+
+    throw new BadRequestException('message.send 需要消息目标上下文');
+  }
+
+  /**
+   * 读取一个当前上下文可见的会话目标记录。
+   * @param context 插件调用上下文
+   * @param conversationId 目标会话 ID
+   * @returns 只包含安全字段的会话目标
+   */
+  private async getConversationTargetRecord(
+    context: PluginCallContext,
+    conversationId: string,
+  ): Promise<{ id: string; title: string }> {
+    if (context.userId) {
+      const conversation = await this.chatService.getConversation(context.userId, conversationId);
+      return {
+        id: conversation.id,
+        title: conversation.title,
+      };
+    }
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: {
+        id: conversationId,
+      },
+      select: {
+        id: true,
+        title: true,
+      },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    return {
+      id: conversation.id,
+      title: conversation.title,
+    };
   }
 
   /**

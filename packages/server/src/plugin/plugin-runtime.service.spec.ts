@@ -52,7 +52,8 @@ describe('PluginRuntimeService', () => {
   };
 
   const chatMessageService = {
-    createPluginConversationMessage: jest.fn(),
+    getCurrentPluginMessageTarget: jest.fn(),
+    sendPluginMessage: jest.fn(),
   };
 
   const moduleRef = {
@@ -2366,7 +2367,7 @@ describe('PluginRuntimeService', () => {
     const manifest: PluginManifest = {
       ...builtinManifest,
       id: 'builtin.conversation-title',
-      permissions: ['conversation:read'],
+      permissions: [],
       tools: [],
       hooks: [
         {
@@ -2389,7 +2390,19 @@ describe('PluginRuntimeService', () => {
           userId: 'user-1',
           conversationId: 'conversation-1',
         },
-        method: 'conversation.message.create' as never,
+        method: 'message.target.current.get' as never,
+        params: {},
+      }),
+    ).rejects.toThrow('插件 builtin.conversation-title 缺少权限 conversation:read');
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.conversation-title',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        method: 'message.send' as never,
         params: {
           content: '插件补充回复',
         },
@@ -2438,10 +2451,63 @@ describe('PluginRuntimeService', () => {
       }),
     ).rejects.toThrow('插件 builtin.conversation-title 缺少权限 llm:generate');
     expect(hostService.call).not.toHaveBeenCalled();
-    expect(chatMessageService.createPluginConversationMessage).not.toHaveBeenCalled();
+    expect(chatMessageService.getCurrentPluginMessageTarget).not.toHaveBeenCalled();
+    expect(chatMessageService.sendPluginMessage).not.toHaveBeenCalled();
   });
 
-  it('delegates conversation.message.create to the chat message service', async () => {
+  it('delegates message.target.current.get to the chat message service', async () => {
+    const manifest: PluginManifest = {
+      ...builtinManifest,
+      id: 'builtin.response-recorder',
+      permissions: ['conversation:read'],
+      tools: [],
+      hooks: [],
+    };
+
+    chatMessageService.getCurrentPluginMessageTarget.mockResolvedValue({
+      type: 'conversation',
+      id: 'conversation-1',
+      label: '插件目标会话',
+    });
+
+    await service.registerPlugin({
+      manifest,
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.response-recorder',
+        context: {
+          source: 'cron',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+        },
+        method: 'message.target.current.get' as never,
+        params: {},
+      }),
+    ).resolves.toEqual({
+      type: 'conversation',
+      id: 'conversation-1',
+      label: '插件目标会话',
+    });
+
+    expect(chatMessageService.getCurrentPluginMessageTarget).toHaveBeenCalledWith({
+      context: {
+        source: 'cron',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+      },
+    });
+    expect(hostService.call).not.toHaveBeenCalled();
+  });
+
+  it('delegates message.send to the chat message service', async () => {
     const manifest: PluginManifest = {
       ...builtinManifest,
       id: 'builtin.response-recorder',
@@ -2450,9 +2516,13 @@ describe('PluginRuntimeService', () => {
       hooks: [],
     };
 
-    chatMessageService.createPluginConversationMessage.mockResolvedValue({
+    chatMessageService.sendPluginMessage.mockResolvedValue({
       id: 'assistant-message-plugin-1',
-      conversationId: 'conversation-2',
+      target: {
+        type: 'conversation',
+        id: 'conversation-2',
+        label: '插件目标会话',
+      },
       role: 'assistant',
       content: '插件补充回复',
       parts: [
@@ -2484,9 +2554,12 @@ describe('PluginRuntimeService', () => {
           activeProviderId: 'openai',
           activeModelId: 'gpt-5.2',
         },
-        method: 'conversation.message.create' as never,
+        method: 'message.send' as never,
         params: {
-          conversationId: 'conversation-2',
+          target: {
+            type: 'conversation',
+            id: 'conversation-2',
+          },
           content: '插件补充回复',
           parts: [
             {
@@ -2500,7 +2573,11 @@ describe('PluginRuntimeService', () => {
       }),
     ).resolves.toEqual({
       id: 'assistant-message-plugin-1',
-      conversationId: 'conversation-2',
+      target: {
+        type: 'conversation',
+        id: 'conversation-2',
+        label: '插件目标会话',
+      },
       role: 'assistant',
       content: '插件补充回复',
       parts: [
@@ -2516,7 +2593,7 @@ describe('PluginRuntimeService', () => {
       updatedAt: '2026-03-28T10:00:00.000Z',
     });
 
-    expect(chatMessageService.createPluginConversationMessage).toHaveBeenCalledWith({
+    expect(chatMessageService.sendPluginMessage).toHaveBeenCalledWith({
       context: {
         source: 'cron',
         userId: 'user-1',
@@ -2524,7 +2601,10 @@ describe('PluginRuntimeService', () => {
         activeProviderId: 'openai',
         activeModelId: 'gpt-5.2',
       },
-      conversationId: 'conversation-2',
+      target: {
+        type: 'conversation',
+        id: 'conversation-2',
+      },
       content: '插件补充回复',
       parts: [
         {
@@ -3424,6 +3504,279 @@ describe('PluginRuntimeService', () => {
         activePersonaId: 'builtin.default-assistant',
       },
     });
+  });
+
+  it('runs subagent lifecycle hooks around subagent.run and applies their mutations', async () => {
+    const beforeHook = jest.fn().mockResolvedValue({
+      action: 'mutate',
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      system: '你是更谨慎的子代理',
+      toolNames: ['recall_memory'],
+      maxSteps: 2,
+    });
+    const afterHook = jest.fn().mockResolvedValue({
+      action: 'mutate',
+      text: '已被 after hook 改写',
+      toolResults: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'recall_memory',
+          output: {
+            count: 2,
+          },
+        },
+      ],
+    });
+
+    aiModelExecution.resolveModelConfig.mockReturnValue({
+      id: 'claude-3-7-sonnet',
+      providerId: 'anthropic',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: true,
+        toolCall: true,
+      },
+    });
+    aiModelExecution.prepareResolved.mockReturnValue({
+      modelConfig: {
+        id: 'claude-3-7-sonnet',
+        providerId: 'anthropic',
+        capabilities: {
+          input: { text: true, image: false },
+          output: { text: true, image: false },
+          reasoning: true,
+          toolCall: true,
+        },
+      },
+      model: {
+        provider: 'anthropic',
+        modelId: 'claude-3-7-sonnet',
+      },
+      sdkMessages: [],
+    });
+    aiModelExecution.streamPrepared.mockReturnValue({
+      result: {
+        fullStream: (async function* () {
+          yield {
+            type: 'tool-call',
+            toolCallId: 'call-1',
+            toolName: 'recall_memory',
+            input: {
+              query: '咖啡',
+            },
+          } as const;
+          yield {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'recall_memory',
+            output: {
+              count: 1,
+            },
+          } as const;
+          yield {
+            type: 'text-delta',
+            text: '原始子代理回复',
+          } as const;
+          yield { type: 'finish' } as const;
+        })(),
+        finishReason: Promise.resolve('stop'),
+      },
+    });
+
+    await service.registerPlugin({
+      manifest: {
+        ...builtinManifest,
+        id: 'builtin.subagent-observer',
+        tools: [],
+        hooks: [
+          {
+            name: 'subagent:before-run',
+          },
+          {
+            name: 'subagent:after-run',
+          },
+        ],
+      },
+      runtimeKind: 'builtin',
+      transport: createTransport({
+        invokeHook: jest.fn()
+          .mockImplementationOnce(beforeHook)
+          .mockImplementationOnce(afterHook),
+      }),
+    });
+    await service.registerPlugin({
+      manifest: {
+        ...builtinManifest,
+        id: 'builtin.subagent-delegate',
+        permissions: ['subagent:run'],
+        tools: [],
+        hooks: [],
+      },
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.subagent-delegate',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+          activePersonaId: 'builtin.default-assistant',
+        },
+        method: 'subagent.run' as never,
+        params: {
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          messages: [
+            {
+              role: 'user',
+              content: '请帮我总结',
+            },
+          ],
+          maxSteps: 4,
+        },
+      }),
+    ).resolves.toEqual({
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      text: '已被 after hook 改写',
+      message: {
+        role: 'assistant',
+        content: '已被 after hook 改写',
+      },
+      finishReason: 'stop',
+      toolCalls: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'recall_memory',
+          input: {
+            query: '咖啡',
+          },
+        },
+      ],
+      toolResults: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'recall_memory',
+          output: {
+            count: 2,
+          },
+        },
+      ],
+    });
+
+    expect(beforeHook).toHaveBeenCalledWith({
+      hookName: 'subagent:before-run',
+      context: {
+        source: 'plugin',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'builtin.default-assistant',
+      },
+      payload: {
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+          activePersonaId: 'builtin.default-assistant',
+        },
+        pluginId: 'builtin.subagent-delegate',
+        request: {
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          messages: [
+            {
+              role: 'user',
+              content: '请帮我总结',
+            },
+          ],
+          maxSteps: 4,
+        },
+      },
+    });
+    expect(afterHook).toHaveBeenCalledWith({
+      hookName: 'subagent:after-run',
+      context: {
+        source: 'plugin',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'builtin.default-assistant',
+      },
+      payload: {
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+          activeProviderId: 'openai',
+          activeModelId: 'gpt-5.2',
+          activePersonaId: 'builtin.default-assistant',
+        },
+        pluginId: 'builtin.subagent-delegate',
+        request: {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+          system: '你是更谨慎的子代理',
+          messages: [
+            {
+              role: 'user',
+              content: '请帮我总结',
+            },
+          ],
+          toolNames: ['recall_memory'],
+          maxSteps: 2,
+        },
+        result: {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+          text: '原始子代理回复',
+          message: {
+            role: 'assistant',
+            content: '原始子代理回复',
+          },
+          finishReason: 'stop',
+          toolCalls: [
+            {
+              toolCallId: 'call-1',
+              toolName: 'recall_memory',
+              input: {
+                query: '咖啡',
+              },
+            },
+          ],
+          toolResults: [
+            {
+              toolCallId: 'call-1',
+              toolName: 'recall_memory',
+              output: {
+                count: 1,
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(aiModelExecution.resolveModelConfig).toHaveBeenCalledWith(
+      'anthropic',
+      'claude-3-7-sonnet',
+    );
+    expect(aiModelExecution.streamPrepared).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: '你是更谨慎的子代理',
+        stopWhen: expect.anything(),
+      }),
+    );
   });
 
   it('enforces persona permissions before persona host calls', async () => {
