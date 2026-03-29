@@ -3,6 +3,7 @@ import type {
   TriggerConfig,
 } from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
+import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
 
 /**
@@ -12,7 +13,7 @@ import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
  * - 无
  *
  * 输出:
- * - 具备自动化创建、列表、切换与执行能力的内建插件定义
+ * - 具备自动化创建、事件触发、列表、切换与执行能力的内建插件定义
  *
  * 预期行为:
  * - 聊天链路通过统一插件运行时暴露自动化工具
@@ -39,16 +40,31 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
             },
             triggerType: {
               type: 'string',
-              description: '触发类型：cron 为计划执行，manual 为手动触发',
+              description: '触发类型：cron 为计划执行，manual 为手动触发，event 为事件触发',
               required: true,
             },
             cronInterval: {
               type: 'string',
               description: '对于 cron 触发：间隔如 "5m"、"1h"、"30s"',
             },
+            eventName: {
+              type: 'string',
+              description: '对于 event 触发：要监听的事件名',
+            },
             actions: {
               type: 'array',
               description: '要执行的动作列表',
+              required: true,
+            },
+          },
+        },
+        {
+          name: 'emit_automation_event',
+          description: '发出一个自动化事件，触发当前用户下匹配该事件名的自动化。',
+          parameters: {
+            event: {
+              type: 'string',
+              description: '要发出的事件名',
               required: true,
             },
           },
@@ -97,16 +113,20 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
         const triggerType = readTriggerType(params);
         const automation = await context.host.createAutomation({
           name: readRequiredString(params, 'name'),
-          trigger: {
-            type: triggerType,
-            ...(triggerType === 'cron'
-              ? {
-                  cron: readRequiredString(params, 'cronInterval'),
-                }
-              : {}),
-          },
-          actions: readAutomationActions(params),
-        });
+           trigger: {
+             type: triggerType,
+              ...(triggerType === 'cron'
+                ? {
+                    cron: readRequiredString(params, 'cronInterval'),
+                  }
+                : triggerType === 'event'
+                  ? {
+                      event: readRequiredString(params, 'eventName'),
+                    }
+                  : {}),
+            },
+            actions: readAutomationActions(params),
+          });
 
         return {
           created: true,
@@ -135,6 +155,18 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
           lastRunAt: automation.lastRunAt,
         }));
       },
+
+      /**
+       * 发出一个自动化事件。
+       * @param params 工具输入参数
+       * @param context 插件执行上下文
+       * @returns 命中的自动化 ID 摘要
+       */
+      emit_automation_event: async (
+        params: JsonObject,
+        context,
+      ): Promise<JsonValue> =>
+        toJsonValue(await context.host.emitAutomationEvent(readRequiredString(params, 'event'))),
 
       /**
        * 切换一条自动化规则的启用状态。

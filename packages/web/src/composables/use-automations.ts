@@ -8,12 +8,13 @@ import {
 } from '../api'
 import type { AutomationInfo } from '@garlic-claw/shared'
 
-type AutomationTriggerType = 'cron' | 'manual'
+type AutomationTriggerType = 'cron' | 'manual' | 'event'
 
 interface AutomationFormState {
   name: string
   triggerType: AutomationTriggerType
   cronInterval: string
+  eventName: string
   plugin: string
   capability: string
 }
@@ -34,7 +35,17 @@ export function useAutomations() {
   const showCreate = ref(false)
   const form = ref(createAutomationFormState())
   const canCreate = computed(
-    () => form.value.name && form.value.plugin && form.value.capability,
+    () =>
+      Boolean(
+        form.value.name
+        && form.value.plugin
+        && form.value.capability
+        && (
+          form.value.triggerType === 'manual'
+          || (form.value.triggerType === 'cron' && form.value.cronInterval)
+          || (form.value.triggerType === 'event' && form.value.eventName)
+        ),
+      ),
   )
 
   onMounted(() => {
@@ -60,6 +71,10 @@ export function useAutomations() {
         cron:
           form.value.triggerType === 'cron'
             ? form.value.cronInterval
+            : undefined,
+        event:
+          form.value.triggerType === 'event'
+            ? form.value.eventName
             : undefined,
       },
       actions: [
@@ -114,6 +129,7 @@ function createAutomationFormState(): AutomationFormState {
     name: '',
     triggerType: 'cron',
     cronInterval: '5m',
+    eventName: '',
     plugin: '',
     capability: '',
   }

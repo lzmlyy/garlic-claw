@@ -6,7 +6,12 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import type { ActionConfig, AutomationInfo, TriggerConfig } from '@garlic-claw/shared';
+import type {
+  ActionConfig,
+  AutomationEventDispatchInfo,
+  AutomationInfo,
+  TriggerConfig,
+} from '@garlic-claw/shared';
 import type { JsonValue } from '../common/types/json-value';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -139,6 +144,40 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
   async remove(id: string, userId: string) {
     this.unscheduleCron(id);
     return this.prisma.automation.deleteMany({ where: { id, userId } });
+  }
+
+  /**
+   * 发出一个自动化事件，并执行当前用户下所有匹配该事件名的启用自动化。
+   * @param event 事件名
+   * @param userId 事件所属用户
+   * @returns 命中的自动化 ID 摘要
+   */
+  async emitEvent(event: string, userId: string): Promise<AutomationEventDispatchInfo> {
+    const automations = await this.prisma.automation.findMany({
+      where: {
+        userId,
+        enabled: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    const matchedAutomationIds: string[] = [];
+
+    for (const automation of automations) {
+      const trigger = JSON.parse(automation.trigger) as TriggerConfig;
+      if (trigger.type !== 'event' || trigger.event !== event) {
+        continue;
+      }
+
+      matchedAutomationIds.push(automation.id);
+      await this.executeAutomation(automation.id, userId);
+    }
+
+    return {
+      event,
+      matchedAutomationIds,
+    };
   }
 
   // --- 执行 ---

@@ -252,6 +252,23 @@ test('execution context exposes message target lookup and generic send host APIs
       return;
     }
 
+    if (payload.method === 'automation.event.emit') {
+      queueMicrotask(() => {
+        void client.handleMessage({
+          type: WS_TYPE.PLUGIN,
+          action: WS_ACTION.HOST_RESULT,
+          requestId,
+          payload: {
+            data: {
+              event: 'coffee.ready',
+              matchedAutomationIds: ['automation-1'],
+            },
+          },
+        });
+      });
+      return;
+    }
+
     queueMicrotask(() => {
       void client.handleMessage({
         type: WS_TYPE.PLUGIN,
@@ -294,6 +311,7 @@ test('execution context exposes message target lookup and generic send host APIs
     },
     content: '插件补充回复',
   });
+  const emitted = await executionContext.host.emitAutomationEvent('coffee.ready');
 
   assert.deepEqual(currentTarget, {
     type: 'conversation',
@@ -319,7 +337,11 @@ test('execution context exposes message target lookup and generic send host APIs
     createdAt: '2026-03-28T10:00:00.000Z',
     updatedAt: '2026-03-28T10:00:00.000Z',
   });
-  assert.equal(sent.length, 2);
+  assert.deepEqual(emitted, {
+    event: 'coffee.ready',
+    matchedAutomationIds: ['automation-1'],
+  });
+  assert.equal(sent.length, 3);
   assert.deepEqual(sent[0], {
     type: WS_TYPE.PLUGIN,
     action: WS_ACTION.HOST_CALL,
@@ -351,5 +373,20 @@ test('execution context exposes message target lookup and generic send host APIs
       },
     },
     requestId: sent[1].requestId,
+  });
+  assert.deepEqual(sent[2], {
+    type: WS_TYPE.PLUGIN,
+    action: WS_ACTION.HOST_CALL,
+    payload: {
+      method: 'automation.event.emit',
+      params: {
+        event: 'coffee.ready',
+      },
+      context: {
+        source: 'cron',
+        conversationId: 'conv-1',
+      },
+    },
+    requestId: sent[2].requestId,
   });
 });

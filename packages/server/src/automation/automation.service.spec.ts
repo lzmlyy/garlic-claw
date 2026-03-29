@@ -309,4 +309,63 @@ describe('AutomationService', () => {
       ],
     });
   });
+
+  it('executes enabled event automations that match the emitted event name', async () => {
+    prisma.automation.findMany.mockResolvedValue([
+      {
+        id: 'automation-event-1',
+        userId: 'user-1',
+        name: '咖啡准备完成提醒',
+        enabled: true,
+        trigger: JSON.stringify({ type: 'event', event: 'coffee.ready' }),
+        actions: JSON.stringify([]),
+        lastRunAt: null,
+        createdAt: new Date('2026-03-29T14:00:00.000Z'),
+        updatedAt: new Date('2026-03-29T14:00:00.000Z'),
+      },
+      {
+        id: 'automation-event-2',
+        userId: 'user-1',
+        name: '茶准备完成提醒',
+        enabled: true,
+        trigger: JSON.stringify({ type: 'event', event: 'tea.ready' }),
+        actions: JSON.stringify([]),
+        lastRunAt: null,
+        createdAt: new Date('2026-03-29T14:01:00.000Z'),
+        updatedAt: new Date('2026-03-29T14:01:00.000Z'),
+      },
+      {
+        id: 'automation-cron-1',
+        userId: 'user-1',
+        name: '定时提醒',
+        enabled: true,
+        trigger: JSON.stringify({ type: 'cron', cron: '5m' }),
+        actions: JSON.stringify([]),
+        lastRunAt: null,
+        createdAt: new Date('2026-03-29T14:02:00.000Z'),
+        updatedAt: new Date('2026-03-29T14:02:00.000Z'),
+      },
+    ]);
+    const executeAutomation = jest
+      .spyOn(service, 'executeAutomation')
+      .mockResolvedValue({ status: 'success', results: [] });
+
+    const result = await service.emitEvent('coffee.ready', 'user-1');
+
+    expect(prisma.automation.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        enabled: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    expect(executeAutomation).toHaveBeenCalledTimes(1);
+    expect(executeAutomation).toHaveBeenCalledWith('automation-event-1', 'user-1');
+    expect(result).toEqual({
+      event: 'coffee.ready',
+      matchedAutomationIds: ['automation-event-1'],
+    });
+  });
 });

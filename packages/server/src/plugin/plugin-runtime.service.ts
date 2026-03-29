@@ -107,6 +107,7 @@ import {
  */
 const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | null> = {
   'automation.create': 'automation:write',
+  'automation.event.emit': 'automation:write',
   'automation.list': 'automation:read',
   'automation.run': 'automation:write',
   'automation.toggle': 'automation:write',
@@ -1010,6 +1011,14 @@ export class PluginRuntimeService {
       return toJsonValue(
         await this.getAutomationService().findAllByUser(
           this.requireUserId(input.context, 'automation.list'),
+        ),
+      );
+    }
+    if (input.method === 'automation.event.emit') {
+      return toJsonValue(
+        await this.getAutomationService().emitEvent(
+          this.requireString(input.params, 'event', 'automation.event.emit'),
+          this.requireUserId(input.context, 'automation.event.emit'),
         ),
       );
     }

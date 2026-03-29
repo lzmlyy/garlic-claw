@@ -1,5 +1,6 @@
 import type {
   ActionConfig,
+  AutomationEventDispatchInfo,
   AutomationInfo,
   ChatAfterModelHookPayload,
   ChatBeforeModelHookPayload,
@@ -274,6 +275,13 @@ interface BuiltinPluginHostFacade {
   runAutomation(
     automationId: string,
   ): Promise<{ status: string; results: JsonValue[] } | null>;
+
+  /**
+   * 发出一个自动化事件，触发当前用户下匹配该事件名的自动化。
+   * @param event 事件名
+   * @returns 命中的自动化 ID 摘要
+   */
+  emitAutomationEvent(event: string): Promise<AutomationEventDispatchInfo>;
 
   /**
    * 读取当前插件自身摘要。
@@ -850,6 +858,15 @@ export class BuiltinPluginTransport implements PluginTransport {
             automationId,
           },
         }) as unknown as Promise<{ status: string; results: JsonValue[] } | null>,
+      emitAutomationEvent: (event) =>
+        this.hostService.call({
+          pluginId: this.definition.manifest.id,
+          context,
+          method: 'automation.event.emit',
+          params: {
+            event,
+          },
+        }) as unknown as Promise<AutomationEventDispatchInfo>,
       getPluginSelf: () =>
         this.hostService.call({
           pluginId: this.definition.manifest.id,

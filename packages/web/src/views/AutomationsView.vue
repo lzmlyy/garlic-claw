@@ -18,12 +18,18 @@
         <select v-model="form.triggerType">
           <option value="cron">定时执行</option>
           <option value="manual">手动触发</option>
+          <option value="event">事件触发</option>
         </select>
       </div>
       <div v-if="form.triggerType === 'cron'" class="field">
         <label>执行间隔</label>
         <input v-model="form.cronInterval" placeholder="例如: 5m, 1h, 30s" />
         <span class="hint">支持格式: 30s / 5m / 1h</span>
+      </div>
+      <div v-if="form.triggerType === 'event'" class="field">
+        <label>事件名称</label>
+        <input v-model="form.eventName" placeholder="例如: coffee.ready" />
+        <span class="hint">当插件或宿主发出同名自动化事件时执行</span>
       </div>
       <div class="field">
         <label>动作：设备命令</label>
@@ -51,7 +57,13 @@
           <div class="automation-info">
             <h3>{{ auto.name }}</h3>
             <span class="trigger-badge">
-              {{ auto.trigger.type === 'cron' ? `⏰ 每 ${auto.trigger.cron}` : '🔘 手动' }}
+              {{
+                auto.trigger.type === 'cron'
+                  ? `⏰ 每 ${auto.trigger.cron}`
+                  : auto.trigger.type === 'event'
+                    ? `⚡ 事件 ${auto.trigger.event}`
+                    : '🔘 手动'
+              }}
             </span>
           </div>
           <div class="automation-actions">

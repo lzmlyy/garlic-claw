@@ -1,5 +1,6 @@
 import {
   type ActionConfig,
+  type AutomationEventDispatchInfo,
   type AuthPayload,
   type AutomationInfo,
   type ChatMessagePart,
@@ -292,6 +293,13 @@ export interface PluginHostFacade {
   runAutomation(
     automationId: string,
   ): Promise<{ status: string; results: JsonValue[] } | null>;
+
+  /**
+   * 发出一个自动化事件，触发当前用户下匹配该事件名的自动化。
+   * @param event 事件名
+   * @returns 命中的自动化 ID 摘要
+   */
+  emitAutomationEvent(event: string): Promise<AutomationEventDispatchInfo>;
 
   /**
    * 读取当前插件自身摘要。
@@ -1389,6 +1397,12 @@ export class PluginClient {
             { automationId },
             context,
           ) as unknown as Promise<{ status: string; results: JsonValue[] } | null>,
+        emitAutomationEvent: (event) =>
+          this.sendHostCall(
+            'automation.event.emit',
+            { event },
+            context,
+          ) as unknown as Promise<AutomationEventDispatchInfo>,
         getPluginSelf: () =>
           this.sendHostCall('plugin.self.get', {}, context) as unknown as Promise<PluginSelfInfo>,
         writeLog: ({ level, message, type, metadata }) =>

@@ -1131,6 +1131,7 @@ export interface RouteResultPayload {
 /** Host API 方法名。 */
 export type PluginHostMethod =
   | 'automation.create'
+  | 'automation.event.emit'
   | 'automation.list'
   | 'automation.run'
   | 'automation.toggle'

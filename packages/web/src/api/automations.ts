@@ -7,7 +7,7 @@ export function listAutomations() {
 
 export function createAutomation(data: {
   name: string
-  trigger: { type: string; cron?: string }
+  trigger: { type: string; cron?: string; event?: string }
   actions: { type: string; plugin?: string; capability?: string; params?: Record<string, JsonValue> }[]
 }) {
   return request<AutomationInfo>('/automations', {

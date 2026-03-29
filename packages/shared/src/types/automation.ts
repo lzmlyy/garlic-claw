@@ -29,6 +29,16 @@ export interface ActionConfig {
 }
 
 /**
+ * 自动化事件触发派发结果。
+ */
+export interface AutomationEventDispatchInfo {
+  /** 本次发出的事件名。 */
+  event: string;
+  /** 命中的自动化 ID 列表。 */
+  matchedAutomationIds: string[];
+}
+
+/**
  * 自动化日志。
  */
 export interface AutomationLogInfo {

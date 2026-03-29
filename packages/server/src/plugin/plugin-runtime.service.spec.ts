@@ -49,6 +49,7 @@ describe('PluginRuntimeService', () => {
     findAllByUser: jest.fn(),
     toggle: jest.fn(),
     executeAutomation: jest.fn(),
+    emitEvent: jest.fn(),
   };
 
   const chatMessageService = {
@@ -4061,6 +4062,10 @@ describe('PluginRuntimeService', () => {
         },
       ],
     });
+    automationService.emitEvent.mockResolvedValue({
+      event: 'coffee.ready',
+      matchedAutomationIds: ['automation-1'],
+    });
 
     await service.registerPlugin({
       manifest,
@@ -4172,6 +4177,22 @@ describe('PluginRuntimeService', () => {
         },
       ],
     });
+    await expect(
+      service.callHost({
+        pluginId: 'builtin.automation-tools',
+        context: {
+          source: 'plugin',
+          userId: 'user-1',
+        },
+        method: 'automation.event.emit' as never,
+        params: {
+          event: 'coffee.ready',
+        },
+      }),
+    ).resolves.toEqual({
+      event: 'coffee.ready',
+      matchedAutomationIds: ['automation-1'],
+    });
 
     expect(automationService.create).toHaveBeenCalledWith(
       'user-1',
@@ -4194,6 +4215,7 @@ describe('PluginRuntimeService', () => {
     expect(automationService.findAllByUser).toHaveBeenCalledWith('user-1');
     expect(automationService.toggle).toHaveBeenCalledWith('automation-1', 'user-1');
     expect(automationService.executeAutomation).toHaveBeenCalledWith('automation-1', 'user-1');
+    expect(automationService.emitEvent).toHaveBeenCalledWith('coffee.ready', 'user-1');
   });
 
   it('records plugin failures when tool execution throws and keeps later hooks running', async () => {

@@ -1268,6 +1268,10 @@ describe('BuiltinPluginTransport', () => {
             plugin: 'builtin.memory-tools',
           },
         ],
+      })
+      .mockResolvedValueOnce({
+        event: 'coffee.ready',
+        matchedAutomationIds: ['automation-1'],
       });
 
     const transport = new BuiltinPluginTransport(
@@ -1319,6 +1323,17 @@ describe('BuiltinPluginTransport', () => {
       toolName: 'run_automation',
       params: {
         automationId: 'automation-1',
+      },
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+    });
+    const emitted = await transport.executeTool({
+      toolName: 'emit_automation_event',
+      params: {
+        event: 'coffee.ready',
       },
       context: {
         source: 'chat-tool',
@@ -1384,6 +1399,18 @@ describe('BuiltinPluginTransport', () => {
         automationId: 'automation-1',
       },
     });
+    expect(hostService.call).toHaveBeenNthCalledWith(5, {
+      pluginId: 'builtin.automation-tools',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'automation.event.emit',
+      params: {
+        event: 'coffee.ready',
+      },
+    });
     expect(created).toEqual({
       created: true,
       id: 'automation-1',
@@ -1413,6 +1440,10 @@ describe('BuiltinPluginTransport', () => {
           plugin: 'builtin.memory-tools',
         },
       ],
+    });
+    expect(emitted).toEqual({
+      event: 'coffee.ready',
+      matchedAutomationIds: ['automation-1'],
     });
   });
 
