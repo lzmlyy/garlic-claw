@@ -173,12 +173,12 @@ export async function resolveChatModelSelection(preferred: {
   providerId?: string | null
   modelId?: string | null
 }): Promise<{ providerId: string; modelId: string } | null> {
-  const providers = (await api.listAiProviders()).filter((provider) => provider.available)
+  const providers = await listAvailableProvidersSafely()
 
   if (preferred.providerId && preferred.modelId) {
     const direct = providers.find((provider) => provider.id === preferred.providerId)
     if (direct) {
-      const models = await api.listAiModels(direct.id)
+      const models = await listProviderModelsSafely(direct.id)
       if (models.some((model) => model.id === preferred.modelId)) {
         return {
           providerId: preferred.providerId,
@@ -206,7 +206,7 @@ export async function resolveChatModelSelection(preferred: {
       }
     }
 
-    const models = await api.listAiModels(provider.id)
+    const models = await listProviderModelsSafely(provider.id)
     if (models[0]) {
       return {
         providerId: provider.id,
@@ -234,7 +234,7 @@ async function findProvidersByModelId(
         return provider
       }
 
-      const models = await api.listAiModels(provider.id)
+      const models = await listProviderModelsSafely(provider.id)
       return models.some((model) => model.id === modelId) ? provider : null
     }),
   )
@@ -242,4 +242,20 @@ async function findProvidersByModelId(
   return results.filter(
     (provider): provider is ConversationProviderSummary => provider !== null,
   )
+}
+
+async function listAvailableProvidersSafely(): Promise<ConversationProviderSummary[]> {
+  try {
+    return (await api.listAiProviders()).filter((provider) => provider.available)
+  } catch {
+    return []
+  }
+}
+
+async function listProviderModelsSafely(providerId: string) {
+  try {
+    return await api.listAiModels(providerId)
+  } catch {
+    return []
+  }
 }
