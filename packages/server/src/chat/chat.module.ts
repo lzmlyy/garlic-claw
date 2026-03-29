@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { AutomationModule } from '../automation/automation.module';
+import { PersonaModule } from '../persona/persona.module';
 import { PluginModule } from '../plugin/plugin.module';
+import { ChatModelInvocationService } from './chat-model-invocation.service';
 import { ChatMessageTransformService } from './chat-message-transform.service';
 import { ChatMessageService } from './chat-message.service';
 import { ChatTaskService } from './chat-task.service';
@@ -8,14 +9,20 @@ import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 
 @Module({
-  imports: [PluginModule, AutomationModule],
+  imports: [PluginModule, PersonaModule],
   controllers: [ChatController],
   providers: [
     ChatService,
     ChatMessageService,
     ChatTaskService,
+    ChatModelInvocationService,
     ChatMessageTransformService,
   ],
-  exports: [ChatService, ChatMessageService, ChatTaskService],
+  exports: [
+    ChatService,
+    ChatMessageService,
+    ChatTaskService,
+    ChatModelInvocationService,
+  ],
 })
 export class ChatModule {}

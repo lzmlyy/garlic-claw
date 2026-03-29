@@ -29,12 +29,69 @@
 
         <label class="field">
           <span>模型</span>
-          <select v-model="form.modelId" :disabled="!form.enabled || filteredModels.length === 0">
-            <option value="">请选择</option>
-            <option v-for="model in filteredModels" :key="model.modelId" :value="model.modelId">
-              {{ model.label }}
-            </option>
-          </select>
+          <div class="model-picker" :class="{ disabled: !form.enabled }">
+            <input
+              v-model="modelQuery"
+              data-test="vision-model-search"
+              :disabled="!form.enabled || totalProviderModels === 0"
+              placeholder="搜索模型 ID 或名称"
+            />
+
+            <div class="model-picker-summary">
+              <span>
+                匹配 {{ filteredModels.length }} / {{ totalProviderModels }}
+                <span v-if="filteredModels.length > 0">
+                  · 第 {{ currentPage }} / {{ pageCount }} 页 · 显示 {{ rangeStart }}-{{ rangeEnd }} 项
+                </span>
+              </span>
+              <button
+                type="button"
+                class="clear-link"
+                :disabled="!form.enabled || !form.modelId"
+                @click="clearModelSelection"
+              >
+                清空选择
+              </button>
+            </div>
+
+            <div v-if="filteredModels.length === 0" class="model-picker-empty">
+              当前 provider 下没有匹配模型。
+            </div>
+            <div v-else class="model-option-list">
+              <button
+                v-for="model in pagedModels"
+                :key="model.modelId"
+                type="button"
+                class="model-option"
+                :class="{ selected: form.modelId === model.modelId }"
+                @click="selectModel(model.modelId)"
+              >
+                <strong>{{ model.label.split(' / ').at(-1) ?? model.modelId }}</strong>
+                <span>{{ model.modelId }}</span>
+              </button>
+            </div>
+
+            <div v-if="filteredModels.length > 0" class="model-picker-actions">
+              <button
+                type="button"
+                class="ghost-button"
+                data-test="vision-model-prev-page"
+                :disabled="!canGoPrev"
+                @click="goPrevPage"
+              >
+                上一页
+              </button>
+              <button
+                type="button"
+                class="ghost-button"
+                data-test="vision-model-next-page"
+                :disabled="!canGoNext"
+                @click="goNextPage"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
         </label>
       </div>
 
@@ -69,8 +126,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type { VisionFallbackConfig } from '@garlic-claw/shared'
+import { usePagination } from '../../composables/use-pagination'
 
 interface VisionModelOption {
   providerId: string
@@ -99,6 +157,7 @@ const form = reactive({
   prompt: '',
   maxDescriptionLength: '',
 })
+const modelQuery = ref('')
 
 const providers = computed(() => {
   const map = new Map<string, string>()
@@ -131,8 +190,31 @@ const filteredModels = computed(() => {
     })
   }
 
-  return options
+  const normalizedQuery = modelQuery.value.trim().toLowerCase()
+  if (!normalizedQuery) {
+    return options
+  }
+
+  return options.filter((option) =>
+    option.modelId.toLowerCase().includes(normalizedQuery) ||
+    option.label.toLowerCase().includes(normalizedQuery),
+  )
 })
+const totalProviderModels = computed(() =>
+  props.options.filter((option) => option.providerId === form.providerId).length,
+)
+const {
+  currentPage,
+  pageCount,
+  pagedItems: pagedModels,
+  rangeStart,
+  rangeEnd,
+  canGoPrev,
+  canGoNext,
+  resetPage,
+  goPrevPage,
+  goNextPage,
+} = usePagination(filteredModels, 6)
 
 watch(
   () => props.config,
@@ -145,9 +227,14 @@ watch(
       config.maxDescriptionLength !== undefined
         ? String(config.maxDescriptionLength)
         : ''
+    modelQuery.value = ''
   },
   { immediate: true, deep: true },
 )
+
+watch([() => form.providerId, modelQuery], () => {
+  resetPage()
+})
 
 /**
  * 用户显式切换 provider 时，若模型不再属于该 provider，则清空模型选择。
@@ -167,6 +254,17 @@ function handleProviderChange() {
   ) {
     form.modelId = ''
   }
+
+  modelQuery.value = ''
+  resetPage()
+}
+
+function selectModel(modelId: string) {
+  form.modelId = modelId
+}
+
+function clearModelSelection() {
+  form.modelId = ''
 }
 
 function submit() {
@@ -265,6 +363,88 @@ function parseMaxDescriptionLength(value: string): number | undefined {
   color: var(--text);
 }
 
+.model-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.model-picker.disabled {
+  opacity: 0.72;
+}
+
+.model-picker-summary,
+.model-picker-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.model-picker-summary {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.model-picker-empty {
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.model-option-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(320px, 36vh);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.model-option {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.model-option.selected {
+  border-color: var(--accent);
+  background: rgba(124, 106, 246, 0.08);
+}
+
+.model-option strong,
+.model-option span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.model-option span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.clear-link,
+.ghost-button {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.clear-link {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
 .field-note {
   color: var(--text-muted);
   font-size: 12px;
@@ -309,6 +489,14 @@ function parseMaxDescriptionLength(value: string): number | undefined {
 
   .primary-button {
     width: 100%;
+  }
+
+  .model-picker-actions {
+    justify-content: stretch;
+  }
+
+  .model-picker-actions > * {
+    flex: 1 1 120px;
   }
 }
 </style>

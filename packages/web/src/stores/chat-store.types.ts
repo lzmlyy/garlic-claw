@@ -1,4 +1,5 @@
 import type {
+  ChatMessageMetadata,
   ChatMessagePart,
   ChatMessageStatus,
 } from '@garlic-claw/shared'
@@ -13,6 +14,7 @@ export interface ChatMessage {
   parts?: ChatMessagePart[]
   toolCalls?: Array<{ toolName: string; input: string }>
   toolResults?: Array<{ toolName: string; output: string }>
+  metadata?: ChatMessageMetadata
   provider?: string | null
   model?: string | null
   status: ChatMessageStatus
@@ -29,4 +31,5 @@ export interface ChatSendInput {
   parts?: ChatMessagePart[]
   provider?: string | null
   model?: string | null
+  optimisticAssistantMetadata?: ChatMessageMetadata
 }

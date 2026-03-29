@@ -124,7 +124,7 @@ export class AiManagementService {
     return provider.models.map((modelId) => {
       const existing = this.modelRegistry.getModel(providerId, modelId);
       if (existing) {
-      return existing;
+        return existing;
       }
 
       const built = buildManagedModelConfig(provider, modelId);

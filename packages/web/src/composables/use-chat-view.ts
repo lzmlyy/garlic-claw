@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import type { AiModelCapabilities, ChatMessagePart } from '@garlic-claw/shared'
+import type { AiModelCapabilities, ChatMessageMetadata, ChatMessagePart } from '@garlic-claw/shared'
 import * as api from '../api'
 import type { useChatStore } from '../stores/chat'
 import {
@@ -44,7 +44,30 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
   const inputText = ref('')
   const pendingImages = ref<PendingImage[]>([])
   const selectedCapabilities = ref<AiModelCapabilities | null>(null)
-  const uploadNotices = ref<UploadNotice[]>([])
+  const uploadProcessingNotices = ref<UploadNotice[]>([])
+  const visionFallbackEnabled = ref(false)
+  let capabilityRequestId = 0
+  const imageFallbackNotice = computed<UploadNotice[]>(() => {
+    if (
+      pendingImages.value.length === 0 ||
+      !selectedCapabilities.value ||
+      selectedCapabilities.value.input.image
+    ) {
+      return []
+    }
+
+    return [
+      {
+        id: 'image-fallback-notice',
+        type: 'info',
+        text: '当前模型不支持图片输入，发送时后端会按配置尝试 Vision Fallback；如果未启用视觉转述，则会退化为文本占位后继续发送。',
+      },
+    ]
+  })
+  const uploadNotices = computed<UploadNotice[]>(() => [
+    ...imageFallbackNotice.value,
+    ...uploadProcessingNotices.value,
+  ])
   const lastMessageRole = computed(() => {
     const lastMessage = chat.messages[chat.messages.length - 1]
     return lastMessage?.role ?? null
@@ -66,25 +89,27 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
 
     return canSend.value
   })
+  const shouldPreviewVisionFallback = computed(() =>
+    visionFallbackEnabled.value &&
+    pendingImages.value.length > 0 &&
+    Boolean(selectedCapabilities.value) &&
+    !selectedCapabilities.value?.input.image,
+  )
 
   watch(
     () => [chat.selectedProvider, chat.selectedModel],
     async ([provider, model]) => {
-      if (!provider || !model) {
-        selectedCapabilities.value = null
-        return
-      }
-
-      selectedCapabilities.value = await loadModelCapabilities(provider, model)
+      await refreshSelectedCapabilities(provider, model)
     },
     { immediate: true },
   )
+  void refreshVisionFallbackAvailability()
 
   /**
    * 切换当前聊天所用模型。
    * @param selection provider/model 组合
    */
-  async function handleModelChange(selection: {
+  function handleModelChange(selection: {
     providerId: string
     modelId: string
   }) {
@@ -92,10 +117,6 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
       provider: selection.providerId,
       model: selection.modelId,
     })
-    selectedCapabilities.value = await loadModelCapabilities(
-      selection.providerId,
-      selection.modelId,
-    )
   }
 
   /**
@@ -103,6 +124,25 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
    */
   async function send() {
     const text = inputText.value.trim()
+    if (!selectedCapabilities.value && chat.selectedProvider && chat.selectedModel) {
+      await refreshSelectedCapabilities(chat.selectedProvider, chat.selectedModel)
+    }
+    const mayNeedVisionFallback =
+      pendingImages.value.length > 0 &&
+      Boolean(selectedCapabilities.value) &&
+      !selectedCapabilities.value?.input.image
+
+    if (mayNeedVisionFallback && !visionFallbackEnabled.value) {
+      await refreshVisionFallbackAvailability()
+    }
+    const optimisticAssistantMetadata = shouldPreviewVisionFallback.value
+      ? {
+        visionFallback: {
+          state: 'transcribing',
+          entries: [],
+        },
+      } satisfies ChatMessageMetadata
+      : undefined
     const parts: ChatMessagePart[] = [
       ...pendingImages.value.map((image) => ({
         type: 'image' as const,
@@ -118,12 +158,15 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
 
     inputText.value = ''
     pendingImages.value = []
-    uploadNotices.value = []
+    uploadProcessingNotices.value = []
     await chat.sendMessage({
       content: text || undefined,
       parts,
       provider: chat.selectedProvider,
       model: chat.selectedModel,
+      ...(optimisticAssistantMetadata
+        ? { optimisticAssistantMetadata }
+        : {}),
     })
   }
 
@@ -134,7 +177,7 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
   async function handleFileChange(event: Event) {
     const target = event.target as HTMLInputElement
     const files = Array.from(target.files ?? [])
-    uploadNotices.value = []
+    uploadProcessingNotices.value = []
 
     if (files.length === 0) {
       target.value = ''
@@ -193,7 +236,7 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
     }
 
     pendingImages.value.push(...nextImages)
-    uploadNotices.value = notices
+    uploadProcessingNotices.value = notices
     target.value = ''
   }
 
@@ -254,6 +297,49 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
     }
 
     await send()
+  }
+
+  /**
+   * 读取并同步当前选择模型的能力，忽略已过期的旧请求。
+   * @param providerId 当前 provider
+   * @param modelId 当前模型
+   */
+  async function refreshSelectedCapabilities(
+    providerId: string | null,
+    modelId: string | null,
+  ) {
+    const requestId = ++capabilityRequestId
+    if (!providerId || !modelId) {
+      selectedCapabilities.value = null
+      return
+    }
+
+    const capabilities = await loadModelCapabilities(providerId, modelId)
+    if (
+      requestId !== capabilityRequestId ||
+      chat.selectedProvider !== providerId ||
+      chat.selectedModel !== modelId
+    ) {
+      return
+    }
+
+    selectedCapabilities.value = capabilities
+  }
+
+  /**
+   * 读取当前是否启用了 Vision Fallback。
+   */
+  async function refreshVisionFallbackAvailability() {
+    try {
+      const config = await api.getVisionFallbackConfig()
+      visionFallbackEnabled.value = Boolean(
+        config.enabled &&
+        config.providerId &&
+        config.modelId,
+      )
+    } catch {
+      visionFallbackEnabled.value = false
+    }
   }
 
   return {

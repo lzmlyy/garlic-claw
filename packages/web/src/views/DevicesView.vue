@@ -22,7 +22,7 @@
         <div class="device-header">
           <span class="device-icon">{{ deviceIcon(plugin.deviceType) }}</span>
           <div class="device-info">
-            <h3>{{ plugin.name }}</h3>
+            <h3>{{ plugin.displayName ?? plugin.name }}</h3>
             <span class="device-type">{{ plugin.deviceType.toUpperCase() }}</span>
           </div>
           <span class="status-dot" :class="plugin.connected ? 'online' : 'offline'" />

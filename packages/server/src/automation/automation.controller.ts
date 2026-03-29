@@ -1,12 +1,12 @@
 import {
-    Body,
-    Controller,
-    Delete,
-    Get,
-    Param,
-    Patch,
-    Post,
-    UseGuards,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -19,7 +19,7 @@ import { CreateAutomationDto } from './dto/automation.dto';
 @Controller('automations')
 @UseGuards(JwtAuthGuard)
 export class AutomationController {
-  constructor(private automationService: AutomationService) {}
+  constructor(private readonly automationService: AutomationService) {}
 
   @Post()
   create(
@@ -48,8 +48,11 @@ export class AutomationController {
   }
 
   @Post(':id/run')
-  run(@Param('id') id: string) {
-    return this.automationService.executeAutomation(id);
+  run(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.automationService.executeAutomation(id, userId);
   }
 
   @Get(':id/logs')

@@ -13,21 +13,23 @@
  * - 视觉转述配置完全由 config/ai-settings.json 驱动
  */
 
-import { runGenerateText } from '../sdk-adapter';
 import { ImageToTextService } from './image-to-text.service';
 
-jest.mock('../sdk-adapter', () => ({
-  runGenerateText: jest.fn(async () => ({
-    text: '这是一张包含文字和图表的测试图片描述',
-  })),
-}));
-
 describe('ImageToTextService', () => {
-  type AiProviderLike = {
-    getModel: (providerId: string, modelId: string) => {
-      provider: string
-      modelId: string
-    }
+  type AiModelExecutionLike = {
+    generateText: (input: {
+      providerId: string;
+      modelId: string;
+      sdkMessages: Array<{
+        role: string;
+        content: unknown;
+      }>;
+      maxOutputTokens: number;
+    }) => Promise<{
+      result: {
+        text: string;
+      };
+    }>;
   }
 
   type ConfigManagerLike = {
@@ -49,10 +51,11 @@ describe('ImageToTextService', () => {
       maxDescriptionLength?: number;
     };
   }) => {
-    const aiProvider: AiProviderLike = {
-      getModel: jest.fn((providerId: string, modelId: string) => ({
-        provider: providerId,
-        modelId,
+    const aiModelExecution: AiModelExecutionLike = {
+      generateText: jest.fn(async () => ({
+        result: {
+          text: '这是一张包含文字和图表的测试图片描述',
+        },
       })),
     };
     const configManager: ConfigManagerLike = {
@@ -62,9 +65,9 @@ describe('ImageToTextService', () => {
     return {
       service: Reflect.construct(
         ImageToTextService,
-        [aiProvider, configManager],
+        [aiModelExecution, configManager],
       ) as ImageToTextService,
-      aiProvider,
+      aiModelExecution,
       configManager,
     };
   };
@@ -74,7 +77,7 @@ describe('ImageToTextService', () => {
   });
 
   it('prefers the managed vision fallback config over env values', async () => {
-    const { service, aiProvider } = createService({
+    const { service, aiModelExecution } = createService({
       managedConfig: {
         enabled: true,
         providerId: 'groq',
@@ -86,13 +89,11 @@ describe('ImageToTextService', () => {
 
     const description = await service.imageToText('data:image/png;base64,AAAA');
 
-    expect(aiProvider.getModel).toHaveBeenCalledWith(
-      'groq',
-      'llama-4-vision-preview',
-    );
-    expect(runGenerateText).toHaveBeenCalledWith(
+    expect(aiModelExecution.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        messages: [
+        providerId: 'groq',
+        modelId: 'llama-4-vision-preview',
+        sdkMessages: [
           expect.objectContaining({
             content: [
               expect.objectContaining({
@@ -106,6 +107,7 @@ describe('ImageToTextService', () => {
             ],
           }),
         ],
+        maxOutputTokens: 500,
       }),
     );
     expect(description).toBe('这是一张包含文字和图表的测试图片描述');

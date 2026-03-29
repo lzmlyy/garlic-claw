@@ -1,13 +1,20 @@
 import {
+  Inject,
   ForbiddenException,
+  forwardRef,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => PluginRuntimeService))
+    private readonly pluginRuntime: PluginRuntimeService,
+  ) {}
 
   /**
    * 创建新对话。
@@ -16,12 +23,32 @@ export class ChatService {
    * @returns 新创建的对话
    */
   async createConversation(userId: string, dto: { title?: string }) {
-    return this.prisma.conversation.create({
+    const conversation = await this.prisma.conversation.create({
       data: {
         title: dto.title || 'New Chat',
         userId,
       },
     });
+
+    const hookContext = {
+      source: 'http-route' as const,
+      userId,
+      conversationId: conversation.id,
+    };
+    await this.pluginRuntime.runConversationCreatedHooks({
+      context: hookContext,
+      payload: {
+        context: hookContext,
+        conversation: {
+          id: conversation.id,
+          title: conversation.title,
+          createdAt: conversation.createdAt.toISOString(),
+          updatedAt: conversation.updatedAt.toISOString(),
+        },
+      },
+    });
+
+    return conversation;
   }
 
   /**

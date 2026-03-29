@@ -120,6 +120,11 @@ export interface ToolOptions<TArgs = never, TResult = JsonValue> extends Tool {
 }
 
 /**
+ * provider 透传参数。
+ */
+export type ProviderOptions = Record<string, JsonValue>;
+
+/**
  * 流式结果中的文本增量。
  */
 export interface TextDeltaPart {
@@ -198,6 +203,12 @@ export interface StreamTextOptions {
   tools?: Record<string, Tool>;
   /** 停止条件。 */
   stopWhen?: StopCondition;
+  /** 中止信号。 */
+  abortSignal?: AbortSignal;
+  /** 额外请求头。 */
+  headers?: Record<string, string | undefined>;
+  /** provider 透传参数。 */
+  providerOptions?: ProviderOptions;
   /** 最大输出 token。 */
   maxOutputTokens?: number;
 }
@@ -232,6 +243,12 @@ export interface GenerateTextOptions {
   model: LanguageModel;
   /** 历史消息。 */
   messages: ModelMessage[];
+  /** 系统提示词。 */
+  system?: string;
+  /** 额外请求头。 */
+  headers?: Record<string, string | undefined>;
+  /** provider 透传参数。 */
+  providerOptions?: ProviderOptions;
   /** 最大输出 token。 */
   maxOutputTokens?: number;
 }

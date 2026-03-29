@@ -1,5 +1,5 @@
 import { request } from './base'
-import type { AutomationInfo, JsonValue } from '@garlic-claw/shared'
+import type { ActionConfig, AutomationInfo, JsonValue, TriggerConfig } from '@garlic-claw/shared'
 
 export function listAutomations() {
   return request<AutomationInfo[]>('/automations')
@@ -7,8 +7,8 @@ export function listAutomations() {
 
 export function createAutomation(data: {
   name: string
-  trigger: { type: string; cron?: string }
-  actions: { type: string; plugin?: string; capability?: string; params?: Record<string, JsonValue> }[]
+  trigger: TriggerConfig
+  actions: ActionConfig[]
 }) {
   return request<AutomationInfo>('/automations', {
     method: 'POST',

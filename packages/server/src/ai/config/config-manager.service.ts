@@ -15,13 +15,13 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type {
   AiSettingsFile,
   RawStoredAiProviderConfig,
   StoredAiProviderConfig,
   StoredVisionFallbackConfig,
 } from './config-manager.types';
+import { resolveConfigFilePath } from './config-path.util';
 
 export type {
   AiSettingsFile,
@@ -39,11 +39,10 @@ export class ConfigManagerService {
   private settings: AiSettingsFile;
 
   constructor() {
-    const projectRoot = this.findProjectRoot();
-    const configDir = path.join(projectRoot, 'config');
-
-    fs.mkdirSync(configDir, { recursive: true });
-    this.settingsPath = path.join(configDir, 'ai-settings.json');
+    this.settingsPath = resolveConfigFilePath(
+      'GARLIC_CLAW_AI_SETTINGS_PATH',
+      'ai-settings.json',
+    );
     this.settings = this.loadSettings();
   }
 
@@ -243,24 +242,4 @@ export class ConfigManagerService {
     };
   }
 
-  /**
-   * 查找项目根目录。
-   * @returns 项目根目录绝对路径
-   */
-  private findProjectRoot(): string {
-    const candidates = [
-      path.resolve(__dirname, '..', '..', '..', '..', '..', '..'),
-      path.resolve(process.cwd(), '..', '..'),
-      path.resolve(process.cwd(), '..'),
-      process.cwd(),
-    ];
-
-    for (const candidate of candidates) {
-      if (fs.existsSync(path.join(candidate, 'package.json'))) {
-        return candidate;
-      }
-    }
-
-    return process.cwd();
-  }
 }

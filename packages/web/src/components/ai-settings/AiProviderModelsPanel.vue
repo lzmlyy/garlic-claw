@@ -32,10 +32,27 @@
         </button>
       </div>
 
+      <div v-if="models.length > 0" class="toolbar-row">
+        <input
+          v-model="searchKeyword"
+          data-test="provider-models-search"
+          placeholder="搜索模型 ID 或名称"
+        />
+        <div class="toolbar-summary">
+          <span>
+            匹配 {{ filteredModels.length }} / {{ models.length }}
+            <span v-if="filteredModels.length > 0">
+              · 第 {{ currentPage }} / {{ pageCount }} 页 · 显示 {{ rangeStart }}-{{ rangeEnd }} 项
+            </span>
+          </span>
+        </div>
+      </div>
+
       <div v-if="models.length === 0" class="empty-state">当前 provider 还没有模型。</div>
+      <div v-else-if="filteredModels.length === 0" class="empty-state">当前筛选下没有匹配模型。</div>
 
       <div v-else class="model-list">
-        <article v-for="model in models" :key="model.id" class="model-item">
+        <article v-for="model in pagedModels" :key="model.id" class="model-item">
           <div class="model-summary">
             <div>
               <strong>{{ model.name }}</strong>
@@ -63,16 +80,38 @@
           />
         </article>
       </div>
+
+      <div v-if="filteredModels.length > 0" class="pager-actions">
+        <button
+          type="button"
+          class="ghost-button"
+          data-test="provider-models-prev-page"
+          :disabled="!canGoPrev"
+          @click="goPrevPage"
+        >
+          上一页
+        </button>
+        <button
+          type="button"
+          class="ghost-button"
+          data-test="provider-models-next-page"
+          :disabled="!canGoNext"
+          @click="goNextPage"
+        >
+          下一页
+        </button>
+      </div>
     </template>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AiModelConfig, AiProviderConfig } from '@garlic-claw/shared'
 import AiModelCapabilityToggles from './AiModelCapabilityToggles.vue'
+import { usePagination } from '../../composables/use-pagination'
 
-defineProps<{
+const props = defineProps<{
   provider: AiProviderConfig | null
   models: AiModelConfig[]
   discoveringModels: boolean
@@ -96,6 +135,43 @@ const emit = defineEmits<{
 
 const newModelId = ref('')
 const newModelName = ref('')
+const searchKeyword = ref('')
+
+const filteredModels = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return props.models
+  }
+
+  return props.models.filter((model) =>
+    model.id.toLowerCase().includes(keyword) ||
+    model.name.toLowerCase().includes(keyword),
+  )
+})
+const {
+  currentPage,
+  pageCount,
+  pagedItems: pagedModels,
+  rangeStart,
+  rangeEnd,
+  canGoPrev,
+  canGoNext,
+  resetPage,
+  goPrevPage,
+  goNextPage,
+} = usePagination(filteredModels, 3)
+
+watch(searchKeyword, () => {
+  resetPage()
+})
+
+watch(
+  () => props.provider?.id,
+  () => {
+    searchKeyword.value = ''
+    resetPage()
+  },
+)
 
 function addModel() {
   emit('add-model', {
@@ -130,7 +206,8 @@ function emitCapabilities(
 .header-actions,
 .model-summary,
 .summary-actions,
-.add-row {
+.add-row,
+.pager-actions {
   display: flex;
   gap: 12px;
 }
@@ -174,6 +251,27 @@ function emitCapabilities(
   flex-wrap: wrap;
 }
 
+.toolbar-row {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.toolbar-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.toolbar-summary {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .add-row input {
   flex: 1;
   min-width: 180px;
@@ -187,6 +285,9 @@ function emitCapabilities(
 .model-list {
   display: grid;
   gap: 12px;
+  max-height: min(900px, 68vh);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .status-text {
@@ -251,6 +352,12 @@ function emitCapabilities(
   cursor: pointer;
 }
 
+.pager-actions {
+  justify-content: end;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 720px) {
   .panel-card {
     padding: 16px;
@@ -270,6 +377,14 @@ function emitCapabilities(
   .header-actions > *,
   .summary-actions > * {
     flex: 1 1 140px;
+  }
+
+  .pager-actions {
+    justify-content: stretch;
+  }
+
+  .pager-actions > * {
+    flex: 1 1 120px;
   }
 }
 </style>

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  type ChatMessagePart,
   type ChatMessageStatus,
   type ChatTaskEvent,
   type ChatTaskStreamSource,
@@ -10,6 +11,10 @@ import {
   isToolCallPart,
   isToolResultPart,
 } from './chat.types';
+import {
+  normalizeAssistantMessageOutput,
+  serializeMessageParts,
+} from './message-parts';
 
 /** 聊天后台任务启动参数。 */
 export interface StartChatTaskInput {
@@ -29,6 +34,46 @@ export interface StartChatTaskInput {
    * - 可迭代消费的流源
    */
   createStream: (abortSignal: AbortSignal) => ChatTaskStreamSource;
+  /**
+   * 在 assistant 成功完成后执行的回调。
+   * 输入:
+   * - 最终 assistant 内容与工具调用快照
+   * 输出:
+   * - 可选返回一份补丁后的最终 assistant 快照
+   */
+  onComplete?: (
+    result: CompletedChatTaskResult,
+  ) => Promise<CompletedChatTaskResult | void> | CompletedChatTaskResult | void;
+  /**
+   * 在最终回复完成发送后执行的回调。
+   * 输入:
+   * - 已持久化、已发送的最终 assistant 快照
+   * 输出:
+   * - 无返回值
+   */
+  onSent?: (
+    result: CompletedChatTaskResult,
+  ) => Promise<void> | void;
+}
+
+/** 聊天任务完成后的最终 assistant 快照。 */
+export interface CompletedChatTaskResult {
+  /** assistant 消息 ID。 */
+  assistantMessageId: string;
+  /** 所属会话 ID。 */
+  conversationId: string;
+  /** 实际使用的 provider ID。 */
+  providerId: string;
+  /** 实际使用的模型 ID。 */
+  modelId: string;
+  /** 最终完整文本。 */
+  content: string;
+  /** 最终结构化 parts。 */
+  parts: ChatMessagePart[];
+  /** 累计工具调用。 */
+  toolCalls: PersistedToolCall[];
+  /** 累计工具结果。 */
+  toolResults: PersistedToolResult[];
 }
 
 type ChatTaskSubscriber = (event: ChatTaskEvent) => void;
@@ -220,11 +265,48 @@ export class ChatTaskService implements OnModuleInit {
       }
 
       await this.persistMessageState(input, state, 'completed', null);
+      const completedResult = this.buildCompletedTaskResult(input, state);
+      let finalResult = completedResult;
+      if (input.onComplete) {
+        try {
+          const patchedResult = await input.onComplete(completedResult);
+          if (
+            patchedResult
+            && this.hasCompletedResultPatch(completedResult, patchedResult)
+          ) {
+            finalResult = patchedResult;
+            await this.persistCompletedResult(patchedResult);
+            this.emit(task, {
+              type: 'message-patch',
+              messageId: patchedResult.assistantMessageId,
+              content: patchedResult.content,
+              ...(patchedResult.parts.length > 0
+                ? { parts: patchedResult.parts }
+                : {}),
+            });
+          } else if (patchedResult) {
+            finalResult = patchedResult;
+          }
+        } catch (error) {
+          this.logger.warn(
+            `聊天完成回调执行失败: ${input.assistantMessageId} - ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       this.emit(task, {
         type: 'finish',
         messageId: input.assistantMessageId,
         status: 'completed',
       });
+      if (input.onSent) {
+        try {
+          await input.onSent(finalResult);
+        } catch (error) {
+          this.logger.warn(
+            `聊天发送后回调执行失败: ${input.assistantMessageId} - ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
     } catch (error) {
       if (task.abortController.signal.aborted) {
         await this.persistMessageState(input, state, 'stopped', null);
@@ -297,5 +379,84 @@ export class ChatTaskService implements OnModuleInit {
     for (const subscriber of task.subscribers) {
       subscriber(event);
     }
+  }
+
+  /**
+   * 根据当前任务状态构造完成回调可消费的最终快照。
+   * @param input 任务启动输入
+   * @param state 当前累计状态
+   * @returns assistant 完成快照
+   */
+  private buildCompletedTaskResult(
+    input: StartChatTaskInput,
+    state: MutableTaskState,
+  ): CompletedChatTaskResult {
+    const normalizedAssistant = normalizeAssistantMessageOutput({
+      content: state.content,
+    });
+
+    return {
+      assistantMessageId: input.assistantMessageId,
+      conversationId: input.conversationId,
+      providerId: input.providerId,
+      modelId: input.modelId,
+      content: normalizedAssistant.content,
+      parts: normalizedAssistant.parts,
+      toolCalls: [...state.toolCalls],
+      toolResults: [...state.toolResults],
+    };
+  }
+
+  /**
+   * 把补丁后的完成态结果再次持久化到消息表。
+   * @param result 补丁后的最终 assistant 快照
+   * @returns 无返回值
+   */
+  private async persistCompletedResult(
+    result: CompletedChatTaskResult,
+  ): Promise<void> {
+    await this.prisma.message.update({
+      where: { id: result.assistantMessageId },
+      data: {
+        content: result.content,
+        partsJson: result.parts.length
+          ? serializeMessageParts(result.parts)
+          : null,
+        provider: result.providerId,
+        model: result.modelId,
+        status: 'completed',
+        error: null,
+        toolCalls: result.toolCalls.length
+          ? JSON.stringify(result.toolCalls)
+          : null,
+        toolResults: result.toolResults.length
+          ? JSON.stringify(result.toolResults)
+          : null,
+      },
+    });
+    await this.prisma.conversation.update({
+      where: { id: result.conversationId },
+      data: {
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * 判断完成回调是否真的改写了最终 assistant 快照。
+   * @param original 原始完成态结果
+   * @param patched 回调返回的补丁结果
+   * @returns 是否存在可见变更
+   */
+  private hasCompletedResultPatch(
+    original: CompletedChatTaskResult,
+    patched: CompletedChatTaskResult,
+  ): boolean {
+    return original.content !== patched.content
+      || JSON.stringify(original.parts) !== JSON.stringify(patched.parts)
+      || original.providerId !== patched.providerId
+      || original.modelId !== patched.modelId
+      || JSON.stringify(original.toolCalls) !== JSON.stringify(patched.toolCalls)
+      || JSON.stringify(original.toolResults) !== JSON.stringify(patched.toolResults);
   }
 }

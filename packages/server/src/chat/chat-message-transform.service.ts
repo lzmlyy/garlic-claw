@@ -21,6 +21,18 @@ import { ImageToTextService } from '../ai/vision/image-to-text.service';
 import { ImageTranscriptionCacheService } from '../ai/vision/image-transcription-cache.service';
 import type { ChatRuntimeMessage } from './chat-message-session';
 
+interface VisionFallbackTraceEntry {
+  text: string;
+  source: 'cache' | 'generated';
+}
+
+export interface ChatMessageTransformResult {
+  messages: ChatRuntimeMessage[];
+  visionFallback: {
+    entries: VisionFallbackTraceEntry[];
+  } | null;
+}
+
 @Injectable()
 export class ChatMessageTransformService {
   constructor(
@@ -39,14 +51,19 @@ export class ChatMessageTransformService {
     conversationId: string,
     messages: ChatRuntimeMessage[],
     model: ModelConfig,
-  ): Promise<ChatRuntimeMessage[]> {
+  ): Promise<ChatMessageTransformResult> {
     if (model.capabilities.input.image) {
-      return messages;
+      return {
+        messages,
+        visionFallback: null,
+      };
     }
 
     const transformedMessages: ChatRuntimeMessage[] = [];
+    const visionFallbackEntries: VisionFallbackTraceEntry[] = [];
+    const latestUserMessageIndex = findLatestUserMessageIndex(messages);
 
-    for (const message of messages) {
+    for (const [messageIndex, message] of messages.entries()) {
       if (message.role !== 'user' || typeof message.content === 'string') {
         transformedMessages.push(message);
         continue;
@@ -60,13 +77,15 @@ export class ChatMessageTransformService {
           continue;
         }
 
-        transformedContent.push(
-          await this.transformImagePart(
-            conversationId,
-            part.image,
-            part.mimeType,
-          ),
+        const transformedPart = await this.transformImagePart(
+          conversationId,
+          part.image,
+          part.mimeType,
         );
+        transformedContent.push(transformedPart.part);
+        if (transformedPart.trace && messageIndex === latestUserMessageIndex) {
+          visionFallbackEntries.push(transformedPart.trace);
+        }
       }
 
       transformedMessages.push({
@@ -75,7 +94,14 @@ export class ChatMessageTransformService {
       });
     }
 
-    return transformedMessages;
+    return {
+      messages: transformedMessages,
+      visionFallback: visionFallbackEntries.length > 0
+        ? {
+          entries: visionFallbackEntries,
+        }
+        : null,
+    };
   }
 
   /**
@@ -89,19 +115,31 @@ export class ChatMessageTransformService {
     conversationId: string,
     image: string,
     mimeType?: string,
-  ): Promise<{ type: 'text'; text: string }> {
+  ): Promise<{
+    part: { type: 'text'; text: string };
+    trace: VisionFallbackTraceEntry | null;
+  }> {
     const cached = await this.imageCache.findTranscription(conversationId, image);
     if (cached) {
       return {
-        type: 'text',
-        text: `[图片描述: ${cached}]`,
+        part: {
+          type: 'text',
+          text: `[图片描述: ${cached}]`,
+        },
+        trace: {
+          text: cached,
+          source: 'cache',
+        },
       };
     }
 
     if (!this.imageToText.hasVisionFallback()) {
       return {
-        type: 'text',
-        text: '[用户上传了一个图片]',
+        part: {
+          type: 'text',
+          text: '[用户上传了一个图片]',
+        },
+        trace: null,
       };
     }
 
@@ -118,8 +156,24 @@ export class ChatMessageTransformService {
     });
 
     return {
-      type: 'text',
-      text: `[图片描述: ${transcription}]`,
+      part: {
+        type: 'text',
+        text: `[图片描述: ${transcription}]`,
+      },
+      trace: {
+        text: transcription,
+        source: 'generated',
+      },
     };
   }
+}
+
+function findLatestUserMessageIndex(messages: ChatRuntimeMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      return index;
+    }
+  }
+
+  return -1;
 }

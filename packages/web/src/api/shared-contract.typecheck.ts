@@ -14,6 +14,7 @@ import type {
   Message,
   OfficialProviderCatalogItem,
   PluginInfo,
+  PluginStorageEntry,
   RetryMessagePayload,
   SendMessagePayload,
   SSEEvent,
@@ -112,9 +113,15 @@ const pluginInfo: PluginInfo = {
     },
   ],
   connected: true,
+  supportedActions: ['health-check', 'reload'],
   lastSeenAt: '2026-03-26T00:00:00.000Z',
   createdAt: '2026-03-26T00:00:00.000Z',
   updatedAt: '2026-03-26T00:00:00.000Z',
+}
+
+const pluginStorageEntry: PluginStorageEntry = {
+  key: 'cursor.offset',
+  value: 3,
 }
 
 const catalogItem: OfficialProviderCatalogItem = {
@@ -176,6 +183,12 @@ const sseEvent: SSEEvent = {
   assistantMessage: message,
 }
 
+const patchedSseEvent: SSEEvent = {
+  type: 'message-patch',
+  messageId: 'message-1',
+  content: 'patched',
+}
+
 const trigger: TriggerConfig = {
   type: 'manual',
 }
@@ -183,6 +196,10 @@ const trigger: TriggerConfig = {
 const action: ActionConfig = {
   type: 'ai_message',
   message: 'hello',
+  target: {
+    type: 'conversation',
+    id: 'conversation-1',
+  },
 }
 
 const automation: AutomationInfo = {
@@ -206,11 +223,13 @@ void [
   connectionResult,
   catalogItem,
   pluginInfo,
+  pluginStorageEntry,
   conversationDetail,
   sendPayload,
   updatePayload,
   retryPayload,
   sseEvent,
+  patchedSseEvent,
   automation,
 ]
 

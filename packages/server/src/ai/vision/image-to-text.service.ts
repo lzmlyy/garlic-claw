@@ -16,9 +16,8 @@
 import { Injectable } from '@nestjs/common';
 import type { VisionFallbackConfig } from '@garlic-claw/shared';
 import { toAiSdkImageInput } from '../../common/utils/ai-sdk-image';
-import { AiProviderService } from '../ai-provider.service';
+import { AiModelExecutionService } from '../ai-model-execution.service';
 import { ConfigManagerService } from '../config/config-manager.service';
-import { runGenerateText } from '../sdk-adapter';
 
 @Injectable()
 export class ImageToTextService {
@@ -26,7 +25,7 @@ export class ImageToTextService {
     '请简洁但完整地描述这张图片中的主体、场景、文字和重要细节，供另一个文本模型继续理解上下文。';
 
   constructor(
-    private readonly aiProvider: AiProviderService,
+    private readonly aiModelExecution: AiModelExecutionService,
     private readonly configManager: ConfigManagerService,
   ) {}
 
@@ -72,10 +71,10 @@ export class ImageToTextService {
       throw new Error('Vision fallback is not configured');
     }
 
-    const model = this.aiProvider.getModel(config.providerId, config.modelId);
-    const result = await runGenerateText({
-      model,
-      messages: [
+    const executed = await this.aiModelExecution.generateText({
+      providerId: config.providerId,
+      modelId: config.modelId,
+      sdkMessages: [
         {
           role: 'user',
           content: [
@@ -93,7 +92,7 @@ export class ImageToTextService {
       maxOutputTokens: 500,
     });
 
-    const description = result.text.trim();
+    const description = executed.result.text.trim();
     if (config.maxDescriptionLength === 0) {
       return description;
     }

@@ -1,6 +1,16 @@
 import type { JsonObject } from './json';
 
 /**
+ * 自动化动作可引用的消息目标。
+ */
+export interface AutomationActionTargetRef {
+  /** 当前动作目标类型。 */
+  type: 'conversation';
+  /** 目标 ID。 */
+  id: string;
+}
+
+/**
  * 自动化触发配置。
  */
 export interface TriggerConfig {
@@ -26,6 +36,18 @@ export interface ActionConfig {
   params?: JsonObject;
   /** AI 消息内容。 */
   message?: string;
+  /** AI 消息目标。 */
+  target?: AutomationActionTargetRef;
+}
+
+/**
+ * 自动化事件触发派发结果。
+ */
+export interface AutomationEventDispatchInfo {
+  /** 本次发出的事件名。 */
+  event: string;
+  /** 命中的自动化 ID 列表。 */
+  matchedAutomationIds: string[];
 }
 
 /**

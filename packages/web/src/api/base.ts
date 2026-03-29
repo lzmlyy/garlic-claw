@@ -10,6 +10,15 @@ export class ApiError extends Error {
 }
 
 /**
+ * 带响应元数据的 API 返回值。
+ */
+export interface ApiResponse<T> {
+  status: number
+  headers: Record<string, string>
+  body: T
+}
+
+/**
  * 获取当前 API 基础路径。
  * @returns API 根路径
  */
@@ -27,6 +36,36 @@ export async function request<T>(
   url: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const resolved = await sendRequest(url, options)
+  return parseResponse<T>(resolved)
+}
+
+/**
+ * 发起请求并保留状态码与响应头。
+ * @param url API 路径
+ * @param options fetch 选项
+ * @returns 带元数据的响应结果
+ */
+export async function requestWithMetadata<T>(
+  url: string,
+  options: RequestInit,
+): Promise<ApiResponse<T>> {
+  const resolved = await sendRequest(url, options)
+  const body = await parseResponse<T>(resolved)
+
+  return {
+    status: resolved.status,
+    headers: readResponseHeaders(resolved.headers),
+    body,
+  }
+}
+
+/**
+ * 构建带认证信息的请求头。
+ * @param options fetch 选项
+ * @returns 标准化请求头
+ */
+function buildHeaders(options: RequestInit): Record<string, string> {
   const token = localStorage.getItem('accessToken')
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -36,9 +75,22 @@ export async function request<T>(
     headers.Authorization = `Bearer ${token}`
   }
 
+  return headers
+}
+
+/**
+ * 发起请求并处理 401 刷新逻辑。
+ * @param url 请求路径
+ * @param options 请求参数
+ * @returns 可继续解析的最终响应
+ */
+async function sendRequest(
+  url: string,
+  options: RequestInit,
+): Promise<Response> {
+  const headers = buildHeaders(options)
   const response = await fetch(`${BASE}${url}`, { ...options, headers })
-  const resolved = await resolveUnauthorized(url, options, response, headers)
-  return parseResponse<T>(resolved)
+  return resolveUnauthorized(url, options, response, headers)
 }
 
 /**
@@ -91,6 +143,19 @@ async function parseResponse<T>(response: Response): Promise<T> {
   }
 
   return (await response.text()) as T
+}
+
+/**
+ * 把响应头拍平成普通对象，方便 UI 展示。
+ * @param headers fetch Headers
+ * @returns 普通对象形式的响应头
+ */
+function readResponseHeaders(headers: Headers): Record<string, string> {
+  const result: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    result[key] = value
+  })
+  return result
 }
 
 /**

@@ -93,6 +93,7 @@
 
 .message-status,
 .message-model,
+.message-model-detail,
 .editor-note {
   font-size: 12px;
 }
@@ -110,6 +111,19 @@
   background: rgba(0, 0, 0, 0.18);
   color: rgba(224, 224, 239, 0.82);
   overflow-wrap: anywhere;
+}
+
+.message-model-detail {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(92, 203, 255, 0.14);
+  color: #9fe9ff;
+  overflow-wrap: anywhere;
+}
+
+.message-model-detail.transcribing {
+  color: #ffe39a;
+  background: rgba(255, 184, 77, 0.16);
 }
 
 .message-status.streaming,
@@ -183,9 +197,63 @@
 .message-parts,
 .tool-calls,
 .tool-results,
-.message-editor {
+.message-editor,
+.vision-fallback-list {
   display: grid;
   gap: 12px;
+}
+
+.vision-fallback-details {
+  margin-top: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(92, 203, 255, 0.16);
+  background: rgba(92, 203, 255, 0.05);
+  overflow: hidden;
+}
+
+.vision-fallback-details summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #9fe9ff;
+}
+
+.vision-fallback-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.vision-fallback-details[open] summary {
+  border-bottom: 1px solid rgba(92, 203, 255, 0.14);
+}
+
+.vision-fallback-list {
+  padding: 12px 14px 14px;
+}
+
+.vision-fallback-entry {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(9, 13, 28, 0.34);
+}
+
+.vision-fallback-source {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(159, 233, 255, 0.78);
+}
+
+.vision-fallback-text {
+  color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.vision-fallback-text :deep(p) {
+  margin: 0;
 }
 
 .message-content :deep(pre) {

@@ -28,8 +28,12 @@ const router = createRouter({
         },
         {
           path: 'devices',
-          name: 'devices',
-          component: () => import('../views/DevicesView.vue'),
+          redirect: { name: 'plugins' },
+        },
+        {
+          path: 'plugins',
+          name: 'plugins',
+          component: () => import('../views/PluginsView.vue'),
         },
         {
           path: 'automations',

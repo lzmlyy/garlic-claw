@@ -21,8 +21,11 @@ describe('ModelCapabilitiesStorage', () => {
     'tmp',
     'model-capabilities.storage.spec.json',
   );
+  const envKey = 'GARLIC_CLAW_MODEL_CAPABILITIES_PATH';
 
   afterEach(() => {
+    delete process.env[envKey];
+
     if (fs.existsSync(tempConfigPath)) {
       fs.unlinkSync(tempConfigPath);
     }
@@ -70,9 +73,9 @@ describe('ModelCapabilitiesStorage', () => {
       'utf-8',
     );
 
-    const storage = new ModelCapabilitiesStorage();
-    Reflect.set(storage, 'configPath', tempConfigPath);
+    process.env[envKey] = tempConfigPath;
 
+    const storage = new ModelCapabilitiesStorage();
     storage.onModuleInit();
 
     expect(

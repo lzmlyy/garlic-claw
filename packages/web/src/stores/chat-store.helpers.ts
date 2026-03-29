@@ -1,4 +1,5 @@
 import type {
+  ChatMessageMetadata,
   ChatMessagePart,
   JsonValue,
   Message,
@@ -75,6 +76,21 @@ export function parseToolResults(value: string | null): ChatMessage['toolResults
 }
 
 /**
+ * 反序列化消息 metadata。
+ * @param value 服务端返回的 JSON 字符串
+ * @returns UI 可消费的消息 metadata
+ */
+export function parseMessageMetadata(
+  value: string | null | undefined,
+): ChatMessageMetadata | undefined {
+  if (!value) {
+    return undefined
+  }
+
+  return JSON.parse(value) as ChatMessageMetadata
+}
+
+/**
  * 将数据库消息映射为前端消息。
  * @param message 服务端消息
  * @returns 前端可消费的消息
@@ -87,6 +103,7 @@ export function dbMessageToChat(message: Message): ChatMessage {
     parts: parseParts(message.partsJson),
     toolCalls: parseToolCalls(message.toolCalls),
     toolResults: parseToolResults(message.toolResults),
+    metadata: parseMessageMetadata(message.metadataJson),
     provider: message.provider,
     model: message.model,
     status: message.status,
@@ -173,12 +190,12 @@ export async function resolveChatModelSelection(preferred: {
   providerId?: string | null
   modelId?: string | null
 }): Promise<{ providerId: string; modelId: string } | null> {
-  const providers = (await api.listAiProviders()).filter((provider) => provider.available)
+  const providers = await listAvailableProvidersSafely()
 
   if (preferred.providerId && preferred.modelId) {
     const direct = providers.find((provider) => provider.id === preferred.providerId)
     if (direct) {
-      const models = await api.listAiModels(direct.id)
+      const models = await listProviderModelsSafely(direct.id)
       if (models.some((model) => model.id === preferred.modelId)) {
         return {
           providerId: preferred.providerId,
@@ -206,7 +223,7 @@ export async function resolveChatModelSelection(preferred: {
       }
     }
 
-    const models = await api.listAiModels(provider.id)
+    const models = await listProviderModelsSafely(provider.id)
     if (models[0]) {
       return {
         providerId: provider.id,
@@ -234,7 +251,7 @@ async function findProvidersByModelId(
         return provider
       }
 
-      const models = await api.listAiModels(provider.id)
+      const models = await listProviderModelsSafely(provider.id)
       return models.some((model) => model.id === modelId) ? provider : null
     }),
   )
@@ -242,4 +259,20 @@ async function findProvidersByModelId(
   return results.filter(
     (provider): provider is ConversationProviderSummary => provider !== null,
   )
+}
+
+async function listAvailableProvidersSafely(): Promise<ConversationProviderSummary[]> {
+  try {
+    return (await api.listAiProviders()).filter((provider) => provider.available)
+  } catch {
+    return []
+  }
+}
+
+async function listProviderModelsSafely(providerId: string) {
+  try {
+    return await api.listAiModels(providerId)
+  } catch {
+    return []
+  }
 }

@@ -59,6 +59,26 @@ export interface PersistedChatMessage {
 }
 
 /**
+ * assistant 最终回复输入。
+ */
+export interface AssistantMessageOutputInput {
+  /** 纯文本回复。 */
+  content?: string | null;
+  /** 结构化回复 parts。 */
+  parts?: ChatMessagePart[] | null;
+}
+
+/**
+ * 标准化后的 assistant 最终回复。
+ */
+export interface NormalizedAssistantMessageOutput {
+  /** 纯文本摘要。 */
+  content: string;
+  /** 标准化后的结构化 parts。 */
+  parts: ChatMessagePart[];
+}
+
+/**
  * 归一化用户消息输入。
  * @param input 用户输入
  * @returns 标准化后的消息结构
@@ -71,10 +91,7 @@ export function normalizeUserMessageInput(
     throw new Error('Message content is empty');
   }
 
-  const content = normalizedParts
-    .filter((part): part is ChatTextPart => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n');
+  const content = deriveTextContentFromParts(normalizedParts);
 
   return {
     content,
@@ -108,6 +125,58 @@ export function deserializeMessageParts(
 }
 
 /**
+ * 从结构化 parts 中提取纯文本摘要。
+ * @param parts 标准化后的结构化 parts
+ * @returns 提取出的纯文本内容
+ */
+export function deriveTextContentFromParts(
+  parts: readonly ChatMessagePart[],
+): string {
+  return parts
+    .filter((part): part is ChatTextPart => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n');
+}
+
+/**
+ * 标准化 assistant 最终回复。
+ * @param input assistant 最终回复输入
+ * @returns 可持久化、可传播的统一结果
+ */
+export function normalizeAssistantMessageOutput(
+  input: AssistantMessageOutputInput,
+): NormalizedAssistantMessageOutput {
+  const normalizedParts = input.parts
+    ? input.parts.flatMap((part) => normalizePart(part))
+    : [];
+
+  if (normalizedParts.length > 0) {
+    return {
+      content: deriveTextContentFromParts(normalizedParts),
+      parts: normalizedParts,
+    };
+  }
+
+  const text = input.content?.trim() ?? '';
+  if (!text) {
+    return {
+      content: '',
+      parts: [],
+    };
+  }
+
+  return {
+    content: text,
+    parts: [
+      {
+        type: 'text',
+        text,
+      },
+    ],
+  };
+}
+
+/**
  * 将结构化 parts 转为 AI SDK 可消费的消息内容。
  * @param parts 标准化后的消息 parts
  * @param fallbackContent 纯文本兜底内容
@@ -123,10 +192,7 @@ export function toModelMessageContent(
 
   const hasImages = parts.some((part) => part.type === 'image');
   if (!hasImages) {
-    return parts
-      .filter((part): part is ChatTextPart => part.type === 'text')
-      .map((part) => part.text)
-      .join('\n');
+    return deriveTextContentFromParts(parts);
   }
 
   return parts.map((part) =>

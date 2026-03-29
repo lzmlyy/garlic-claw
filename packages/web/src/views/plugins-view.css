@@ -1,0 +1,175 @@
+.plugins-page {
+  --bg-card: rgba(14, 24, 38, 0.9);
+  --bg-input: rgba(18, 33, 52, 0.88);
+  --border: rgba(133, 163, 199, 0.18);
+  --text: #ecf3ff;
+  --text-muted: #92a6c4;
+  --accent: #67c7cf;
+  --accent-hover: #9ce8e0;
+  --success: #59cf9b;
+  --danger: #f36c6c;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  gap: 18px;
+  height: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 1.4rem clamp(1rem, 2.5vw, 2rem);
+  background:
+    radial-gradient(circle at top right, rgba(103, 199, 207, 0.14), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(240, 198, 118, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(9, 15, 24, 0.98), rgba(8, 13, 21, 0.99));
+}
+
+.plugins-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent 72%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.page-banner {
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(10, 17, 27, 0.74);
+  backdrop-filter: blur(12px);
+}
+
+.page-banner.error {
+  color: #ffd1d1;
+  background: rgba(224, 85, 85, 0.14);
+}
+
+.page-banner.success {
+  color: #c5ffe0;
+  background: rgba(68, 204, 136, 0.14);
+}
+
+.plugins-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  min-height: 0;
+  align-items: start;
+}
+
+.plugin-detail,
+.plugin-empty {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.plugin-empty {
+  align-content: start;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(15, 25, 40, 0.96), rgba(10, 17, 29, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  box-shadow: 0 24px 56px rgba(1, 6, 15, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.plugin-empty p {
+  color: var(--text-muted);
+}
+
+.empty-kicker {
+  font-size: 0.76rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #f0c676;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.detail-span {
+  grid-column: 1 / -1;
+}
+
+/* 统一给子面板换成本页局部控制台皮肤，避免逐个子组件重写。 */
+.plugins-page :deep(.panel-section),
+.plugins-page :deep(.route-card),
+.plugins-page :deep(.cron-card),
+.plugins-page :deep(.plugin-sidebar) {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(15, 25, 40, 0.96), rgba(10, 17, 29, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  box-shadow: 0 24px 56px rgba(1, 6, 15, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.plugins-page :deep(.storage-item),
+.plugins-page :deep(.route-item),
+.plugins-page :deep(.cron-item),
+.plugins-page :deep(.tester-card),
+.plugins-page :deep(.tester-response),
+.plugins-page :deep(.tester-headers) {
+  border: 1px solid rgba(133, 163, 199, 0.14);
+  background: rgba(12, 22, 36, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.plugins-page :deep(input),
+.plugins-page :deep(textarea),
+.plugins-page :deep(select) {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(11, 21, 35, 0.9);
+  color: var(--text);
+  padding: 0.65rem 0.82rem;
+  font-size: 0.92rem;
+  font-family: inherit;
+  outline: none;
+}
+
+.plugins-page :deep(input:focus),
+.plugins-page :deep(textarea:focus),
+.plugins-page :deep(select:focus) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.24);
+}
+
+.plugins-page :deep(select) {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(1em + 2px),
+    calc(100% - 12px) calc(1em + 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 2.2rem;
+}
+
+@media (max-width: 1100px) {
+  .plugins-layout,
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .plugins-page {
+    gap: 14px;
+    padding: 1rem;
+  }
+}

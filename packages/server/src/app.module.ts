@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { AutomationModule } from './automation/automation.module';
 import { ChatModule } from './chat/chat.module';
 import { MemoryModule } from './memory/memory.module';
+import { PersonaModule } from './persona/persona.module';
 import { PluginModule } from './plugin/plugin.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UserModule } from './user/user.module';
@@ -38,6 +39,7 @@ import { UserModule } from './user/user.module';
     ChatModule,
     PluginModule,
     MemoryModule,
+    PersonaModule,
     AutomationModule,
   ],
   providers: [

@@ -132,7 +132,7 @@ export async function loadVisionModelOptions(
   const modelGroups = await Promise.all(
     availableProviders.map(async (provider) => ({
       provider,
-      models: await api.listAiModels(provider.id),
+      models: await listProviderModelsSafely(provider.id),
     })),
   )
 
@@ -146,6 +146,14 @@ export async function loadVisionModelOptions(
         label: `${provider.name} / ${model.name}`,
       })),
   )
+}
+
+async function listProviderModelsSafely(providerId: string): Promise<AiModelConfig[]> {
+  try {
+    return await api.listAiModels(providerId)
+  } catch {
+    return []
+  }
 }
 
 /**

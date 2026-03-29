@@ -23,6 +23,7 @@ import {
   type StreamTextResult,
   type Tool,
 } from 'ai';
+import type { JsonObject } from '../common/types/json-value';
 
 /**
  * AI SDK 语言模型轻量别名。
@@ -50,6 +51,16 @@ export type AiSdkToolSet = Record<string, Tool>;
 export type AiSdkStopCondition = StopCondition;
 
 /**
+ * AI SDK 流式结果轻量别名。
+ */
+export type AiSdkStreamTextResult = StreamTextResult;
+
+/**
+ * AI SDK provider 透传参数轻量别名。
+ */
+export type AiSdkProviderOptions = JsonObject;
+
+/**
  * 创建工具调用步数限制器。
  * @param maxSteps 最大工具调用轮次
  * @returns SDK 可消费的 stopWhen 条件
@@ -70,6 +81,9 @@ export function runStreamText(params: {
   tools?: AiSdkToolSet;
   stopWhen?: AiSdkStopCondition;
   abortSignal?: AbortSignal;
+  headers?: Record<string, string>;
+  providerOptions?: AiSdkProviderOptions;
+  maxOutputTokens?: number;
 }): StreamTextResult {
   return streamText(params);
 }
@@ -81,7 +95,10 @@ export function runStreamText(params: {
  */
 export function runGenerateText(params: {
   model: AiSdkLanguageModel;
+  system?: string;
   messages: AiSdkMessage[];
+  headers?: Record<string, string>;
+  providerOptions?: AiSdkProviderOptions;
   maxOutputTokens?: number;
 }): Promise<GenerateTextResult> {
   return generateText(params);

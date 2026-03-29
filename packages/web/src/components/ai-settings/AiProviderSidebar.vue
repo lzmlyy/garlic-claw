@@ -15,38 +15,83 @@
     <p v-else-if="loading" class="status-text">加载中...</p>
     <p v-else-if="providers.length === 0" class="status-text">还没有可用 provider。</p>
 
-    <div v-else class="provider-list">
-      <button
-        v-for="provider in providers"
-        :key="provider.id"
-        type="button"
-        class="provider-item"
-        :class="{ active: provider.id === selectedProviderId }"
-        @click="$emit('select', provider.id)"
-      >
-        <div class="provider-title">
-          <strong>{{ provider.name }}</strong>
-          <span class="provider-mode">{{ provider.mode }}</span>
-        </div>
-        <div class="provider-meta">
-          <span>{{ provider.id }}</span>
-          <span>{{ provider.modelCount }} 模型</span>
-        </div>
-        <div class="provider-meta">
-          <span>{{ provider.driver }}</span>
-          <span :class="provider.available ? 'ready' : 'missing'">
-            {{ provider.available ? '可用' : '缺少凭据' }}
+    <template v-else>
+      <div class="sidebar-tools">
+        <input
+          v-model="searchKeyword"
+          data-test="provider-sidebar-search"
+          type="text"
+          placeholder="搜索名称、ID、驱动或状态"
+        >
+        <div class="sidebar-results">
+          <span>匹配 {{ filteredProviders.length }} / {{ providers.length }}</span>
+          <span v-if="filteredProviders.length > 0">
+            第 {{ currentPage }} / {{ pageCount }} 页
+            <span class="divider">·</span>
+            显示 {{ rangeStart }}-{{ rangeEnd }} 项
           </span>
         </div>
-      </button>
-    </div>
+      </div>
+
+      <div v-if="filteredProviders.length === 0" class="status-text">
+        当前筛选下没有匹配的 provider。
+      </div>
+      <div v-else class="provider-list">
+        <button
+          v-for="provider in pagedProviders"
+          :key="provider.id"
+          type="button"
+          class="provider-item"
+          :class="{ active: provider.id === selectedProviderId }"
+          @click="$emit('select', provider.id)"
+        >
+          <div class="provider-title">
+            <strong>{{ provider.name }}</strong>
+            <span class="provider-mode">{{ provider.mode }}</span>
+          </div>
+          <div class="provider-meta">
+            <span>{{ provider.id }}</span>
+            <span>{{ provider.modelCount }} 模型</span>
+          </div>
+          <div class="provider-meta">
+            <span>{{ provider.driver }}</span>
+            <span :class="provider.available ? 'ready' : 'missing'">
+              {{ provider.available ? '可用' : '缺少凭据' }}
+            </span>
+          </div>
+        </button>
+      </div>
+
+      <div v-if="filteredProviders.length > 0" class="pager-actions">
+        <button
+          type="button"
+          class="ghost-button"
+          data-test="provider-sidebar-prev-page"
+          :disabled="!canGoPrev"
+          @click="goPrevPage"
+        >
+          上一页
+        </button>
+        <button
+          type="button"
+          class="ghost-button"
+          data-test="provider-sidebar-next-page"
+          :disabled="!canGoNext"
+          @click="goNextPage"
+        >
+          下一页
+        </button>
+      </div>
+    </template>
   </aside>
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import type { AiProviderSummary } from '@garlic-claw/shared'
+import { usePagination } from '../../composables/use-pagination'
 
-defineProps<{
+const props = defineProps<{
   providers: AiProviderSummary[]
   selectedProviderId: string | null
   loading: boolean
@@ -58,6 +103,43 @@ defineEmits<{
   (event: 'create'): void
   (event: 'refresh'): void
 }>()
+
+const searchKeyword = ref('')
+const filteredProviders = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return props.providers
+  }
+
+  return props.providers.filter((provider) =>
+    [
+      provider.name,
+      provider.id,
+      provider.driver,
+      provider.mode,
+      provider.available ? '可用' : '缺少凭据',
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(keyword),
+  )
+})
+const {
+  currentPage,
+  pageCount,
+  pagedItems: pagedProviders,
+  rangeStart,
+  rangeEnd,
+  canGoPrev,
+  canGoNext,
+  resetPage,
+  goPrevPage,
+  goNextPage,
+} = usePagination(filteredProviders, 6)
+
+watch(searchKeyword, () => {
+  resetPage()
+})
 </script>
 
 <style scoped>
@@ -72,7 +154,9 @@ defineEmits<{
 .sidebar-header,
 .sidebar-actions,
 .provider-title,
-.provider-meta {
+.provider-meta,
+.sidebar-results,
+.pager-actions {
   display: flex;
   gap: 10px;
 }
@@ -101,9 +185,39 @@ defineEmits<{
   justify-content: end;
 }
 
+.sidebar-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sidebar-tools input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.sidebar-results {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.divider {
+  margin: 0 6px;
+}
+
 .provider-list {
   display: grid;
   gap: 10px;
+  max-height: min(420px, 52vh);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .provider-item {
@@ -190,6 +304,12 @@ defineEmits<{
   color: var(--danger);
 }
 
+.pager-actions {
+  justify-content: end;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 720px) {
   .sidebar-card {
     padding: 16px;
@@ -201,6 +321,14 @@ defineEmits<{
   }
 
   .sidebar-actions > * {
+    flex: 1 1 120px;
+  }
+
+  .pager-actions {
+    justify-content: stretch;
+  }
+
+  .pager-actions > * {
     flex: 1 1 120px;
   }
 }

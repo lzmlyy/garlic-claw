@@ -40,6 +40,18 @@ export class CreateAutomationTriggerDto {
 }
 
 /**
+ * 自动化消息动作目标 DTO。
+ */
+export class CreateAutomationActionTargetDto {
+  @IsIn(['conversation'])
+  type!: 'conversation';
+
+  @IsString()
+  @MaxLength(120)
+  id!: string;
+}
+
+/**
  * 自动化动作 DTO。
  *
  * 输入:
@@ -74,6 +86,11 @@ export class CreateAutomationActionDto {
   @IsOptional()
   @MaxLength(4000)
   message?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateAutomationActionTargetDto)
+  target?: CreateAutomationActionTargetDto;
 }
 
 /**

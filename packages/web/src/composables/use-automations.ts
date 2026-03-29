@@ -3,19 +3,30 @@ import {
   createAutomation,
   deleteAutomation,
   listAutomations,
+  listConversations,
   runAutomation,
   toggleAutomation,
 } from '../api'
-import type { AutomationInfo } from '@garlic-claw/shared'
+import type {
+  ActionConfig,
+  AutomationInfo,
+  Conversation,
+  TriggerConfig,
+} from '@garlic-claw/shared'
 
-type AutomationTriggerType = 'cron' | 'manual'
+type AutomationTriggerType = 'cron' | 'manual' | 'event'
+type AutomationActionType = ActionConfig['type']
 
 interface AutomationFormState {
   name: string
   triggerType: AutomationTriggerType
   cronInterval: string
+  eventName: string
+  actionType: AutomationActionType
   plugin: string
   capability: string
+  message: string
+  targetConversationId: string
 }
 
 /**
@@ -23,22 +34,23 @@ interface AutomationFormState {
  * 输入:
  * - 无，由页面直接调用
  * 输出:
- * - 自动化列表、创建表单与操作函数
+ * - 自动化列表、会话列表、创建表单与操作函数
  * 预期行为:
  * - 页面只负责渲染
  * - 列表加载、创建、切换和删除逻辑统一收口
  */
 export function useAutomations() {
   const automations = ref<AutomationInfo[]>([])
+  const conversations = ref<Conversation[]>([])
   const loading = ref(true)
   const showCreate = ref(false)
   const form = ref(createAutomationFormState())
   const canCreate = computed(
-    () => form.value.name && form.value.plugin && form.value.capability,
+    () => Boolean(form.value.name && hasValidTrigger(form.value) && hasValidAction(form.value)),
   )
 
   onMounted(() => {
-    void loadAutomations()
+    void Promise.all([loadAutomations(), loadConversations()])
   })
 
   async function loadAutomations() {
@@ -52,26 +64,40 @@ export function useAutomations() {
     }
   }
 
+  async function loadConversations() {
+    try {
+      conversations.value = await listConversations()
+      if (!form.value.targetConversationId && conversations.value[0]) {
+        form.value.targetConversationId = conversations.value[0].id
+      }
+    } catch (error) {
+      console.error('无法加载会话列表:', error)
+    }
+  }
+
   async function handleCreate() {
+    const trigger: TriggerConfig = {
+      type: form.value.triggerType,
+      cron:
+        form.value.triggerType === 'cron'
+          ? form.value.cronInterval
+          : undefined,
+      event:
+        form.value.triggerType === 'event'
+          ? form.value.eventName
+          : undefined,
+    }
+
     await createAutomation({
       name: form.value.name,
-      trigger: {
-        type: form.value.triggerType,
-        cron:
-          form.value.triggerType === 'cron'
-            ? form.value.cronInterval
-            : undefined,
-      },
-      actions: [
-        {
-          type: 'device_command',
-          plugin: form.value.plugin,
-          capability: form.value.capability,
-        },
-      ],
+      trigger,
+      actions: [buildAction(form.value)],
     })
     showCreate.value = false
     form.value = createAutomationFormState()
+    if (conversations.value[0]) {
+      form.value.targetConversationId = conversations.value[0].id
+    }
     await loadAutomations()
   }
 
@@ -92,6 +118,7 @@ export function useAutomations() {
 
   return {
     automations,
+    conversations,
     loading,
     showCreate,
     form,
@@ -100,6 +127,7 @@ export function useAutomations() {
     handleToggle,
     handleRun,
     handleDelete,
+    describeAction,
     formatTime,
     truncate,
   }
@@ -114,8 +142,62 @@ function createAutomationFormState(): AutomationFormState {
     name: '',
     triggerType: 'cron',
     cronInterval: '5m',
+    eventName: '',
+    actionType: 'device_command',
     plugin: '',
     capability: '',
+    message: '',
+    targetConversationId: '',
+  }
+}
+
+/**
+ * 判断当前表单的触发器配置是否合法。
+ * @param form 当前表单
+ * @returns 是否具备合法触发配置
+ */
+function hasValidTrigger(form: AutomationFormState): boolean {
+  return (
+    form.triggerType === 'manual'
+    || (form.triggerType === 'cron' && Boolean(form.cronInterval))
+    || (form.triggerType === 'event' && Boolean(form.eventName))
+  )
+}
+
+/**
+ * 判断当前表单的动作配置是否合法。
+ * @param form 当前表单
+ * @returns 是否具备合法动作配置
+ */
+function hasValidAction(form: AutomationFormState): boolean {
+  if (form.actionType === 'device_command') {
+    return Boolean(form.plugin && form.capability)
+  }
+
+  return Boolean(form.message && form.targetConversationId)
+}
+
+/**
+ * 从当前表单构建自动化动作。
+ * @param form 当前表单
+ * @returns 统一动作配置
+ */
+function buildAction(form: AutomationFormState): ActionConfig {
+  if (form.actionType === 'device_command') {
+    return {
+      type: 'device_command',
+      plugin: form.plugin,
+      capability: form.capability,
+    }
+  }
+
+  return {
+    type: 'ai_message',
+    message: form.message,
+    target: {
+      type: 'conversation',
+      id: form.targetConversationId,
+    },
   }
 }
 
@@ -147,5 +229,24 @@ function formatTime(iso: string): string {
  * @returns 适合列表显示的文本
  */
 function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.slice(0, max)}…` : value
+  return value.length > max ? `${value.slice(0, max)}...` : value
+}
+
+/**
+ * 生成人类可读的自动化动作摘要。
+ * @param action 自动化动作
+ * @param conversations 当前可见会话列表
+ * @returns 列表标签文案
+ */
+function describeAction(action: ActionConfig, conversations: Conversation[]): string {
+  if (action.type === 'device_command') {
+    return `${action.plugin ?? 'unknown'}→${action.capability ?? 'unknown'}`
+  }
+
+  const targetId = action.target?.id
+  const conversation = conversations.find((item) => item.id === targetId)
+  const targetLabel = conversation?.title ?? targetId ?? '未指定会话'
+  const preview = truncate(action.message ?? '空消息', 20)
+
+  return `消息→${targetLabel} · ${preview}`
 }

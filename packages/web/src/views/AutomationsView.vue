@@ -18,6 +18,7 @@
         <select v-model="form.triggerType">
           <option value="cron">定时执行</option>
           <option value="manual">手动触发</option>
+          <option value="event">事件触发</option>
         </select>
       </div>
       <div v-if="form.triggerType === 'cron'" class="field">
@@ -25,10 +26,48 @@
         <input v-model="form.cronInterval" placeholder="例如: 5m, 1h, 30s" />
         <span class="hint">支持格式: 30s / 5m / 1h</span>
       </div>
+      <div v-if="form.triggerType === 'event'" class="field">
+        <label>事件名称</label>
+        <input v-model="form.eventName" placeholder="例如: coffee.ready" />
+        <span class="hint">当插件或宿主发出同名自动化事件时执行</span>
+      </div>
       <div class="field">
+        <label>动作类型</label>
+        <select v-model="form.actionType">
+          <option value="device_command">设备命令</option>
+          <option value="ai_message">发送消息</option>
+        </select>
+      </div>
+      <div v-if="form.actionType === 'device_command'" class="field">
         <label>动作：设备命令</label>
         <input v-model="form.plugin" placeholder="插件名称 (如 pc-NOTEBOOK)" />
-        <input v-model="form.capability" placeholder="能力名称 (如 get_pc_info)" style="margin-top: 0.4rem" />
+        <input
+          v-model="form.capability"
+          placeholder="能力名称 (如 get_pc_info)"
+          style="margin-top: 0.4rem"
+        />
+      </div>
+      <div v-else class="field">
+        <label>动作：发送消息</label>
+        <textarea
+          v-model="form.message"
+          rows="3"
+          placeholder="例如：咖啡已经煮好了，记得趁热喝。"
+        />
+        <select v-model="form.targetConversationId" style="margin-top: 0.4rem">
+          <option disabled value="">请选择目标会话</option>
+          <option
+            v-for="conversation in conversations"
+            :key="conversation.id"
+            :value="conversation.id"
+          >
+            {{ conversation.title }}
+          </option>
+        </select>
+        <span class="hint">
+          自动化会把消息写回选中的会话。
+          <template v-if="conversations.length === 0">当前没有可用会话，请先创建一个对话。</template>
+        </span>
       </div>
       <button :disabled="!canCreate" @click="handleCreate">创建</button>
     </div>
@@ -51,7 +90,13 @@
           <div class="automation-info">
             <h3>{{ auto.name }}</h3>
             <span class="trigger-badge">
-              {{ auto.trigger.type === 'cron' ? `⏰ 每 ${auto.trigger.cron}` : '🔘 手动' }}
+              {{
+                auto.trigger.type === 'cron'
+                  ? `⏰ 每 ${auto.trigger.cron}`
+                  : auto.trigger.type === 'event'
+                    ? `⚡ 事件 ${auto.trigger.event}`
+                    : '🔘 手动'
+              }}
             </span>
           </div>
           <div class="automation-actions">
@@ -72,7 +117,7 @@
           <span class="actions-list">
             动作：
             <span v-for="(action, i) in auto.actions" :key="i" class="action-tag">
-              {{ action.plugin }}→{{ action.capability }}
+              {{ describeAction(action, conversations) }}
             </span>
           </span>
           <span v-if="auto.lastRunAt" class="last-run">
@@ -97,6 +142,7 @@ import { useAutomations } from '../composables/use-automations'
 
 const {
   automations,
+  conversations,
   loading,
   showCreate,
   form,
@@ -105,6 +151,7 @@ const {
   handleToggle,
   handleRun,
   handleDelete,
+  describeAction,
   formatTime,
   truncate,
 } = useAutomations()
@@ -160,6 +207,17 @@ const {
   padding: 0.5em 0.8em;
   font-size: 0.9rem;
   width: 100%;
+}
+.create-form textarea {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65em 0.8em;
+  font-size: 0.9rem;
+  width: 100%;
+  resize: vertical;
+  min-height: 5.5rem;
 }
 .create-form .hint {
   font-size: 0.75rem;
@@ -246,6 +304,23 @@ const {
   gap: 0.5rem;
   font-size: 0.8rem;
   padding: 0.2em 0;
+}
+
+@media (max-width: 840px) {
+  .automations-view {
+    padding: 1rem;
+  }
+
+  .automations-header,
+  .automation-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .automation-actions {
+    flex-wrap: wrap;
+  }
 }
 .log-entry.success .log-status {
   color: var(--success);

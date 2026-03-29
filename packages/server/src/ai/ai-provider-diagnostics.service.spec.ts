@@ -16,19 +16,14 @@
  */
 
 import { AiProviderDiagnosticsService } from './ai-provider-diagnostics.service';
-import { runGenerateText } from './sdk-adapter';
-
-jest.mock('./sdk-adapter', () => ({
-  runGenerateText: jest.fn(),
-}));
 
 describe('AiProviderDiagnosticsService', () => {
   const configManager = {
     getProviderConfig: jest.fn(),
   };
 
-  const aiProvider = {
-    getModel: jest.fn(),
+  const aiModelExecution = {
+    generateText: jest.fn(),
   };
 
   let service: AiProviderDiagnosticsService;
@@ -38,7 +33,7 @@ describe('AiProviderDiagnosticsService', () => {
     jest.clearAllMocks();
     service = new AiProviderDiagnosticsService(
       configManager as never,
-      aiProvider as never,
+      aiModelExecution as never,
     );
     fetchMock = jest.fn() as jest.MockedFunction<typeof fetch>;
     global.fetch = fetchMock;
@@ -117,17 +112,24 @@ describe('AiProviderDiagnosticsService', () => {
         data: [{ id: 'deepseek-reasoner', name: 'DeepSeek Reasoner' }],
       }),
     );
-    aiProvider.getModel.mockReturnValue({ provider: 'ds2api', modelId: 'deepseek-reasoner' });
-    (runGenerateText as jest.Mock).mockResolvedValue({
-      text: 'OK',
+    aiModelExecution.generateText.mockResolvedValue({
+      result: {
+        text: 'OK',
+      },
     });
 
     const result = await service.testConnection('ds2api');
 
-    expect(aiProvider.getModel).toHaveBeenCalledWith('ds2api', 'deepseek-reasoner');
-    expect(runGenerateText).toHaveBeenCalledWith(
+    expect(aiModelExecution.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: { provider: 'ds2api', modelId: 'deepseek-reasoner' },
+        providerId: 'ds2api',
+        modelId: 'deepseek-reasoner',
+        sdkMessages: [
+          {
+            role: 'user',
+            content: '请只回复 OK',
+          },
+        ],
         maxOutputTokens: 32,
       }),
     );
