@@ -19,6 +19,7 @@
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/openai": "^3.0.41",
     "@garlic-claw/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
@@ -29,6 +30,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.0.0",
     "ai": "^6.0.116",
+    "ajv": "^8.18.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -41,9 +43,17 @@
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
+  "overrides": {
+    "ajv": "8.18.0",
+    "ajv@6": "8.18.0",
+    "ajv@7": "8.18.0",
+    "@angular-devkit/core": {
+      "ajv": "8.18.0"
+    }
+  },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.0",
-    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/cli": "^11.0.16",
+    "@nestjs/schematics": "^11.0.9",
     "@nestjs/testing": "^11.1.16",
     "@types/bcrypt": "^5.0.0",
     "@types/jest": "^30.0.0",

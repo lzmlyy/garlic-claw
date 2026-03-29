@@ -6,9 +6,11 @@ import { LoggerModule } from 'nestjs-pino';
 import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
 import { AutomationModule } from './automation/automation.module';
+import { CacheModule } from './cache/cache.module';
 import { ChatModule } from './chat/chat.module';
 import { MemoryModule } from './memory/memory.module';
 import { PersonaModule } from './persona/persona.module';
+import { McpModule } from './mcp/mcp.module';
 import { PluginModule } from './plugin/plugin.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UserModule } from './user/user.module';
@@ -33,6 +35,7 @@ import { UserModule } from './user/user.module';
       },
     }),
     PrismaModule,
+    CacheModule,
     AiModule,
     AuthModule,
     UserModule,
@@ -41,6 +44,7 @@ import { UserModule } from './user/user.module';
     MemoryModule,
     PersonaModule,
     AutomationModule,
+    McpModule,
   ],
   providers: [
     {
