@@ -49,6 +49,8 @@ export function useProviderSettings() {
   const discoveredModels = ref<DiscoveredAiModel[]>([])
   const connectionResult = ref<ProviderConnectionResult | null>(null)
   let providerSelectionRequestId = 0
+  let discoveryRequestId = 0
+  let connectionTestRequestId = 0
 
   onMounted(() => {
     void refreshAll()
@@ -95,9 +97,15 @@ export function useProviderSettings() {
 
   async function selectProvider(providerId: string) {
     const requestId = ++providerSelectionRequestId
+    discoveryRequestId += 1
+    connectionTestRequestId += 1
     selectedProviderId.value = providerId
     selectedProvider.value = null
     selectedModels.value = []
+    discoveredModels.value = []
+    showDiscoveryDialog.value = false
+    discoveringModels.value = false
+    testingConnection.value = false
     connectionResult.value = null
     const selectionData = await loadProviderSelectionData(providerId)
     if (
@@ -158,14 +166,29 @@ export function useProviderSettings() {
       return
     }
 
+    const providerId = selectedProvider.value.id
+    const requestId = ++discoveryRequestId
     discoveringModels.value = true
     connectionResult.value = null
     try {
-      discoveredModels.value = await api.discoverAiProviderModels(
-        selectedProvider.value.id,
-      )
+      const models = await api.discoverAiProviderModels(providerId)
+      if (
+        requestId !== discoveryRequestId ||
+        selectedProviderId.value !== providerId
+      ) {
+        return
+      }
+
+      discoveredModels.value = models
       showDiscoveryDialog.value = true
     } catch (caughtError) {
+      if (
+        requestId !== discoveryRequestId ||
+        selectedProviderId.value !== providerId
+      ) {
+        return
+      }
+
       connectionResult.value = {
         kind: 'error',
         text: toErrorMessage(
@@ -174,7 +197,9 @@ export function useProviderSettings() {
         ),
       }
     } finally {
-      discoveringModels.value = false
+      if (requestId === discoveryRequestId) {
+        discoveringModels.value = false
+      }
     }
   }
 
@@ -244,17 +269,33 @@ export function useProviderSettings() {
       return
     }
 
+    const providerId = selectedProvider.value.id
+    const requestId = ++connectionTestRequestId
     testingConnection.value = true
     connectionResult.value = null
     try {
-      const result = await api.testAiProviderConnection(selectedProvider.value.id, {
+      const result = await api.testAiProviderConnection(providerId, {
         modelId: selectedProvider.value.defaultModel,
       })
+      if (
+        requestId !== connectionTestRequestId ||
+        selectedProviderId.value !== providerId
+      ) {
+        return
+      }
+
       connectionResult.value = {
         kind: 'success',
         text: formatConnectionSuccess(result),
       }
     } catch (caughtError) {
+      if (
+        requestId !== connectionTestRequestId ||
+        selectedProviderId.value !== providerId
+      ) {
+        return
+      }
+
       connectionResult.value = {
         kind: 'error',
         text: toErrorMessage(
@@ -263,7 +304,9 @@ export function useProviderSettings() {
         ),
       }
     } finally {
-      testingConnection.value = false
+      if (requestId === connectionTestRequestId) {
+        testingConnection.value = false
+      }
     }
   }
 

@@ -4,12 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AiModelConfig,
   AiProviderConfig,
+  AiProviderConnectionTestResult,
   AiProviderSummary,
+  DiscoveredAiModel,
   OfficialProviderCatalogItem,
   VisionFallbackConfig,
 } from '@garlic-claw/shared'
 import { useProviderSettings } from './use-provider-settings'
 import * as providerData from './provider-settings.data'
+import * as api from '../api'
 
 vi.mock('./provider-settings.data', () => ({
   loadProviderSettingsBaseData: vi.fn(),
@@ -19,6 +22,17 @@ vi.mock('./provider-settings.data', () => ({
   importDiscoveredProviderModels: vi.fn(),
   formatConnectionSuccess: vi.fn(() => 'ok'),
   toErrorMessage: vi.fn((error: Error | undefined, fallback: string) => error?.message ?? fallback),
+}))
+
+vi.mock('../api', () => ({
+  deleteAiProvider: vi.fn(),
+  upsertAiModel: vi.fn(),
+  discoverAiProviderModels: vi.fn(),
+  deleteAiModel: vi.fn(),
+  setAiProviderDefaultModel: vi.fn(),
+  updateAiModelCapabilities: vi.fn(),
+  testAiProviderConnection: vi.fn(),
+  updateVisionFallbackConfig: vi.fn(),
 }))
 
 function createProviderSummary(id: string, name = id): AiProviderSummary {
@@ -71,6 +85,43 @@ function createModel(id: string, providerId: string): AiModelConfig {
   }
 }
 
+function createDiscoveredModel(id: string): DiscoveredAiModel {
+  return {
+    id,
+    name: id,
+  }
+}
+
+function createConnectionResult(providerId: string): AiProviderConnectionTestResult {
+  return {
+    ok: true,
+    providerId,
+    modelId: `${providerId}-default`,
+    text: 'ok',
+  }
+}
+
+function createSelectionData(providerId: string) {
+  return {
+    provider: createProviderConfig(providerId, providerId === 'provider-a' ? 'Provider A' : 'Provider B'),
+    models: [createModel(`${providerId}-model`, providerId)],
+  }
+}
+
+async function mountProviderSettingsHarness() {
+  let state!: ReturnType<typeof useProviderSettings>
+  const Harness = defineComponent({
+    setup() {
+      state = useProviderSettings()
+      return () => null
+    },
+  })
+
+  mount(Harness)
+  await flushPromises()
+  return state
+}
+
 describe('useProviderSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -107,16 +158,7 @@ describe('useProviderSettings', () => {
       })
     vi.mocked(providerData.loadVisionModelOptions).mockResolvedValue([])
 
-    let state!: ReturnType<typeof useProviderSettings>
-    const Harness = defineComponent({
-      setup() {
-        state = useProviderSettings()
-        return () => null
-      },
-    })
-
-    mount(Harness)
-    await flushPromises()
+    const state = await mountProviderSettingsHarness()
 
     await state.selectProvider('provider-b')
     await flushPromises()
@@ -138,5 +180,76 @@ describe('useProviderSettings', () => {
     expect(state.selectedModels.value.map((item) => item.id)).toEqual([
       'provider-b-model',
     ])
+  })
+
+  it('ignores discovered models from the previous provider after switching selection', async () => {
+    let resolveDiscovery!: (value: DiscoveredAiModel[]) => void
+    const discoveryRequest = new Promise<DiscoveredAiModel[]>((resolve) => {
+      resolveDiscovery = resolve
+    })
+
+    vi.mocked(providerData.loadProviderSettingsBaseData).mockResolvedValue({
+      catalog: [],
+      providers: [
+        createProviderSummary('provider-a', 'Provider A'),
+        createProviderSummary('provider-b', 'Provider B'),
+      ],
+      visionConfig: { enabled: false },
+    })
+    vi.mocked(providerData.loadProviderSelectionData).mockImplementation(
+      async (providerId: string) => createSelectionData(providerId),
+    )
+    vi.mocked(providerData.loadVisionModelOptions).mockResolvedValue([])
+    vi.mocked(api.discoverAiProviderModels).mockReturnValueOnce(discoveryRequest)
+
+    const state = await mountProviderSettingsHarness()
+
+    const pendingDiscovery = state.openDiscoveryDialog()
+    await flushPromises()
+    await state.selectProvider('provider-b')
+    await flushPromises()
+
+    resolveDiscovery([createDiscoveredModel('provider-a-remote-model')])
+    await pendingDiscovery
+    await flushPromises()
+
+    expect(state.selectedProviderId.value).toBe('provider-b')
+    expect(state.showDiscoveryDialog.value).toBe(false)
+    expect(state.discoveredModels.value).toEqual([])
+  })
+
+  it('ignores test-connection results from the previous provider after switching selection', async () => {
+    let resolveConnection!: (value: AiProviderConnectionTestResult) => void
+    const connectionRequest = new Promise<AiProviderConnectionTestResult>((resolve) => {
+      resolveConnection = resolve
+    })
+
+    vi.mocked(providerData.loadProviderSettingsBaseData).mockResolvedValue({
+      catalog: [],
+      providers: [
+        createProviderSummary('provider-a', 'Provider A'),
+        createProviderSummary('provider-b', 'Provider B'),
+      ],
+      visionConfig: { enabled: false },
+    })
+    vi.mocked(providerData.loadProviderSelectionData).mockImplementation(
+      async (providerId: string) => createSelectionData(providerId),
+    )
+    vi.mocked(providerData.loadVisionModelOptions).mockResolvedValue([])
+    vi.mocked(api.testAiProviderConnection).mockReturnValueOnce(connectionRequest)
+
+    const state = await mountProviderSettingsHarness()
+
+    const pendingConnectionTest = state.testProviderConnection()
+    await flushPromises()
+    await state.selectProvider('provider-b')
+    await flushPromises()
+
+    resolveConnection(createConnectionResult('provider-a'))
+    await pendingConnectionTest
+    await flushPromises()
+
+    expect(state.selectedProviderId.value).toBe('provider-b')
+    expect(state.connectionResult.value).toBeNull()
   })
 })
