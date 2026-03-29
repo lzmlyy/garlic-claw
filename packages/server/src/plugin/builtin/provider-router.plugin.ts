@@ -48,9 +48,10 @@ export function createProviderRouterPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.provider-router',
-      name: 'Provider Router',
+      name: '模型路由',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '按规则切换 provider/model、裁剪工具或直接短路回复的内建插件。',
       permissions: ['config:read', 'provider:read'],
       tools: [],
       hooks: [

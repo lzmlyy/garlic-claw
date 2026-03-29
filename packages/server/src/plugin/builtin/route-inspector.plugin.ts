@@ -27,9 +27,10 @@ export function createRouteInspectorPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.route-inspector',
-      name: 'Route Inspector',
+      name: '路由探针',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '用于查看插件 Web Route 可见上下文的内建诊断插件。',
       permissions: ['conversation:read', 'user:read'],
       tools: [],
       routes: [

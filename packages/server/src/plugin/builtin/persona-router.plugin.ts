@@ -49,9 +49,10 @@ export function createPersonaRouterPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.persona-router',
-      name: 'Persona Router',
+      name: '人设路由',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '按规则切换当前会话人设并同步改写系统提示词的内建插件。',
       permissions: ['config:read', 'persona:read', 'persona:write'],
       tools: [],
       hooks: [

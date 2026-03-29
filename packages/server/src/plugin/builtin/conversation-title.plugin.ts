@@ -39,9 +39,10 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.conversation-title',
-      name: 'Conversation Title',
+      name: '会话标题',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '在首次回复后为默认标题会话自动生成更合适标题的内建插件。',
       permissions: [
         'config:read',
         'conversation:read',

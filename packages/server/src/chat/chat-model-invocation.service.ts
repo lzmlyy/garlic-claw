@@ -26,7 +26,10 @@ import type { AiSdkStopCondition, AiSdkToolSet } from '../ai/sdk-adapter';
 import type { ModelConfig } from '../ai/types/provider.types';
 import { toAiSdkMessages } from './sdk-message-converter';
 import type { ChatRuntimeMessage } from './chat-message-session';
-import { ChatMessageTransformService } from './chat-message-transform.service';
+import {
+  ChatMessageTransformService,
+  type ChatMessageTransformResult,
+} from './chat-message-transform.service';
 import type { ChatModelInvocationRequestOptionsInput } from './chat-model-invocation-options';
 
 /**
@@ -58,7 +61,9 @@ export interface PrepareResolvedChatModelInvocationInput {
 /**
  * 统一准备好的调用载荷。
  */
-export type PreparedChatModelInvocation = PreparedAiModelExecution;
+export interface PreparedChatModelInvocation extends PreparedAiModelExecution {
+  transformResult?: ChatMessageTransformResult;
+}
 
 /**
  * 已准备调用载荷时的流式输入。
@@ -112,16 +117,20 @@ export class ChatModelInvocationService {
   async prepareResolved(
     input: PrepareResolvedChatModelInvocationInput,
   ): Promise<PreparedChatModelInvocation> {
-    const transformedMessages = await this.messageTransform.transformMessages(
+    const transformResult = await this.messageTransform.transformMessages(
       input.conversationId,
       input.messages,
       input.modelConfig,
     );
-
-    return this.aiModelExecution.prepareResolved({
+    const prepared = await this.aiModelExecution.prepareResolved({
       modelConfig: input.modelConfig,
-      sdkMessages: toAiSdkMessages(transformedMessages),
+      sdkMessages: toAiSdkMessages(transformResult.messages),
     });
+
+    return {
+      ...prepared,
+      transformResult,
+    };
   }
 
   /**

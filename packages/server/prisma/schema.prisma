@@ -74,6 +74,7 @@ model Message {
   partsJson      String?      @map("parts_json") // 原始消息 parts 的 JSON 字符串
   toolCalls      String?      @map("tool_calls") // 工具调用的 JSON 字符串
   toolResults    String?      @map("tool_results") // 工具结果的 JSON 字符串
+  metadataJson   String?      @map("metadata_json") // 运行时消息 metadata 的 JSON 字符串
   provider       String?      // 使用的 AI provider
   model          String?      // 使用的 AI 模型
   status         String       @default("completed") // pending | streaming | completed | stopped | error

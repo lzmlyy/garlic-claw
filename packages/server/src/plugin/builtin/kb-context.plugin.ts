@@ -23,9 +23,10 @@ export function createKbContextPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.kb-context',
-      name: 'KB Context',
+      name: '知识库上下文',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '在模型调用前检索并注入系统知识摘要的内建插件。',
       permissions: ['kb:read', 'config:read'],
       tools: [],
       hooks: [

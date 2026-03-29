@@ -18,9 +18,10 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.memory-tools',
-      name: 'Memory Tools',
+      name: '记忆工具',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '提供长期记忆写入与检索能力的内建插件。',
       permissions: ['memory:read', 'memory:write'],
       tools: [
         {

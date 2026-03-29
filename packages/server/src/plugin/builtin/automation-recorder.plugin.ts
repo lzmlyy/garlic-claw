@@ -36,7 +36,7 @@ export function createAutomationRecorderPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.automation-recorder',
-      name: 'Automation Recorder',
+      name: '自动化记录器',
       version: '1.0.0',
       runtime: 'builtin',
       description: '用于验证自动化生命周期 Hook 链路的内建插件',

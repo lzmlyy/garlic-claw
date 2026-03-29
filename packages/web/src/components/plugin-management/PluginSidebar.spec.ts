@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import type { PluginInfo } from '@garlic-claw/shared'
 import PluginSidebar from './PluginSidebar.vue'
 
 describe('PluginSidebar', () => {
@@ -312,5 +313,56 @@ describe('PluginSidebar', () => {
     await wrapper.get('[data-test="plugin-sidebar-clear-filters"]').trigger('click')
     expect(wrapper.text()).toContain('匹配 2 / 2')
     expect(wrapper.text()).not.toContain('当前详情插件未命中筛选条件。')
+  })
+
+  it('paginates plugin index results and resets to the first page after searching', async () => {
+    const plugins: PluginInfo[] = Array.from({ length: 11 }, (_, index): PluginInfo => ({
+      id: `plugin-${index + 1}`,
+      name: `builtin.plugin-${index + 1}`,
+      displayName: `Plugin ${String(index + 1).padStart(2, '0')}`,
+      description: `plugin ${index + 1}`,
+      deviceType: 'builtin',
+      status: 'online',
+      capabilities: [],
+      connected: true,
+      runtimeKind: 'builtin',
+      health: {
+        status: 'healthy',
+        failureCount: 0,
+        consecutiveFailures: 0,
+        lastError: null,
+        lastErrorAt: null,
+        lastSuccessAt: null,
+        lastCheckedAt: null,
+      },
+      lastSeenAt: null,
+      createdAt: '2026-03-28T00:00:00.000Z',
+      updatedAt: '2026-03-28T00:00:00.000Z',
+    }))
+
+    const wrapper = mount(PluginSidebar, {
+      props: {
+        loading: false,
+        selectedPluginName: null,
+        error: null,
+        plugins,
+      },
+    })
+
+    expect(wrapper.findAll('.plugin-item')).toHaveLength(4)
+    expect(wrapper.text()).toContain('匹配 11 / 11')
+    expect(wrapper.text()).toContain('第 1 / 3 页')
+
+    await wrapper.get('[data-test="plugin-sidebar-next-page"]').trigger('click')
+
+    expect(wrapper.text()).toContain('第 2 / 3 页')
+    expect(wrapper.find('.plugin-item strong').text()).toBe('Plugin 05')
+
+    await wrapper.get('[data-test="plugin-sidebar-search"]').setValue('plugin-11')
+
+    expect(wrapper.text()).toContain('匹配 1 / 11')
+    expect(wrapper.text()).toContain('第 1 / 1 页')
+    expect(wrapper.findAll('.plugin-item')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Plugin 11')
   })
 })

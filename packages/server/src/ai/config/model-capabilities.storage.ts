@@ -16,9 +16,9 @@
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
-import * as path from 'path';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import type { ModelCapabilities } from '../types/provider.types';
+import { resolveConfigFilePath } from './config-path.util';
 import { normalizeModelCapabilitiesEntry } from './model-capabilities-normalizer';
 
 /**
@@ -59,12 +59,10 @@ export class ModelCapabilitiesStorage implements OnModuleInit {
   private config: ModelCapabilitiesConfig;
 
   constructor() {
-    const projectRoot = this.findProjectRoot();
-    const configDir = path.join(projectRoot, 'config');
-
-    fs.mkdirSync(configDir, { recursive: true });
-
-    this.configPath = path.join(configDir, 'model-capabilities.json');
+    this.configPath = resolveConfigFilePath(
+      'GARLIC_CLAW_MODEL_CAPABILITIES_PATH',
+      'model-capabilities.json',
+    );
     this.config = this.createEmptyConfig();
   }
 
@@ -242,26 +240,6 @@ export class ModelCapabilitiesStorage implements OnModuleInit {
     );
   }
 
-  /**
-   * 查找项目根目录。
-   * @returns 项目根目录绝对路径
-   */
-  private findProjectRoot(): string {
-    const candidates = [
-      path.resolve(__dirname, '..', '..', '..', '..', '..', '..'),
-      path.resolve(process.cwd(), '..', '..'),
-      path.resolve(process.cwd(), '..'),
-      process.cwd(),
-    ];
-
-    for (const candidate of candidates) {
-      if (fs.existsSync(path.join(candidate, 'package.json'))) {
-        return candidate;
-      }
-    }
-
-    return process.cwd();
-  }
 }
 
 /**

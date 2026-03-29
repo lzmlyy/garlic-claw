@@ -105,7 +105,10 @@ describe('ChatModelInvocationService', () => {
   it('prepares transformed sdk messages from provider/model selection', async () => {
     aiProvider.getModelConfig.mockReturnValue(modelConfig);
     aiProvider.getModel.mockReturnValue({ provider: 'ds2api', modelId: 'deepseek-reasoner' });
-    messageTransform.transformMessages.mockResolvedValue(runtimeMessages);
+    messageTransform.transformMessages.mockResolvedValue({
+      messages: runtimeMessages,
+      visionFallback: null,
+    });
 
     const prepared = await service.prepare({
       conversationId: 'conversation-1',
@@ -134,6 +137,10 @@ describe('ChatModelInvocationService', () => {
           ],
         },
       ],
+      transformResult: {
+        messages: runtimeMessages,
+        visionFallback: null,
+      },
     });
   });
 
@@ -153,25 +160,28 @@ describe('ChatModelInvocationService', () => {
       provider: 'anthropic',
       modelId: 'claude-3-7-sonnet',
     });
-    messageTransform.transformMessages.mockResolvedValue([
-      {
-        role: 'assistant',
-        content: '',
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: '',
-          },
-          {
-            type: 'text',
-            text: '保留这段文本',
-          },
-        ],
-      },
-    ] satisfies ChatRuntimeMessage[]);
+    messageTransform.transformMessages.mockResolvedValue({
+      messages: [
+        {
+          role: 'assistant',
+          content: '',
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '',
+            },
+            {
+              type: 'text',
+              text: '保留这段文本',
+            },
+          ],
+        },
+      ] satisfies ChatRuntimeMessage[],
+      visionFallback: null,
+    });
 
     const prepared = await service.prepare({
       conversationId: 'conversation-1',
@@ -196,7 +206,10 @@ describe('ChatModelInvocationService', () => {
   it('generates text through the unified invocation pipeline with merged call options', async () => {
     aiProvider.getModelConfig.mockReturnValue(modelConfig);
     aiProvider.getModel.mockReturnValue({ provider: 'ds2api', modelId: 'deepseek-reasoner' });
-    messageTransform.transformMessages.mockResolvedValue(runtimeMessages);
+    messageTransform.transformMessages.mockResolvedValue({
+      messages: runtimeMessages,
+      visionFallback: null,
+    });
     (runGenerateText as jest.Mock).mockResolvedValue({ text: '总结完成' });
 
     const executed = await service.generateText({
@@ -266,6 +279,10 @@ describe('ChatModelInvocationService', () => {
           ],
         },
       ],
+      transformResult: {
+        messages: runtimeMessages,
+        visionFallback: null,
+      },
       result: { text: '总结完成' },
     });
   });
@@ -296,6 +313,10 @@ describe('ChatModelInvocationService', () => {
             ],
           },
         ],
+        transformResult: {
+          messages: runtimeMessages,
+          visionFallback: null,
+        },
       },
       system: '你是一个日志分析助手',
       variant: 'reasoningHigh',
@@ -350,6 +371,10 @@ describe('ChatModelInvocationService', () => {
           ],
         },
       ],
+      transformResult: {
+        messages: runtimeMessages,
+        visionFallback: null,
+      },
       result: {
         fullStream,
       },

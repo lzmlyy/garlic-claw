@@ -1,4 +1,5 @@
 import type {
+  ChatMessageMetadata,
   ChatMessagePart,
   JsonValue,
   Message,
@@ -75,6 +76,21 @@ export function parseToolResults(value: string | null): ChatMessage['toolResults
 }
 
 /**
+ * 反序列化消息 metadata。
+ * @param value 服务端返回的 JSON 字符串
+ * @returns UI 可消费的消息 metadata
+ */
+export function parseMessageMetadata(
+  value: string | null | undefined,
+): ChatMessageMetadata | undefined {
+  if (!value) {
+    return undefined
+  }
+
+  return JSON.parse(value) as ChatMessageMetadata
+}
+
+/**
  * 将数据库消息映射为前端消息。
  * @param message 服务端消息
  * @returns 前端可消费的消息
@@ -87,6 +103,7 @@ export function dbMessageToChat(message: Message): ChatMessage {
     parts: parseParts(message.partsJson),
     toolCalls: parseToolCalls(message.toolCalls),
     toolResults: parseToolResults(message.toolResults),
+    metadata: parseMessageMetadata(message.metadataJson),
     provider: message.provider,
     model: message.model,
     status: message.status,

@@ -46,7 +46,7 @@ export function createResponseRecorderPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.response-recorder',
-      name: 'Response Recorder',
+      name: '回复记录器',
       version: '1.0.0',
       runtime: 'builtin',
       description: '用于验证最终回复发送 Hook 链路的内建插件',

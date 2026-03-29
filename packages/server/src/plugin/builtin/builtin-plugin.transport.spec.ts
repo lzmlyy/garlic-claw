@@ -651,7 +651,7 @@ describe('BuiltinPluginTransport', () => {
     hostService.call
       .mockResolvedValueOnce({
         id: 'builtin.route-inspector',
-        name: 'Route Inspector',
+        name: '路由探针',
         runtimeKind: 'builtin',
         permissions: ['conversation:read', 'user:read'],
         hooks: [],
@@ -745,7 +745,7 @@ describe('BuiltinPluginTransport', () => {
       body: {
         plugin: {
           id: 'builtin.route-inspector',
-          name: 'Route Inspector',
+          name: '路由探针',
           runtimeKind: 'builtin',
           permissions: ['conversation:read', 'user:read'],
           hooks: [],
@@ -819,7 +819,7 @@ describe('BuiltinPluginTransport', () => {
     const definition: BuiltinPluginDefinition = {
       manifest: {
         id: 'builtin.provider-router',
-        name: 'Provider Router',
+        name: '模型路由',
         version: '1.0.0',
         runtime: 'builtin',
         permissions: ['provider:read', 'llm:generate'],
@@ -1107,7 +1107,7 @@ describe('BuiltinPluginTransport', () => {
     const definition: BuiltinPluginDefinition = {
       manifest: {
         id: 'builtin.cron-heartbeat',
-        name: 'Cron Heartbeat',
+        name: '定时心跳',
         version: '1.0.0',
         runtime: 'builtin',
         permissions: ['cron:read', 'cron:write'],
@@ -1498,7 +1498,7 @@ describe('BuiltinPluginTransport', () => {
     const definition: BuiltinPluginDefinition = {
       manifest: {
         id: 'builtin.persona-router',
-        name: 'Persona Router',
+        name: '人设路由',
         version: '1.0.0',
         runtime: 'builtin',
         permissions: ['persona:read', 'persona:write'],
@@ -1755,7 +1755,7 @@ describe('BuiltinPluginTransport', () => {
     const definition: BuiltinPluginDefinition = {
       manifest: {
         id: 'builtin.response-recorder',
-        name: 'Response Recorder',
+        name: '回复记录器',
         version: '1.0.0',
         runtime: 'builtin',
         permissions: ['conversation:read', 'conversation:write'],

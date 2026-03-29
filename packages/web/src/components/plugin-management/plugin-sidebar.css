@@ -98,6 +98,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .sidebar-results-text,
@@ -149,6 +150,13 @@
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.sidebar-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .plugin-item {
@@ -327,6 +335,14 @@
   .sidebar-results {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .sidebar-pagination {
+    justify-content: stretch;
+  }
+
+  .sidebar-pagination > * {
+    flex: 1 1 120px;
   }
 }
 

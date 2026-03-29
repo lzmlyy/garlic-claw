@@ -23,9 +23,10 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.automation-tools',
-      name: 'Automation Tools',
+      name: '自动化工具',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '提供自动化创建、事件触发、启停和执行能力的内建插件。',
       permissions: ['automation:read', 'automation:write'],
       tools: [
         {

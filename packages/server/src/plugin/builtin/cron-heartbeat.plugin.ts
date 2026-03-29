@@ -18,7 +18,7 @@ export function createCronHeartbeatPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.cron-heartbeat',
-      name: 'Cron Heartbeat',
+      name: '定时心跳',
       version: '1.0.0',
       runtime: 'builtin',
       description: '用于验证统一 cron 插件协议链路的内建插件',

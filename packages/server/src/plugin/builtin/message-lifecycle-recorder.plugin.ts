@@ -59,7 +59,7 @@ export function createMessageLifecycleRecorderPlugin(): BuiltinPluginDefinition 
   return {
     manifest: {
       id: 'builtin.message-lifecycle-recorder',
-      name: 'Message Lifecycle Recorder',
+      name: '消息生命周期记录器',
       version: '1.0.0',
       runtime: 'builtin',
       description: '用于验证会话与消息生命周期 Hook 链路的内建插件',

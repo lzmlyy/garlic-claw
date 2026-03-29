@@ -35,9 +35,10 @@ export function createSubagentDelegatePlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.subagent-delegate',
-      name: 'Subagent Delegate',
+      name: '子代理委派',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '将当前任务委派给宿主子代理执行的内建插件。',
       permissions: ['config:read', 'subagent:run'],
       tools: [
         {

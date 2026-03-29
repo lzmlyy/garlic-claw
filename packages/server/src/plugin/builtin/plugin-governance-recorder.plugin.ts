@@ -44,7 +44,7 @@ export function createPluginGovernanceRecorderPlugin(): BuiltinPluginDefinition 
   return {
     manifest: {
       id: 'builtin.plugin-governance-recorder',
-      name: 'Plugin Governance Recorder',
+      name: '插件治理记录器',
       version: '1.0.0',
       runtime: 'builtin',
       description: '用于验证插件治理生命周期 Hook 链路的内建插件',

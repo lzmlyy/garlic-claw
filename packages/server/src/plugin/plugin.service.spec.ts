@@ -47,7 +47,7 @@ describe('PluginService', () => {
 
   const manifest: PluginManifest = {
     id: 'builtin.memory-context',
-    name: 'Memory Context',
+    name: '记忆上下文',
     version: '1.0.0',
     runtime: 'builtin',
     permissions: ['memory:read', 'config:read'],
@@ -161,6 +161,43 @@ describe('PluginService', () => {
         conversations: {
           'conversation-1': false,
         },
+      },
+    });
+    expect(prisma.pluginEvent.create).toHaveBeenCalledWith({
+      data: {
+        pluginId: 'plugin-1',
+        type: 'register',
+        level: 'info',
+        message: '插件已注册',
+        metadataJson: null,
+      },
+    });
+  });
+
+  it('records lifecycle online instead of register when an existing plugin is reloaded', async () => {
+    prisma.plugin.findUnique.mockResolvedValue(
+      createPluginRecord({
+        id: 'plugin-1',
+        name: 'builtin.memory-context',
+      }),
+    );
+    prisma.plugin.upsert.mockResolvedValue(
+      createPluginRecord({
+        id: 'plugin-1',
+        name: 'builtin.memory-context',
+        runtimeKind: 'builtin',
+      }),
+    );
+
+    await service.registerPlugin('builtin.memory-context', 'builtin', manifest);
+
+    expect(prisma.pluginEvent.create).toHaveBeenCalledWith({
+      data: {
+        pluginId: 'plugin-1',
+        type: 'lifecycle:online',
+        level: 'info',
+        message: '插件已上线',
+        metadataJson: null,
       },
     });
   });

@@ -12,9 +12,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SERVER_DIR = path.resolve(__dirname, '..');
 const PROJECT_ROOT = path.resolve(SERVER_DIR, '..', '..');
-const CONFIG_DIR = path.join(PROJECT_ROOT, 'config');
-const AI_SETTINGS_PATH = path.join(CONFIG_DIR, 'ai-settings.json');
-const MODEL_CAPABILITIES_PATH = path.join(CONFIG_DIR, 'model-capabilities.json');
 const TINY_PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0eQAAAAASUVORK5CYII=';
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
@@ -25,7 +22,7 @@ async function main() {
   const databasePath = path.join(tempDir, 'smoke.sqlite');
   const relativeDatabasePath = path.relative(SERVER_DIR, databasePath).replace(/\\/g, '/');
   const databaseUrl = `file:${relativeDatabasePath.startsWith('.') ? relativeDatabasePath : `./${relativeDatabasePath}`}`;
-  const configBackup = await prepareConfigIsolation();
+  const isolatedConfig = await prepareConfigIsolation(tempDir);
   const prisma = new PrismaClient({
     datasources: {
       db: {
@@ -75,6 +72,8 @@ async function main() {
       PORT: String(httpPort),
       WS_PORT: String(pluginWsPort),
       CORS_ORIGIN: '*',
+      GARLIC_CLAW_AI_SETTINGS_PATH: isolatedConfig.aiSettingsPath,
+      GARLIC_CLAW_MODEL_CAPABILITIES_PATH: isolatedConfig.modelCapabilitiesPath,
     });
 
     const apiBase = `http://127.0.0.1:${backend.port}/api`;
@@ -96,7 +95,6 @@ async function main() {
     if (fakeServer) {
       await fakeServer.close().catch(() => undefined);
     }
-    await restoreConfigIsolation(configBackup);
     await fsPromises.rm(tempDir, { recursive: true, force: true });
   }
 }
@@ -455,15 +453,15 @@ async function runSmokeFlow(context) {
   await apiRequest(context, 'DELETE', '/ai/providers/local-openai', { token: adminToken });
 }
 
-async function prepareConfigIsolation() {
-  await fsPromises.mkdir(CONFIG_DIR, { recursive: true });
-  const backups = await Promise.all([
-    backupFile(AI_SETTINGS_PATH),
-    backupFile(MODEL_CAPABILITIES_PATH),
-  ]);
+async function prepareConfigIsolation(tempDir) {
+  const configDir = path.join(tempDir, 'config');
+  const aiSettingsPath = path.join(configDir, 'ai-settings.json');
+  const modelCapabilitiesPath = path.join(configDir, 'model-capabilities.json');
+
+  await fsPromises.mkdir(configDir, { recursive: true });
 
   await fsPromises.writeFile(
-    AI_SETTINGS_PATH,
+    aiSettingsPath,
     JSON.stringify({
       version: 1,
       updatedAt: new Date().toISOString(),
@@ -473,7 +471,7 @@ async function prepareConfigIsolation() {
     'utf8',
   );
   await fsPromises.writeFile(
-    MODEL_CAPABILITIES_PATH,
+    modelCapabilitiesPath,
     JSON.stringify({
       version: 1,
       lastUpdated: new Date().toISOString(),
@@ -482,29 +480,10 @@ async function prepareConfigIsolation() {
     'utf8',
   );
 
-  return backups;
-}
-
-async function restoreConfigIsolation([aiSettingsBackup, modelCapabilitiesBackup]) {
-  await restoreFile(AI_SETTINGS_PATH, aiSettingsBackup);
-  await restoreFile(MODEL_CAPABILITIES_PATH, modelCapabilitiesBackup);
-}
-
-async function backupFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-
-  return fsPromises.readFile(filePath, 'utf8');
-}
-
-async function restoreFile(filePath, contents) {
-  if (contents === null) {
-    await fsPromises.rm(filePath, { force: true });
-    return;
-  }
-
-  await fsPromises.writeFile(filePath, contents, 'utf8');
+  return {
+    aiSettingsPath,
+    modelCapabilitiesPath,
+  };
 }
 
 function resolvePrismaCliEntry() {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { resolveChatModelSelection } from './chat-store.helpers'
+import { dbMessageToChat, resolveChatModelSelection } from './chat-store.helpers'
 import * as api from '../api'
 
 vi.mock('../api', () => ({
@@ -94,6 +94,48 @@ describe('resolveChatModelSelection', () => {
     expect(selection).toEqual({
       providerId: 'healthy-provider',
       modelId: 'shared-model',
+    })
+  })
+})
+
+describe('dbMessageToChat', () => {
+  it('parses persisted vision fallback metadata from message records', () => {
+    const message = dbMessageToChat({
+      id: 'message-1',
+      role: 'assistant',
+      content: '图片总结',
+      partsJson: null,
+      toolCalls: null,
+      toolResults: null,
+      provider: 'openai',
+      model: 'gpt-4.1',
+      status: 'completed',
+      error: null,
+      metadataJson: JSON.stringify({
+        visionFallback: {
+          state: 'completed',
+          entries: [
+            {
+              text: '图片里是一只猫。',
+              source: 'cache',
+            },
+          ],
+        },
+      }),
+      createdAt: '2026-03-29T12:00:00.000Z',
+      updatedAt: '2026-03-29T12:00:00.000Z',
+    })
+
+    expect(message.metadata).toEqual({
+      visionFallback: {
+        state: 'completed',
+        entries: [
+          {
+            text: '图片里是一只猫。',
+            source: 'cache',
+          },
+        ],
+      },
     })
   })
 })

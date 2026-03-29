@@ -171,7 +171,7 @@ describe('PluginController', () => {
         },
         manifest: {
           id: 'builtin.memory-context',
-          name: 'Memory Context',
+          name: '记忆上下文',
           version: '1.0.0',
           runtime: 'builtin',
           permissions: ['memory:read', 'config:read'],
@@ -281,7 +281,7 @@ describe('PluginController', () => {
       {
         id: 'plugin-2',
         name: 'remote.pc-host',
-        displayName: 'Remote PC Host',
+        displayName: '电脑助手',
         description: '远程 PC 插件',
         deviceType: 'pc',
         runtimeKind: 'remote',
@@ -311,7 +311,7 @@ describe('PluginController', () => {
         supportedActions: ['health-check', 'reload', 'reconnect'],
         manifest: {
           id: 'remote.pc-host',
-          name: 'Remote PC Host',
+          name: '电脑助手',
           version: '1.0.0',
           runtime: 'remote',
           permissions: [],

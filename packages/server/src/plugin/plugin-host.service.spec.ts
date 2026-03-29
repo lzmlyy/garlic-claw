@@ -875,7 +875,7 @@ describe('PluginHostService', () => {
   it('returns plugin self summary through plugin.self.get', async () => {
     pluginService.getPluginSelfInfo.mockResolvedValue({
       id: 'builtin.memory-context',
-      name: 'Memory Context',
+      name: '记忆上下文',
       runtimeKind: 'builtin',
       version: '1.0.0',
       permissions: ['config:read', 'storage:read'],
@@ -898,7 +898,7 @@ describe('PluginHostService', () => {
       }),
     ).resolves.toEqual({
       id: 'builtin.memory-context',
-      name: 'Memory Context',
+      name: '记忆上下文',
       runtimeKind: 'builtin',
       version: '1.0.0',
       permissions: ['config:read', 'storage:read'],

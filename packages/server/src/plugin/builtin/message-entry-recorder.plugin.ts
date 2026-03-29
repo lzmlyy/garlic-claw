@@ -48,7 +48,7 @@ export function createMessageEntryRecorderPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.message-entry-recorder',
-      name: 'Message Entry Recorder',
+      name: '消息入口记录器',
       version: '1.0.0',
       runtime: 'builtin',
       description: '用于验证 message:received 与 chat:waiting-model 链路的内建插件',

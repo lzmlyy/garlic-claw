@@ -87,6 +87,26 @@ interface ConversationTargetMessageRecord {
   updatedAt: string;
 }
 
+type MessageRecordWithMetadata = {
+  id: string;
+  metadataJson?: string | null;
+} & Record<string, unknown>;
+
+interface ChatMessageMetadataValue {
+  visionFallback?: {
+    state: 'transcribing' | 'completed';
+    entries: Array<{
+      text: string;
+      source: 'cache' | 'generated';
+    }>;
+  };
+}
+
+interface ChatVisionFallbackMetadataEntry {
+  text: string;
+  source: 'cache' | 'generated';
+}
+
 /**
  * 聊天模型前 Hook 的服务内结果联合。
  */
@@ -238,14 +258,23 @@ export class ChatMessageService {
         modelConfig: beforeModelResult.modelConfig,
         messages: beforeModelResult.request.messages,
       });
+      const {
+        userMessage: userMessageWithMetadata,
+        assistantMessage: assistantMessageWithMetadata,
+      } = await this.applyVisionFallbackMetadata({
+        userMessage,
+        assistantMessage,
+        visionFallbackEntries:
+          preparedInvocation.transformResult?.visionFallback?.entries ?? [],
+      });
 
       this.chatTaskService.startTask({
-        assistantMessageId: assistantMessage.id,
+        assistantMessageId: assistantMessageWithMetadata.id,
         conversationId,
         providerId: beforeModelResult.modelConfig.providerId,
         modelId: beforeModelResult.modelConfig.id,
         createStream: this.buildStreamFactory({
-          assistantMessageId: assistantMessage.id,
+          assistantMessageId: assistantMessageWithMetadata.id,
           userId,
           conversationId,
           request: beforeModelResult.request,
@@ -272,6 +301,10 @@ export class ChatMessageService {
             result,
           }),
       });
+      return {
+        userMessage: userMessageWithMetadata,
+        assistantMessage: assistantMessageWithMetadata,
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
       await this.prisma.message.update({
@@ -284,8 +317,6 @@ export class ChatMessageService {
       await this.touchConversation(conversationId);
       throw error;
     }
-
-    return { userMessage, assistantMessage };
   }
 
   /** 主动停止指定 assistant 消息的后台生成任务，并返回最新消息状态。 */
@@ -338,6 +369,7 @@ export class ChatMessageService {
         error: null,
         toolCalls: null,
         toolResults: null,
+        metadataJson: null,
       },
     });
     await this.touchConversation(conversationId);
@@ -371,14 +403,20 @@ export class ChatMessageService {
         modelConfig: beforeModelResult.modelConfig,
         messages: beforeModelResult.request.messages,
       });
+      const assistantMessageWithMetadata =
+        await this.applyVisionFallbackMetadataToAssistant({
+          assistantMessage,
+          visionFallbackEntries:
+            preparedInvocation.transformResult?.visionFallback?.entries ?? [],
+        });
 
       this.chatTaskService.startTask({
-        assistantMessageId: messageId,
+        assistantMessageId: assistantMessageWithMetadata.id,
         conversationId,
         providerId: beforeModelResult.modelConfig.providerId,
         modelId: beforeModelResult.modelConfig.id,
         createStream: this.buildStreamFactory({
-          assistantMessageId: messageId,
+          assistantMessageId: assistantMessageWithMetadata.id,
           userId,
           conversationId,
           request: beforeModelResult.request,
@@ -405,6 +443,7 @@ export class ChatMessageService {
             result,
           }),
       });
+      return assistantMessageWithMetadata;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
       await this.prisma.message.update({
@@ -417,8 +456,6 @@ export class ChatMessageService {
       await this.touchConversation(conversationId);
       throw error;
     }
-
-    return assistantMessage;
   }
 
   /** 更新一条已存在的消息，不会自动触发重跑。 */
@@ -1237,4 +1274,87 @@ export class ChatMessageService {
       },
     });
   }
+
+  /**
+   * 把图像转述元数据回写到当前发送产生的 user/assistant 消息。
+   * @param input 当前发送的消息记录与转述条目
+   * @returns 带最新 metadataJson 的消息记录
+   */
+  private async applyVisionFallbackMetadata(input: {
+    userMessage: MessageRecordWithMetadata;
+    assistantMessage: MessageRecordWithMetadata;
+    visionFallbackEntries: ChatVisionFallbackMetadataEntry[];
+  }) {
+    if (input.visionFallbackEntries.length === 0) {
+      return input;
+    }
+
+    const metadataJson = serializeChatMessageMetadata({
+      visionFallback: {
+        state: 'completed',
+        entries: input.visionFallbackEntries,
+      },
+    });
+    await this.prisma.message.updateMany({
+      where: {
+        id: {
+          in: [input.userMessage.id, input.assistantMessage.id],
+        },
+      },
+      data: {
+        metadataJson,
+      },
+    });
+
+    return {
+      userMessage: {
+        ...input.userMessage,
+        metadataJson,
+      },
+      assistantMessage: {
+        ...input.assistantMessage,
+        metadataJson,
+      },
+    };
+  }
+
+  /**
+   * 把图像转述元数据回写到重试产生的 assistant 消息。
+   * @param input assistant 消息与转述条目
+   * @returns 带最新 metadataJson 的 assistant 消息
+   */
+  private async applyVisionFallbackMetadataToAssistant(input: {
+    assistantMessage: MessageRecordWithMetadata;
+    visionFallbackEntries: ChatVisionFallbackMetadataEntry[];
+  }) {
+    if (input.visionFallbackEntries.length === 0) {
+      return input.assistantMessage;
+    }
+
+    const metadataJson = serializeChatMessageMetadata({
+      visionFallback: {
+        state: 'completed',
+        entries: input.visionFallbackEntries,
+      },
+    });
+    await this.prisma.message.update({
+      where: {
+        id: input.assistantMessage.id,
+      },
+      data: {
+        metadataJson,
+      },
+    });
+
+    return {
+      ...input.assistantMessage,
+      metadataJson,
+    };
+  }
+}
+
+function serializeChatMessageMetadata(
+  metadata: ChatMessageMetadataValue,
+): string {
+  return JSON.stringify(metadata);
 }

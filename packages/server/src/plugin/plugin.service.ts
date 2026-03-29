@@ -86,6 +86,12 @@ export class PluginService {
     deviceType: string,
     manifest: PluginManifest,
   ): Promise<PluginGovernanceSnapshot> {
+    const existing = await this.prisma.plugin.findUnique({
+      where: { name },
+      select: {
+        id: true,
+      },
+    });
     const plugin = await this.prisma.plugin.upsert({
       where: { name },
       create: {
@@ -120,8 +126,13 @@ export class PluginService {
         lastSeenAt: new Date(),
       },
     });
-    await this.createPluginEvent(plugin.id, 'register', 'info', '插件已注册');
-    this.logger.log(`插件 "${name}" 已注册，包含 ${(manifest.tools ?? []).length} 个能力`);
+    if (existing) {
+      await this.createPluginEvent(plugin.id, 'lifecycle:online', 'info', '插件已上线');
+      this.logger.log(`插件 "${name}" 已重新接入运行时，包含 ${(manifest.tools ?? []).length} 个能力`);
+    } else {
+      await this.createPluginEvent(plugin.id, 'register', 'info', '插件已注册');
+      this.logger.log(`插件 "${name}" 已注册，包含 ${(manifest.tools ?? []).length} 个能力`);
+    }
     return this.buildGovernanceSnapshot(plugin);
   }
 

@@ -111,6 +111,7 @@ export const useChatStore = defineStore('chat', () => {
         optimisticAssistantId,
         payload.provider ?? null,
         payload.model ?? null,
+        input.optimisticAssistantMetadata,
       ),
     )
     syncStreamingState()

@@ -69,7 +69,7 @@ describe('PluginRuntimeService', () => {
 
   const builtinManifest: PluginManifest = {
     id: 'builtin.memory-tools',
-    name: 'Memory Tools',
+    name: '记忆工具',
     version: '1.0.0',
     runtime: 'builtin',
     permissions: ['memory:read', 'memory:write', 'state:read', 'state:write'],
@@ -244,7 +244,7 @@ describe('PluginRuntimeService', () => {
       }),
     ).resolves.toEqual({
       id: 'builtin.memory-tools',
-      name: 'Memory Tools',
+      name: '记忆工具',
       runtimeKind: 'builtin',
       version: '1.0.0',
       permissions: ['memory:read', 'memory:write', 'state:read', 'state:write'],

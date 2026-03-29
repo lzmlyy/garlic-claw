@@ -1,12 +1,19 @@
 <template>
-  <div v-if="visible" class="dialog-overlay" @click.self="$emit('close')">
+  <div v-if="visible" class="dialog-overlay" data-test="provider-dialog-overlay">
     <div class="dialog-card">
       <div class="dialog-header">
         <div>
           <h2>{{ title }}</h2>
           <p>按模式填写供应商信息、默认模型和连接凭据。</p>
         </div>
-        <button type="button" class="close-button" @click="$emit('close')">×</button>
+        <button
+          type="button"
+          class="close-button"
+          data-test="provider-dialog-close"
+          @click="$emit('close')"
+        >
+          ×
+        </button>
       </div>
 
       <div class="dialog-body">
@@ -65,7 +72,14 @@
       </div>
 
       <div class="dialog-footer">
-        <button type="button" class="ghost-button" @click="$emit('close')">取消</button>
+        <button
+          type="button"
+          class="ghost-button"
+          data-test="provider-dialog-cancel"
+          @click="$emit('close')"
+        >
+          取消
+        </button>
         <button type="button" class="primary-button" :disabled="!canSave" @click="submit">
           保存
         </button>

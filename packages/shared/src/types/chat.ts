@@ -38,6 +38,39 @@ export type ChatMessageStatus =
   | 'error';
 
 /**
+ * 图像转述来源。
+ */
+export type ChatVisionFallbackEntrySource = 'cache' | 'generated';
+
+/**
+ * 单条图像转述结果。
+ */
+export interface ChatVisionFallbackEntry {
+  /** 转述文本。 */
+  text: string;
+  /** 转述来源。 */
+  source: ChatVisionFallbackEntrySource;
+}
+
+/**
+ * 一条消息关联的图像转述元数据。
+ */
+export interface ChatVisionFallbackMetadata {
+  /** 当前图像转述状态。 */
+  state: 'transcribing' | 'completed';
+  /** 已产生的转述列表。 */
+  entries: ChatVisionFallbackEntry[];
+}
+
+/**
+ * 聊天消息元数据。
+ */
+export interface ChatMessageMetadata {
+  /** 本条消息关联的图像转述信息。 */
+  visionFallback?: ChatVisionFallbackMetadata;
+}
+
+/**
  * 对话中的消息数量统计。
  */
 export interface ConversationCount {
@@ -77,6 +110,8 @@ export interface Message {
   toolCalls: string | null;
   /** 工具结果的 JSON。 */
   toolResults: string | null;
+  /** 运行时元数据 JSON。 */
+  metadataJson?: string | null;
   /** 实际使用的 provider。 */
   provider: string | null;
   /** 实际使用的模型。 */

@@ -5,6 +5,7 @@ describe('ChatMessageService', () => {
     message: {
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       delete: jest.fn(),
       findUniqueOrThrow: jest.fn(),
     },
@@ -65,6 +66,12 @@ describe('ChatMessageService', () => {
       async ({ payload }: { payload: unknown }) => ({
         action: 'continue',
         payload,
+      }),
+    );
+    pluginRuntime.runChatBeforeModelHooks.mockImplementation(
+      async ({ payload }: { payload: { request: unknown } }) => ({
+        action: 'continue',
+        request: payload.request,
       }),
     );
     pluginRuntime.runChatWaitingModelHooks.mockResolvedValue(undefined);
@@ -431,6 +438,109 @@ describe('ChatMessageService', () => {
         }),
       }),
     );
+  });
+
+  it('persists vision fallback metadata onto the current user and assistant messages', async () => {
+    const userMessage = {
+      id: 'user-message-vision-1',
+      role: 'user',
+      content: '请描述图片',
+      partsJson: JSON.stringify([
+        {
+          type: 'image',
+          image: 'data:image/png;base64,abc123',
+          mimeType: 'image/png',
+        },
+      ]),
+      status: 'completed',
+      metadataJson: null,
+    };
+    const assistantMessage = {
+      id: 'assistant-message-vision-1',
+      role: 'assistant',
+      content: '',
+      provider: 'openai',
+      model: 'gpt-4.1',
+      status: 'pending',
+      metadataJson: null,
+    };
+    const modelConfig = {
+      id: 'gpt-4.1',
+      providerId: 'openai',
+      name: 'GPT 4.1',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: false,
+        toolCall: true,
+      },
+      api: {
+        id: 'gpt-4.1',
+        url: 'https://example.com/v1',
+        npm: '@ai-sdk/openai',
+      },
+    };
+
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      messages: [],
+    });
+    aiProvider.getModelConfig.mockReturnValue(modelConfig);
+    prisma.message.create
+      .mockResolvedValueOnce(userMessage)
+      .mockResolvedValueOnce(assistantMessage);
+    prisma.message.updateMany.mockResolvedValue({ count: 2 });
+    prisma.conversation.update.mockResolvedValue(null);
+    modelInvocation.prepareResolved.mockResolvedValue({
+      modelConfig,
+      model: { provider: 'openai', modelId: 'gpt-4.1' },
+      sdkMessages: [],
+      transformResult: {
+        messages: [],
+        visionFallback: {
+          entries: [
+            {
+              text: '图片里是一只趴着的橘猫。',
+              source: 'generated',
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await service.startMessageGeneration('user-1', 'conversation-1', {
+      content: '请描述图片',
+      parts: [
+        {
+          type: 'image',
+          image: 'data:image/png;base64,abc123',
+          mimeType: 'image/png',
+        },
+      ],
+    });
+
+    expect(prisma.message.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ['user-message-vision-1', 'assistant-message-vision-1'],
+        },
+      },
+      data: {
+        metadataJson: JSON.stringify({
+          visionFallback: {
+            state: 'completed',
+            entries: [
+              {
+                text: '图片里是一只趴着的橘猫。',
+                source: 'generated',
+              },
+            ],
+          },
+        }),
+      },
+    });
+    expect((result.userMessage as { metadataJson?: string | null }).metadataJson).toContain('图片里是一只趴着的橘猫。');
+    expect((result.assistantMessage as { metadataJson?: string | null }).metadataJson).toContain('图片里是一只趴着的橘猫。');
   });
 
   it('applies message:created mutations before persisting the user message draft', async () => {

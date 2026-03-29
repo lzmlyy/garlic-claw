@@ -70,7 +70,12 @@
     </div>
 
     <div v-if="!loading && plugins.length > 0" class="sidebar-results">
-      <span class="sidebar-results-text">匹配 {{ orderedPlugins.length }} / {{ plugins.length }}</span>
+      <span class="sidebar-results-text">
+        匹配 {{ orderedPlugins.length }} / {{ plugins.length }}
+        <span v-if="orderedPlugins.length > 0">
+          · 第 {{ currentPage }} / {{ pageCount }} 页 · 显示 {{ rangeStart }}-{{ rangeEnd }} 项
+        </span>
+      </span>
       <button
         v-if="hasActiveFilter"
         type="button"
@@ -97,7 +102,7 @@
     </div>
     <div v-else class="plugin-list">
       <button
-        v-for="plugin in orderedPlugins"
+        v-for="plugin in pagedPlugins"
         :key="plugin.name"
         type="button"
         class="plugin-item"
@@ -135,12 +140,34 @@
         </div>
       </button>
     </div>
+
+    <div v-if="!loading && orderedPlugins.length > 0" class="sidebar-pagination">
+      <button
+        type="button"
+        class="ghost-button"
+        data-test="plugin-sidebar-prev-page"
+        :disabled="!canGoPrev"
+        @click="goPrevPage"
+      >
+        上一页
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        data-test="plugin-sidebar-next-page"
+        :disabled="!canGoNext"
+        @click="goNextPage"
+      >
+        下一页
+      </button>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { PluginInfo } from '@garlic-claw/shared'
+import { usePagination } from '../../composables/use-pagination'
 
 const props = defineProps<{
   plugins: PluginInfo[]
@@ -174,6 +201,18 @@ const orderedPlugins = computed(() =>
     return (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
   }),
 )
+const {
+  currentPage,
+  pageCount,
+  pagedItems: pagedPlugins,
+  rangeStart,
+  rangeEnd,
+  canGoPrev,
+  canGoNext,
+  resetPage,
+  goPrevPage,
+  goNextPage,
+} = usePagination(orderedPlugins, 4)
 const onlineCount = computed(() =>
   props.plugins.filter((plugin) => plugin.connected).length,
 )
@@ -187,12 +226,17 @@ const selectedPluginHidden = computed(() =>
   !!props.selectedPluginName && !filteredPlugins.value.some((plugin) => plugin.name === props.selectedPluginName),
 )
 
+watch([searchKeyword, activeFilter], () => {
+  resetPage()
+})
+
 /**
  * 清空当前关键字和快速筛选，恢复完整列表。
  */
 function clearFilters() {
   searchKeyword.value = ''
   activeFilter.value = 'all'
+  resetPage()
 }
 
 /**

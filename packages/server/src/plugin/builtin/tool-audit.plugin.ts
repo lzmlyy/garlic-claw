@@ -42,7 +42,7 @@ export function createToolAuditPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.tool-audit',
-      name: 'Tool Audit',
+      name: '工具审计器',
       version: '1.0.0',
       runtime: 'builtin',
       description: '用于验证工具生命周期 Hook 链路的内建插件',

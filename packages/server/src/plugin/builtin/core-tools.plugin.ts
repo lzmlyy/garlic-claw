@@ -18,9 +18,10 @@ export function createCoreToolsPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.core-tools',
-      name: 'Core Tools',
+      name: '内建工具',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '提供时间、系统信息和计算器等基础能力的内建插件。',
       permissions: [],
       tools: [
         {

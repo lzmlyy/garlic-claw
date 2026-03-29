@@ -12,12 +12,44 @@
       <div class="dialog-body">
         <label class="field">
           <span>搜索模型</span>
-          <input v-model="query" placeholder="输入模型 ID 或名称筛选" />
+          <input
+            v-model="query"
+            data-test="model-discovery-search"
+            placeholder="输入模型 ID 或名称筛选"
+          />
         </label>
 
         <p class="summary-text">
           共 {{ filteredModels.length }} 个候选模型，已选择 {{ selectedModelIds.length }} 个。
         </p>
+
+        <div v-if="filteredModels.length > 0" class="pager-row">
+          <span class="pager-copy">
+            第 {{ currentPage }} / {{ pageCount }} 页
+            <span class="pager-divider">·</span>
+            显示 {{ rangeStart }}-{{ rangeEnd }} 项
+          </span>
+          <div class="pager-actions">
+            <button
+              type="button"
+              class="ghost-button"
+              data-test="model-discovery-prev-page"
+              :disabled="!canGoPrev"
+              @click="goPrevPage"
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              class="ghost-button"
+              data-test="model-discovery-next-page"
+              :disabled="!canGoNext"
+              @click="goNextPage"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
 
         <div v-if="filteredModels.length === 0" class="empty-state">
           没有匹配的模型。
@@ -25,7 +57,7 @@
 
         <div v-else class="model-list">
           <label
-            v-for="model in filteredModels"
+            v-for="model in pagedModels"
             :key="model.id"
             class="model-row"
           >
@@ -60,6 +92,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { DiscoveredAiModel } from '@garlic-claw/shared'
+import { usePagination } from '../../composables/use-pagination'
 
 const props = defineProps<{
   visible: boolean
@@ -87,6 +120,18 @@ const filteredModels = computed(() => {
     model.name.toLowerCase().includes(normalizedQuery),
   )
 })
+const {
+  currentPage,
+  pageCount,
+  pagedItems: pagedModels,
+  rangeStart,
+  rangeEnd,
+  canGoPrev,
+  canGoNext,
+  resetPage,
+  goPrevPage,
+  goNextPage,
+} = usePagination(filteredModels, 6)
 
 watch(
   () => props.visible,
@@ -97,8 +142,13 @@ watch(
 
     query.value = ''
     selectedModelIds.value = []
+    resetPage()
   },
 )
+
+watch(query, () => {
+  resetPage()
+})
 
 function toggleModel(modelId: string) {
   if (selectedModelIds.value.includes(modelId)) {
@@ -203,12 +253,34 @@ function submit() {
   margin: 0;
 }
 
+.pager-row,
+.pager-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.pager-row {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pager-copy {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pager-divider {
+  margin: 0 6px;
+}
+
 .model-list {
   min-height: 0;
   overflow-y: auto;
   display: grid;
   gap: 10px;
   padding-right: 4px;
+  max-height: min(360px, 42vh);
 }
 
 .model-row {
@@ -282,6 +354,14 @@ function submit() {
 
   .dialog-footer > * {
     flex: 1 1 140px;
+  }
+
+  .pager-actions {
+    width: 100%;
+  }
+
+  .pager-actions > * {
+    flex: 1 1 120px;
   }
 }
 </style>

@@ -89,15 +89,148 @@ describe('ChatMessageTransformService', () => {
       mimeType: 'image/png',
       transcription: '图片里是一只猫',
     });
-    expect(transformed).toEqual([
+    expect(transformed).toEqual({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '请描述这张图片' },
+            { type: 'text', text: '[图片描述: 图片里是一只猫]' },
+          ],
+        },
+      ],
+      visionFallback: {
+        entries: [
+          {
+            text: '图片里是一只猫',
+            source: 'generated',
+          },
+        ],
+      },
+    });
+  });
+
+  it('returns cache-backed vision fallback traces when reusing existing descriptions', async () => {
+    const model = {
+      id: 'text-only-model',
+      providerId: 'openai',
+      name: 'Text Only',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: false,
+        toolCall: true,
+      },
+      api: {
+        id: 'text-only-model',
+        url: 'https://example.com',
+        npm: '@ai-sdk/openai',
+      },
+    } satisfies ModelConfig;
+
+    imageCache.findTranscription.mockResolvedValueOnce('图片里是一只猫');
+
+    const transformed = await service.transformMessages('conversation-1', [
       {
         role: 'user',
         content: [
-          { type: 'text', text: '请描述这张图片' },
-          { type: 'text', text: '[图片描述: 图片里是一只猫]' },
+          {
+            type: 'image',
+            image: 'data:image/png;base64,abc123',
+            mimeType: 'image/png',
+          },
+        ],
+      },
+    ], model);
+
+    expect(imageToText.imageToText).not.toHaveBeenCalled();
+    expect(transformed.visionFallback).toEqual({
+      entries: [
+        {
+          text: '图片里是一只猫',
+          source: 'cache',
+        },
+      ],
+    });
+  });
+
+  it('only traces the latest user message instead of accumulating history image cache hits', async () => {
+    const model = {
+      id: 'text-only-model',
+      providerId: 'openai',
+      name: 'Text Only',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: false,
+        toolCall: true,
+      },
+      api: {
+        id: 'text-only-model',
+        url: 'https://example.com',
+        npm: '@ai-sdk/openai',
+      },
+    } satisfies ModelConfig;
+
+    imageCache.findTranscription
+      .mockResolvedValueOnce('历史图片描述')
+      .mockResolvedValueOnce('当前图片描述');
+
+    const transformed = await service.transformMessages('conversation-1', [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            image: 'data:image/png;base64,history',
+            mimeType: 'image/png',
+          },
+        ],
+      },
+      {
+        role: 'assistant',
+        content: '上一轮回复',
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '请只描述我刚发的这张图' },
+          {
+            type: 'image',
+            image: 'data:image/png;base64,current',
+            mimeType: 'image/png',
+          },
+        ],
+      },
+    ], model);
+
+    expect(transformed.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '[图片描述: 历史图片描述]' },
+        ],
+      },
+      {
+        role: 'assistant',
+        content: '上一轮回复',
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '请只描述我刚发的这张图' },
+          { type: 'text', text: '[图片描述: 当前图片描述]' },
         ],
       },
     ]);
+    expect(transformed.visionFallback).toEqual({
+      entries: [
+        {
+          text: '当前图片描述',
+          source: 'cache',
+        },
+      ],
+    });
   });
 
   it('preserves the original transcription error when vision transcription fails', async () => {

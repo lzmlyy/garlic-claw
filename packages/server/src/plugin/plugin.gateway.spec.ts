@@ -26,7 +26,7 @@ describe('PluginGateway', () => {
 
   const remoteManifest: PluginManifest = {
     id: 'remote.pc-host',
-    name: 'PC Host',
+    name: '电脑助手',
     version: '1.0.0',
     runtime: 'remote',
     permissions: ['conversation:read'],
@@ -231,7 +231,7 @@ describe('PluginGateway', () => {
 
     pluginRuntime.callHost.mockResolvedValue({
       id: 'remote.pc-host',
-      name: 'PC Host',
+      name: '电脑助手',
     });
 
     await (gateway as any).handleMessage(

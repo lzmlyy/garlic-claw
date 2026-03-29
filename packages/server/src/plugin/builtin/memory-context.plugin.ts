@@ -23,9 +23,10 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
   return {
     manifest: {
       id: 'builtin.memory-context',
-      name: 'Memory Context',
+      name: '记忆上下文',
       version: '1.0.0',
       runtime: 'builtin',
+      description: '在模型调用前检索并注入用户长期记忆摘要的内建插件。',
       permissions: ['memory:read', 'config:read'],
       tools: [],
       hooks: [

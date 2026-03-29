@@ -6,6 +6,7 @@ import * as api from '../api'
 
 vi.mock('../api', () => ({
   listAiModels: vi.fn(),
+  getVisionFallbackConfig: vi.fn(),
 }))
 
 function createModelConfig(inputImage: boolean, id = inputImage ? 'image-model' : 'text-only-model') {
@@ -55,6 +56,9 @@ function createChatStub(overrides: Partial<Record<string, unknown>> = {}) {
 describe('useChatView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(api.getVisionFallbackConfig).mockResolvedValue({
+      enabled: false,
+    })
   })
 
   it('shows a fallback notice when pending images target a text-only model', async () => {
@@ -130,5 +134,49 @@ describe('useChatView', () => {
     await flushPromises()
 
     expect(state.selectedCapabilities.value?.input.image).toBe(true)
+  })
+
+  it('marks the optimistic assistant as transcribing when vision fallback will be used', async () => {
+    vi.mocked(api.listAiModels).mockResolvedValue([
+      createModelConfig(false, 'text-only-model'),
+    ])
+    vi.mocked(api.getVisionFallbackConfig).mockResolvedValue({
+      enabled: true,
+      providerId: 'vision-provider',
+      modelId: 'vision-model',
+    })
+
+    const chat = createChatStub()
+    let state!: ReturnType<typeof useChatView>
+    const Harness = defineComponent({
+      setup() {
+        state = useChatView(chat as never)
+        return () => null
+      },
+    })
+
+    mount(Harness)
+    await flushPromises()
+
+    state.pendingImages.value.push({
+      id: 'image-1',
+      name: 'demo.png',
+      image: 'data:image/png;base64,Zm9v',
+      mimeType: 'image/png',
+    })
+    await nextTick()
+
+    await state.send()
+
+    expect(chat.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        optimisticAssistantMetadata: {
+          visionFallback: {
+            state: 'transcribing',
+            entries: [],
+          },
+        },
+      }),
+    )
   })
 })

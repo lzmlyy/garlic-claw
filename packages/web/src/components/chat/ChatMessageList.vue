@@ -4,6 +4,7 @@
     <div
       v-for="(message, index) in messages"
       :key="message.id ?? index"
+      :data-message-id="message.id ?? undefined"
       class="message"
       :class="message.role"
     >
@@ -15,6 +16,13 @@
           </span>
           <span v-if="message.provider && message.model" class="message-model">
             {{ message.provider }}/{{ message.model }}
+          </span>
+          <span
+            v-if="visionFallbackChipLabel(message)"
+            class="message-model-detail"
+            :class="message.metadata?.visionFallback?.state"
+          >
+            {{ visionFallbackChipLabel(message) }}
           </span>
         </div>
 
@@ -62,6 +70,25 @@
           <div v-if="message.error" class="message-error">
             错误: {{ message.error }}
           </div>
+
+          <details
+            v-if="shouldShowVisionFallbackDetails(message)"
+            class="vision-fallback-details"
+          >
+            <summary>查看图像转述</summary>
+            <div class="vision-fallback-list">
+              <div
+                v-for="(entry, entryIndex) in message.metadata?.visionFallback?.entries ?? []"
+                :key="`${message.id ?? index}-vision-${entryIndex}`"
+                class="vision-fallback-entry"
+              >
+                <span class="vision-fallback-source">
+                  {{ entry.source === 'cache' ? '缓存复用' : '实时转述' }}
+                </span>
+                <div class="vision-fallback-text" v-html="renderMarkdown(entry.text)"></div>
+              </div>
+            </div>
+          </details>
 
           <div v-if="message.toolCalls?.length" class="tool-calls">
             <div
@@ -241,6 +268,23 @@ function extractEditableText(message: ChatMessage): string {
  */
 function hasEditableImages(message: ChatMessage): boolean {
   return Boolean(message.parts?.some((part) => part.type === 'image'))
+}
+
+function visionFallbackChipLabel(message: ChatMessage): string | null {
+  if (message.role !== 'assistant') {
+    return null
+  }
+
+  const state = message.metadata?.visionFallback?.state
+  if (state === 'transcribing') {
+    return '图像转述中'
+  }
+
+  return state === 'completed' ? '图像转述' : null
+}
+
+function shouldShowVisionFallbackDetails(message: ChatMessage): boolean {
+  return message.role === 'user' && Boolean(message.metadata?.visionFallback?.entries.length)
 }
 
 /**

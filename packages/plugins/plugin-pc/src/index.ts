@@ -71,9 +71,9 @@ const client = new PluginClient({
   pluginName: `pc-${os.hostname()}`,
   deviceType: DeviceType.PC,
   manifest: {
-    name: 'PC Host',
+    name: '电脑助手',
     version: '1.0.0',
-    description: '暴露当前 PC 的文件、系统信息与进程能力',
+    description: '暴露当前电脑的文件、系统信息与进程能力。',
     permissions: [],
     tools: capabilities,
     hooks: [],

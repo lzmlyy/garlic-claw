@@ -1,4 +1,5 @@
 import type {
+  ChatMessageMetadata,
   ChatMessagePart,
   SSEEvent,
 } from '@garlic-claw/shared'
@@ -60,6 +61,7 @@ export function buildOptimisticAssistantMessage(
   id: string,
   provider: string | null,
   model: string | null,
+  metadata?: ChatMessageMetadata,
 ): ChatMessage {
   return {
     id,
@@ -67,6 +69,7 @@ export function buildOptimisticAssistantMessage(
     content: '',
     toolCalls: [],
     toolResults: [],
+    ...(metadata ? { metadata } : {}),
     provider,
     model,
     status: 'pending',
@@ -219,6 +222,9 @@ export function applyRequestError(
     ...message,
     status: 'error',
     error: errorMessage,
+    ...(message.metadata?.visionFallback?.state === 'transcribing'
+      ? { metadata: undefined }
+      : {}),
   }))
 }
 
