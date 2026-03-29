@@ -48,6 +48,7 @@ export function useProviderSettings() {
   const editingProvider = ref<AiProviderConfig | null>(null)
   const discoveredModels = ref<DiscoveredAiModel[]>([])
   const connectionResult = ref<ProviderConnectionResult | null>(null)
+  let providerSelectionRequestId = 0
 
   onMounted(() => {
     void refreshAll()
@@ -93,11 +94,21 @@ export function useProviderSettings() {
   }
 
   async function selectProvider(providerId: string) {
+    const requestId = ++providerSelectionRequestId
     selectedProviderId.value = providerId
+    selectedProvider.value = null
+    selectedModels.value = []
+    connectionResult.value = null
     const selectionData = await loadProviderSelectionData(providerId)
+    if (
+      requestId !== providerSelectionRequestId ||
+      selectedProviderId.value !== providerId
+    ) {
+      return
+    }
+
     selectedProvider.value = selectionData.provider
     selectedModels.value = selectionData.models
-    connectionResult.value = null
   }
 
   function openCreateDialog() {
