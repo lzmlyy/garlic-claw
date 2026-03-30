@@ -69,4 +69,79 @@ describe('PluginScopeEditor', () => {
       ],
     ])
   })
+
+  it('emits a direct default-enable toggle without reading unsaved row drafts', async () => {
+    const wrapper = mount(PluginScopeEditor, {
+      props: {
+        saving: false,
+        plugin: {
+          id: 'plugin-1',
+          name: 'builtin.memory-context',
+          deviceType: 'builtin',
+          status: 'online',
+          capabilities: [],
+          connected: true,
+          governance: {
+            canDisable: true,
+            builtinRole: 'user-facing',
+          },
+          lastSeenAt: null,
+          createdAt: '2026-03-30T00:00:00.000Z',
+          updatedAt: '2026-03-30T00:00:00.000Z',
+        },
+        scope: {
+          defaultEnabled: true,
+          conversations: {
+            'conversation-1': true,
+          },
+        },
+      },
+    })
+
+    await wrapper.get('[data-test="scope-disable-button"]').trigger('click')
+
+    expect(wrapper.emitted('save')).toEqual([
+      [
+        {
+          defaultEnabled: false,
+          conversations: {
+            'conversation-1': true,
+          },
+        },
+      ],
+    ])
+  })
+
+  it('blocks the direct disable action for protected builtin plugins', async () => {
+    const wrapper = mount(PluginScopeEditor, {
+      props: {
+        saving: false,
+        plugin: {
+          id: 'plugin-1',
+          name: 'builtin.core-tools',
+          deviceType: 'builtin',
+          status: 'online',
+          capabilities: [],
+          connected: true,
+          governance: {
+            canDisable: false,
+            disableReason: '基础内建工具属于宿主必需插件，不能禁用。',
+            builtinRole: 'system-required',
+          },
+          lastSeenAt: null,
+          createdAt: '2026-03-30T00:00:00.000Z',
+          updatedAt: '2026-03-30T00:00:00.000Z',
+        },
+        scope: {
+          defaultEnabled: true,
+          conversations: {},
+        },
+      },
+    })
+
+    await wrapper.get('[data-test="scope-disable-button"]').trigger('click')
+
+    expect(wrapper.emitted('save')).toBeUndefined()
+    expect(wrapper.text()).toContain('基础内建工具属于宿主必需插件，不能禁用。')
+  })
 })

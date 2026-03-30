@@ -98,6 +98,10 @@ import { toJsonValue } from '../common/utils/json-value';
 import { PluginHostService } from './plugin-host.service';
 import { PluginCronService } from './plugin-cron.service';
 import {
+  collectDisabledConversationSessionIds,
+  isPluginEnabledForContext as isPluginEnabledForRuntimeScope,
+} from './plugin-runtime-scope';
+import {
   PluginService,
   type PluginGovernanceSnapshot,
 } from './plugin.service';
@@ -575,6 +579,7 @@ export class PluginRuntimeService {
 
     record.governance = await this.pluginService.getGovernanceSnapshot(pluginId);
     record.maxConcurrentExecutions = this.resolveMaxConcurrentExecutions(record.governance);
+    this.pruneDisabledConversationSessions(pluginId, record.governance.scope);
   }
 
   /**
@@ -2066,15 +2071,7 @@ export class PluginRuntimeService {
     record: PluginRuntimeRecord,
     context: PluginCallContext,
   ): boolean {
-    const conversationId = context.conversationId;
-    if (conversationId) {
-      const scoped = record.governance.scope.conversations[conversationId];
-      if (typeof scoped === 'boolean') {
-        return scoped;
-      }
-    }
-
-    return record.governance.scope.defaultEnabled;
+    return isPluginEnabledForRuntimeScope(record.governance.scope, context);
   }
 
   /**
@@ -3552,6 +3549,26 @@ export class PluginRuntimeService {
     }
 
     return session;
+  }
+
+  /**
+   * 在治理刷新后剔除当前已失效的活动会话等待态。
+   * @param pluginId 插件 ID
+   * @param scope 最新作用域
+   * @returns 无返回值
+   */
+  private pruneDisabledConversationSessions(
+    pluginId: string,
+    scope: PluginGovernanceSnapshot['scope'],
+  ): void {
+    const disabledConversationIds = collectDisabledConversationSessionIds(
+      this.conversationSessions.values(),
+      pluginId,
+      scope,
+    );
+    for (const conversationId of disabledConversationIds) {
+      this.conversationSessions.delete(conversationId);
+    }
   }
 
   /**

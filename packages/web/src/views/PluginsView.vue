@@ -49,6 +49,7 @@
             @save="saveConfig"
           />
           <PluginScopeEditor
+            :plugin="selectedPlugin"
             :scope="scopeSettings"
             :saving="savingScope"
             @save="saveScope"

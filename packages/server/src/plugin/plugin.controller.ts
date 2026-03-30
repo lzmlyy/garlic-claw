@@ -37,6 +37,7 @@ import {
 } from './dto/plugin-admin.dto';
 import { PluginAdminService } from './plugin-admin.service';
 import { PluginCronService } from './plugin-cron.service';
+import { describePluginGovernance } from './plugin-governance-policy';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginService } from './plugin.service';
 
@@ -61,6 +62,10 @@ export class PluginController {
     );
     return Promise.all(plugins.map(async (p) => {
       const runtimePlugin = runtimePlugins.get(p.name);
+      const governance = describePluginGovernance({
+        pluginId: p.name,
+        runtimeKind: runtimePlugin?.runtimeKind ?? p.runtimeKind,
+      });
       return {
         id: p.id,
         name: p.name,
@@ -83,6 +88,7 @@ export class PluginController {
         routes: runtimePlugin?.manifest.routes ?? parsePluginRoutes(p.routes),
         manifest: runtimePlugin?.manifest,
         health: serializePluginHealth(p, runtimePlugin?.runtimePressure ?? null),
+        governance,
         lastSeenAt: p.lastSeenAt ? p.lastSeenAt.toISOString() : null,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),

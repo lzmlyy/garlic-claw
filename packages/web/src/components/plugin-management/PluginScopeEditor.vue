@@ -2,8 +2,8 @@
   <section class="panel-section">
     <div class="section-header">
       <div>
-        <h3>作用域治理</h3>
-        <p>按会话启停插件，而不是全局暴露所有能力。</p>
+        <h3>运行开关与作用域治理</h3>
+        <p>主开关直接影响默认启停状态，会话覆盖仍可在下方细化。</p>
       </div>
       <button
         type="button"
@@ -20,8 +20,49 @@
     <p v-if="!scope" class="section-empty">当前还没有可编辑的作用域数据。</p>
 
     <template v-else>
+      <article class="quick-toggle-card">
+        <div class="quick-toggle-copy">
+          <strong>默认运行开关</strong>
+          <p>
+            {{
+              defaultEnabled
+                ? '当前默认启用。关闭后，未单独放行的会话会立即停用。'
+                : '当前默认禁用。重新启用后，会按当前作用域规则恢复。'
+            }}
+          </p>
+          <p v-if="!canDisable" class="section-error">
+            {{ disableReason }}
+          </p>
+        </div>
+
+        <div class="quick-toggle-actions">
+          <button
+            type="button"
+            class="ghost-button"
+            data-test="scope-enable-button"
+            :disabled="saving || defaultEnabled"
+            @click="saveDefaultEnabled(true)"
+          >
+            立即启用
+          </button>
+          <button
+            type="button"
+            class="ghost-button"
+            data-test="scope-disable-button"
+            :disabled="saving || !defaultEnabled || !canDisable"
+            @click="saveDefaultEnabled(false)"
+          >
+            立即禁用
+          </button>
+        </div>
+      </article>
+
       <label class="checkbox-row">
-        <input v-model="defaultEnabled" type="checkbox">
+        <input
+          v-model="defaultEnabled"
+          type="checkbox"
+          :disabled="saving || !canDisable"
+        >
         <span>默认启用当前插件</span>
       </label>
 
@@ -50,7 +91,7 @@
             >
             <select v-model="row.enabled">
               <option :value="true">启用</option>
-              <option :value="false">禁用</option>
+              <option v-if="canDisable" :value="false">禁用</option>
             </select>
             <button type="button" class="ghost-button danger-button" @click="removeConversationRow(index)">
               删除
@@ -63,8 +104,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { PluginScopeSettings } from '@garlic-claw/shared'
+import { computed, ref, watch } from 'vue'
+import type { PluginInfo, PluginScopeSettings } from '@garlic-claw/shared'
 
 interface ScopeRow {
   conversationId: string
@@ -74,6 +115,7 @@ interface ScopeRow {
 const props = defineProps<{
   scope: PluginScopeSettings | null
   saving: boolean
+  plugin?: PluginInfo | null
 }>()
 
 const emit = defineEmits<{
@@ -83,6 +125,11 @@ const emit = defineEmits<{
 const defaultEnabled = ref(true)
 const rows = ref<ScopeRow[]>([])
 const formError = ref<string | null>(null)
+const canDisable = computed(() => props.plugin?.governance?.canDisable !== false)
+const disableReason = computed(() =>
+  props.plugin?.governance?.disableReason?.trim()
+  || '当前插件属于受保护的系统内建插件，不能禁用。',
+)
 
 watch(
   () => props.scope,
@@ -124,6 +171,10 @@ function removeConversationRow(index: number) {
  */
 function submit() {
   try {
+    if (!canDisable.value && rows.value.some((row) => row.enabled === false)) {
+      throw new Error(disableReason.value)
+    }
+
     emit('save', {
       defaultEnabled: defaultEnabled.value,
       conversations: buildScopeConversations(rows.value),
@@ -132,6 +183,28 @@ function submit() {
   } catch (error) {
     formError.value = error instanceof Error ? error.message : '作用域配置无效'
   }
+}
+
+/**
+ * 仅切换默认启停，不读取未保存的会话覆盖草稿。
+ * @param enabled 目标启停状态
+ */
+function saveDefaultEnabled(enabled: boolean) {
+  if (!props.scope) {
+    return
+  }
+  if (!enabled && !canDisable.value) {
+    formError.value = disableReason.value
+    return
+  }
+
+  formError.value = null
+  emit('save', {
+    defaultEnabled: enabled,
+    conversations: {
+      ...props.scope.conversations,
+    },
+  })
 }
 
 /**
@@ -194,6 +267,36 @@ function buildScopeConversations(
   font-size: 0.85rem;
 }
 
+.quick-toggle-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-card) 88%, var(--accent) 12%);
+}
+
+.quick-toggle-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.quick-toggle-copy strong {
+  font-size: 0.95rem;
+}
+
+.quick-toggle-copy p {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.quick-toggle-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .ghost-button {
   background: transparent;
   border: 1px solid var(--border);
@@ -246,6 +349,15 @@ function buildScopeConversations(
 }
 
 @media (max-width: 720px) {
+  .quick-toggle-card {
+    flex-direction: column;
+  }
+
+  .quick-toggle-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .scope-row {
     grid-template-columns: 1fr;
   }

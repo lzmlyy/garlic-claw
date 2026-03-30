@@ -19,6 +19,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  assertPluginScopeCanBeUpdated,
+  normalizePluginScopeForGovernance,
+} from './plugin-governance-policy';
 
 /**
  * 运行时可直接消费的插件治理快照。
@@ -436,13 +440,24 @@ export class PluginService {
     name: string,
     scope: PluginScopeSettings,
   ): Promise<PluginScopeSettings> {
+    const plugin = await this.findByNameOrThrow(name);
     this.validateScope(scope);
+    assertPluginScopeCanBeUpdated({
+      pluginId: plugin.name,
+      runtimeKind: plugin.runtimeKind,
+      scope,
+    });
+    const normalizedScope = normalizePluginScopeForGovernance({
+      pluginId: plugin.name,
+      runtimeKind: plugin.runtimeKind,
+      scope,
+    });
 
     const updated = await this.prisma.plugin.update({
       where: { name },
       data: {
-        defaultEnabled: scope.defaultEnabled,
-        conversationScopes: JSON.stringify(scope.conversations),
+        defaultEnabled: normalizedScope.defaultEnabled,
+        conversationScopes: JSON.stringify(normalizedScope.conversations),
       },
     });
 
@@ -791,10 +806,14 @@ export class PluginService {
     plugin: Awaited<ReturnType<PluginService['findByNameOrThrow']>>,
   ): PluginScopeSettings {
     const conversations = this.parseBooleanRecord(plugin.conversationScopes);
-    return {
-      defaultEnabled: plugin.defaultEnabled,
-      conversations,
-    };
+    return normalizePluginScopeForGovernance({
+      pluginId: plugin.name,
+      runtimeKind: plugin.runtimeKind,
+      scope: {
+        defaultEnabled: plugin.defaultEnabled,
+        conversations,
+      },
+    });
   }
 
   /**

@@ -268,6 +268,12 @@ describe('PluginService', () => {
   });
 
   it('stores plugin scope rules and returns the normalized result', async () => {
+    prisma.plugin.findUnique.mockResolvedValue(
+      createPluginRecord({
+        name: 'builtin.memory-context',
+        runtimeKind: 'builtin',
+      }),
+    );
     prisma.plugin.update.mockResolvedValue(
       createPluginRecord({
         name: 'builtin.memory-context',
@@ -306,6 +312,44 @@ describe('PluginService', () => {
         'conversation-2': false,
       },
     });
+  });
+
+  it('rejects disabling a protected builtin plugin through the default scope switch', async () => {
+    prisma.plugin.findUnique.mockResolvedValue(
+      createPluginRecord({
+        name: 'builtin.core-tools',
+        runtimeKind: 'builtin',
+      }),
+    );
+
+    await expect(
+      service.updatePluginScope('builtin.core-tools', {
+        defaultEnabled: false,
+        conversations: {},
+      }),
+    ).rejects.toThrow('基础内建工具属于宿主必需插件，不能禁用。');
+
+    expect(prisma.plugin.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects per-conversation disable overrides for protected builtin plugins', async () => {
+    prisma.plugin.findUnique.mockResolvedValue(
+      createPluginRecord({
+        name: 'builtin.core-tools',
+        runtimeKind: 'builtin',
+      }),
+    );
+
+    await expect(
+      service.updatePluginScope('builtin.core-tools', {
+        defaultEnabled: true,
+        conversations: {
+          'conversation-1': false,
+        },
+      }),
+    ).rejects.toThrow('基础内建工具属于宿主必需插件，不能禁用。');
+
+    expect(prisma.plugin.update).not.toHaveBeenCalled();
   });
 
   it('stores persistent plugin kv values and lists them by prefix', async () => {

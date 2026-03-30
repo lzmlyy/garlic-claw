@@ -23,6 +23,11 @@ function hasUserFacingSurface(plugin: PluginInfo): boolean {
  * 这类插件默认隐藏，避免插件页一上来就被系统实现细节淹没。
  */
 export function isSystemBuiltinPlugin(plugin: PluginInfo): boolean {
+  const builtinRole = plugin.governance?.builtinRole
+  if (builtinRole === 'system-optional' || builtinRole === 'system-required') {
+    return true
+  }
+
   return (plugin.runtimeKind ?? 'remote') === 'builtin'
     && !!plugin.manifest
     && !hasUserFacingSurface(plugin)

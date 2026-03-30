@@ -1217,6 +1217,19 @@ export interface PluginCapability {
   parameters: Record<string, PluginParamSchema>;
 }
 
+/** 内建插件在治理面的角色。 */
+export type PluginBuiltinRole =
+  | 'user-facing'
+  | 'system-optional'
+  | 'system-required';
+
+/** 插件治理摘要。 */
+export interface PluginGovernanceInfo {
+  canDisable: boolean;
+  disableReason?: string;
+  builtinRole?: PluginBuiltinRole;
+}
+
 /** 插件/设备信息 */
 export interface PluginInfo {
   id: string;
@@ -1236,6 +1249,7 @@ export interface PluginInfo {
   routes?: PluginRouteDescriptor[];
   manifest?: PluginManifest;
   health?: PluginHealthSnapshot;
+  governance?: PluginGovernanceInfo;
   lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;

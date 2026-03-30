@@ -5165,6 +5165,60 @@ describe('PluginRuntimeService', () => {
     });
   });
 
+  it('drops active conversation sessions immediately after governance refresh disables the plugin', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-28T12:00:00.000Z'));
+
+    try {
+      await service.registerPlugin({
+        manifest: {
+          ...builtinManifest,
+          id: 'builtin.idiom-session',
+          permissions: ['conversation:write'],
+          tools: [],
+          hooks: [
+            {
+              name: 'message:received',
+            },
+          ],
+        } as never,
+        runtimeKind: 'builtin',
+        transport: createTransport(),
+      });
+
+      await service.callHost({
+        pluginId: 'builtin.idiom-session',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        method: 'conversation.session.start' as never,
+        params: {
+          timeoutMs: 60000,
+        },
+      });
+
+      expect((service as any).listConversationSessions('builtin.idiom-session')).toHaveLength(1);
+
+      pluginService.getGovernanceSnapshot.mockResolvedValueOnce({
+        configSchema: null,
+        resolvedConfig: {},
+        scope: {
+          defaultEnabled: true,
+          conversations: {
+            'conversation-1': false,
+          },
+        },
+      });
+
+      await service.refreshPluginGovernance('builtin.idiom-session');
+
+      expect((service as any).listConversationSessions('builtin.idiom-session')).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('runs builtin tool:after-call consumers through the unified host api facade', async () => {
     const definition = createToolAuditPlugin();
     const payload = {

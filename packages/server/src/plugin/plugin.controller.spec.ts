@@ -214,6 +214,10 @@ describe('PluginController', () => {
       name: 'builtin.memory-context',
       connected: true,
       runtimeKind: 'builtin',
+      governance: {
+        canDisable: true,
+        builtinRole: 'user-facing',
+      },
       supportedActions: ['health-check', 'reload'],
       version: '1.0.0',
       permissions: ['memory:read', 'config:read'],
@@ -363,6 +367,9 @@ describe('PluginController', () => {
     await expect(controller.listPlugins()).resolves.toEqual([
       expect.objectContaining({
         name: 'remote.broken-manifest',
+        governance: {
+          canDisable: true,
+        },
         capabilities: [],
         permissions: [],
         hooks: [],
