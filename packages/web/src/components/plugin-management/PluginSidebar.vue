@@ -4,7 +4,7 @@
       <div class="sidebar-header-copy">
         <span class="sidebar-kicker">Plugin Index</span>
         <h2>插件</h2>
-        <p>统一查看内建插件与远程插件。</p>
+        <p>默认聚焦用户可感知插件，系统内建按需展开。</p>
       </div>
       <button type="button" class="ghost-button" @click="$emit('refresh')">刷新</button>
     </div>
@@ -12,7 +12,7 @@
     <div v-if="!loading && plugins.length > 0" class="sidebar-overview">
       <div class="sidebar-stat">
         <span>总数</span>
-        <strong>{{ plugins.length }}</strong>
+        <strong>{{ listedPlugins.length }}</strong>
       </div>
       <div class="sidebar-stat">
         <span>在线</span>
@@ -31,6 +31,19 @@
         type="text"
         placeholder="搜索名称、描述或问题摘要"
       >
+      <div v-if="systemBuiltinCount > 0" class="sidebar-system-hint">
+        <span>
+          {{ showSystemBuiltins ? `已显示系统内建插件（${systemBuiltinCount}）` : `已隐藏 ${systemBuiltinCount} 个系统内建插件` }}
+        </span>
+        <button
+          type="button"
+          class="results-clear"
+          data-test="plugin-sidebar-toggle-system"
+          @click="showSystemBuiltins = !showSystemBuiltins"
+        >
+          {{ showSystemBuiltins ? '隐藏系统内建' : '显示系统内建' }}
+        </button>
+      </div>
       <div class="filter-chips">
         <button
           type="button"
@@ -71,7 +84,7 @@
 
     <div v-if="!loading && plugins.length > 0" class="sidebar-results">
       <span class="sidebar-results-text">
-        匹配 {{ orderedPlugins.length }} / {{ plugins.length }}
+        匹配 {{ orderedPlugins.length }} / {{ listedPlugins.length }}
         <span v-if="orderedPlugins.length > 0">
           · 第 {{ currentPage }} / {{ pageCount }} 页 · 显示 {{ rangeStart }}-{{ rangeEnd }} 项
         </span>
@@ -168,6 +181,12 @@
 import { computed, ref, watch } from 'vue'
 import type { PluginInfo } from '@garlic-claw/shared'
 import { usePagination } from '../../composables/use-pagination'
+import {
+  hasPluginIssue,
+  isPluginBusy,
+  isSystemBuiltinPlugin,
+  pluginIssueSummary,
+} from '../../composables/plugin-management.helpers'
 
 const props = defineProps<{
   plugins: PluginInfo[]
@@ -183,11 +202,17 @@ defineEmits<{
 
 const searchKeyword = ref('')
 const activeFilter = ref<'all' | 'attention' | 'builtin' | 'remote'>('all')
+const showSystemBuiltins = ref(readShowSystemBuiltinsPreference())
 const normalizedKeyword = computed(() =>
   searchKeyword.value.trim().toLocaleLowerCase(),
 )
+const listedPlugins = computed(() =>
+  showSystemBuiltins.value
+    ? props.plugins
+    : props.plugins.filter((plugin) => !isSystemBuiltinPlugin(plugin)),
+)
 const filteredPlugins = computed(() =>
-  props.plugins.filter((plugin) =>
+  listedPlugins.value.filter((plugin) =>
     matchesFilter(plugin) && matchesKeyword(plugin, normalizedKeyword.value),
   ),
 )
@@ -214,10 +239,13 @@ const {
   goNextPage,
 } = usePagination(orderedPlugins, 4)
 const onlineCount = computed(() =>
-  props.plugins.filter((plugin) => plugin.connected).length,
+  listedPlugins.value.filter((plugin) => plugin.connected).length,
 )
 const issueCount = computed(() =>
-  props.plugins.filter((plugin) => hasPluginIssue(plugin)).length,
+  listedPlugins.value.filter((plugin) => hasPluginIssue(plugin)).length,
+)
+const systemBuiltinCount = computed(() =>
+  props.plugins.filter((plugin) => isSystemBuiltinPlugin(plugin)).length,
 )
 const hasActiveFilter = computed(() =>
   activeFilter.value !== 'all' || normalizedKeyword.value.length > 0,
@@ -226,8 +254,12 @@ const selectedPluginHidden = computed(() =>
   !!props.selectedPluginName && !filteredPlugins.value.some((plugin) => plugin.name === props.selectedPluginName),
 )
 
-watch([searchKeyword, activeFilter], () => {
+watch([searchKeyword, activeFilter, showSystemBuiltins], () => {
   resetPage()
+})
+
+watch(showSystemBuiltins, (value) => {
+  persistShowSystemBuiltinsPreference(value)
 })
 
 /**
@@ -338,39 +370,6 @@ function runtimePressureLabel(plugin: PluginInfo): string | null {
  * @param plugin 插件摘要
  * @returns 是否繁忙
  */
-function isPluginBusy(plugin: PluginInfo): boolean {
-  const pressure = plugin.health?.runtimePressure
-  return !!pressure && pressure.activeExecutions >= pressure.maxConcurrentExecutions
-}
-
-/**
- * 判断插件是否处于需要被优先关注的状态。
- * @param plugin 插件摘要
- * @returns 是否需要关注
- */
-function hasPluginIssue(plugin: PluginInfo): boolean {
-  return isPluginBusy(plugin) || plugin.health?.status === 'error' || plugin.health?.status === 'degraded'
-}
-
-/**
- * 生成插件当前最值得优先关注的问题摘要。
- * @param plugin 插件摘要
- * @returns 问题摘要；无问题时返回 null
- */
-function pluginIssueSummary(plugin: PluginInfo): string | null {
-  const pressure = plugin.health?.runtimePressure
-  if (pressure && isPluginBusy(plugin)) {
-    return `当前并发已打满（${pressure.activeExecutions} / ${pressure.maxConcurrentExecutions}）`
-  }
-
-  const lastError = plugin.health?.lastError?.trim()
-  if (lastError && (plugin.health?.status === 'error' || plugin.health?.status === 'degraded')) {
-    return `最近错误：${truncateText(lastError, 72)}`
-  }
-
-  return null
-}
-
 /**
  * 生成问题摘要对应的样式类。
  * @param plugin 插件摘要
@@ -390,21 +389,23 @@ function issueClass(plugin: PluginInfo): string {
  * @returns 越小越靠前
  */
 function pluginSortWeight(plugin: PluginInfo): number {
-  if (isPluginBusy(plugin)) {
+  if (!plugin.connected || plugin.health?.status === 'offline') {
     return 0
+  }
+
+  if (isPluginBusy(plugin)) {
+    return 1
   }
 
   switch (plugin.health?.status) {
     case 'error':
-      return 1
+      return 0
     case 'degraded':
       return 2
     case 'healthy':
       return 3
-    case 'offline':
-      return 4
     default:
-      return 5
+      return 4
   }
 }
 
@@ -417,19 +418,23 @@ function pluginSurfaceSummary(plugin: PluginInfo): string {
   return `${plugin.capabilities.length} 工具 · ${plugin.hooks?.length ?? 0} Hook · ${plugin.routes?.length ?? 0} Route`
 }
 
-/**
- * 截断侧栏中的长文本，避免问题摘要撑爆布局。
- * @param value 原始文本
- * @param maxLength 最大长度
- * @returns 截断后的文本
- */
-function truncateText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value
+function readShowSystemBuiltinsPreference(): boolean {
+  if (typeof window === 'undefined') {
+    return false
   }
 
-  return `${value.slice(0, maxLength - 1)}...`
+  return window.localStorage.getItem(SHOW_SYSTEM_BUILTINS_STORAGE_KEY) === 'true'
 }
+
+function persistShowSystemBuiltinsPreference(value: boolean) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(SHOW_SYSTEM_BUILTINS_STORAGE_KEY, String(value))
+}
+
+const SHOW_SYSTEM_BUILTINS_STORAGE_KEY = 'garlic-claw:plugin-sidebar:show-system-builtins'
 </script>
 
 <style scoped src="./plugin-sidebar.css"></style>

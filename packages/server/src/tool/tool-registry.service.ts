@@ -1,7 +1,13 @@
 import { Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
 import { tool, type Tool } from 'ai';
 import { z } from 'zod';
-import type { PluginCallContext } from '@garlic-claw/shared';
+import type {
+  PluginAvailableToolSummary,
+  PluginCallContext,
+  ToolInfo,
+  ToolOverview,
+  ToolSourceInfo,
+} from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { McpToolProvider } from './mcp-tool.provider';
@@ -11,6 +17,7 @@ import type {
   ResolvedToolRecord,
   ToolFilterInput,
   ToolProvider,
+  ToolProviderState,
   ToolProviderTool,
   ToolRecord,
   ToolSourceDescriptor,
@@ -50,27 +57,70 @@ export class ToolRegistryService {
   }
 
   async listAvailableToolSummaries(input: ToolFilterInput) {
-    return (await this.resolveTools(input)).map((entry) =>
-      this.toAvailableToolSummary(entry.record),
+    return (await this.prepareToolSelection(input)).availableTools;
+  }
+
+  async listSources(context?: PluginCallContext): Promise<ToolSourceInfo[]> {
+    return (await this.listOverview(context)).sources;
+  }
+
+  async listToolInfos(context?: PluginCallContext): Promise<ToolInfo[]> {
+    return (await this.listOverview(context)).tools;
+  }
+
+  async listOverview(context?: PluginCallContext): Promise<ToolOverview> {
+    return this.buildOverviewFromProviderState(
+      await this.collectProviderState(context),
     );
   }
 
-  async listSources(context?: PluginCallContext) {
-    const providedState = await this.collectProviderState(context);
-    const sourceInfos = new Map<string, {
-      kind: ToolSourceDescriptor['kind'];
-      id: string;
-      label: string;
-      enabled: boolean;
-      health: 'healthy' | 'error' | 'unknown';
-      lastError: string | null;
-      lastCheckedAt: string | null;
-      totalTools: number;
-      enabledTools: number;
-      pluginId?: string;
-      runtimeKind?: 'builtin' | 'remote';
-      supportedActions?: Array<'health-check' | 'reload' | 'reconnect'>;
-    }>();
+  async setSourceEnabled(
+    kind: ToolSourceDescriptor['kind'],
+    id: string,
+    enabled: boolean,
+  ) {
+    const providerState = await this.collectProviderState();
+    const existing = this.buildOverviewFromProviderState(providerState).sources.find((source) =>
+      source.kind === kind && source.id === id);
+    if (!existing) {
+      throw new NotFoundException(`Tool source not found: ${kind}:${id}`);
+    }
+
+    this.settings.setSourceEnabled(kind, id, enabled);
+    const updated = this.buildOverviewFromProviderState(providerState).sources.find((source) =>
+      source.kind === kind && source.id === id);
+    if (!updated) {
+      throw new NotFoundException(`Tool source not found after update: ${kind}:${id}`);
+    }
+
+    return updated;
+  }
+
+  async setToolEnabled(toolId: string, enabled: boolean) {
+    const providerState = await this.collectProviderState();
+    const existing = this.buildOverviewFromProviderState(providerState).tools.find((toolInfo) =>
+      toolInfo.toolId === toolId);
+    if (!existing) {
+      throw new NotFoundException(`Tool not found: ${toolId}`);
+    }
+
+    this.settings.setToolEnabled(toolId, enabled);
+    const updated = this.buildOverviewFromProviderState(providerState).tools.find((toolInfo) =>
+      toolInfo.toolId === toolId);
+    if (!updated) {
+      throw new NotFoundException(`Tool not found after update: ${toolId}`);
+    }
+
+    return updated;
+  }
+
+  private buildOverviewFromProviderState(providedState: Array<{
+    provider: ToolProvider;
+    sources: ToolProviderState['sources'];
+    tools: ToolProviderState['tools'];
+  }>): ToolOverview {
+    const sourceInfos = new Map<string, ToolSourceInfo>();
+    const tools: ToolInfo[] = [];
 
     for (const { sources } of providedState) {
       for (const source of sources) {
@@ -97,41 +147,31 @@ export class ToolRegistryService {
     for (const entry of providedState.flatMap(({ provider, tools }) =>
       tools.map((raw) => this.toResolvedToolRecord(provider, raw)),
     )) {
+      const { record } = entry;
       const key = this.buildSourceKey(entry.record.source.kind, entry.record.source.id);
       const existing = sourceInfos.get(key);
       if (existing) {
         existing.totalTools += 1;
-        if (entry.record.enabled) {
+        if (record.enabled) {
           existing.enabledTools += 1;
         }
-        continue;
+      } else {
+        sourceInfos.set(key, {
+          kind: record.source.kind,
+          id: record.source.id,
+          label: record.source.label,
+          enabled: record.source.enabled,
+          health: record.source.health,
+          lastError: record.source.lastError,
+          lastCheckedAt: record.source.lastCheckedAt,
+          totalTools: 1,
+          enabledTools: record.enabled ? 1 : 0,
+          ...(record.pluginId ? { pluginId: record.pluginId } : {}),
+          ...(record.runtimeKind ? { runtimeKind: record.runtimeKind } : {}),
+        });
       }
 
-      sourceInfos.set(key, {
-        kind: entry.record.source.kind,
-        id: entry.record.source.id,
-        label: entry.record.source.label,
-        enabled: entry.record.source.enabled,
-        health: entry.record.source.health,
-        lastError: entry.record.source.lastError,
-        lastCheckedAt: entry.record.source.lastCheckedAt,
-        totalTools: 1,
-        enabledTools: entry.record.enabled ? 1 : 0,
-        ...(entry.record.pluginId ? { pluginId: entry.record.pluginId } : {}),
-        ...(entry.record.runtimeKind ? { runtimeKind: entry.record.runtimeKind } : {}),
-      });
-    }
-
-    return [...sourceInfos.values()].sort((left, right) =>
-      this.compareKeys(
-        `${left.kind}:${left.id}`,
-        `${right.kind}:${right.id}`,
-      ));
-  }
-
-  async listToolInfos(context?: PluginCallContext) {
-    return (await this.resolveAllTools(context))
-      .map(({ record }) => ({
+      tools.push({
         toolId: record.toolId,
         name: record.toolName,
         callName: record.callName,
@@ -146,75 +186,48 @@ export class ToolRegistryService {
         lastCheckedAt: record.source.lastCheckedAt,
         ...(record.pluginId ? { pluginId: record.pluginId } : {}),
         ...(record.runtimeKind ? { runtimeKind: record.runtimeKind } : {}),
-      }))
-      .sort((left, right) => this.compareKeys(left.toolId, right.toolId));
-  }
-
-  async setSourceEnabled(
-    kind: ToolSourceDescriptor['kind'],
-    id: string,
-    enabled: boolean,
-  ) {
-    const existing = (await this.listSources()).find((source) =>
-      source.kind === kind && source.id === id);
-    if (!existing) {
-      throw new NotFoundException(`Tool source not found: ${kind}:${id}`);
-    }
-
-    this.settings.setSourceEnabled(kind, id, enabled);
-    const updated = (await this.listSources()).find((source) =>
-      source.kind === kind && source.id === id);
-    if (!updated) {
-      throw new NotFoundException(`Tool source not found after update: ${kind}:${id}`);
-    }
-
-    return updated;
-  }
-
-  async setToolEnabled(toolId: string, enabled: boolean) {
-    const existing = (await this.listToolInfos()).find((toolInfo) => toolInfo.toolId === toolId);
-    if (!existing) {
-      throw new NotFoundException(`Tool not found: ${toolId}`);
-    }
-
-    this.settings.setToolEnabled(toolId, enabled);
-    const updated = (await this.listToolInfos()).find((toolInfo) => toolInfo.toolId === toolId);
-    if (!updated) {
-      throw new NotFoundException(`Tool not found after update: ${toolId}`);
-    }
-
-    return updated;
-  }
-
-  async buildToolSet(input: ToolFilterInput): Promise<Record<string, Tool> | undefined> {
-    const resolvedTools = await this.resolveTools(input);
-    if (resolvedTools.length === 0) {
-      return undefined;
-    }
-
-    const toolSet: Record<string, Tool> = {};
-    for (const entry of resolvedTools) {
-      toolSet[entry.record.callName] = tool({
-        description: entry.record.description,
-        inputSchema: this.paramSchemaToZod(entry.record.parameters),
-        execute: async (args: JsonObject) => {
-          try {
-            return await this.executeResolvedTool(entry, args, input.context);
-          } catch (error) {
-            return {
-              error: error instanceof Error ? error.message : String(error),
-            };
-          }
-        },
       });
     }
 
-    return toolSet;
+    return {
+      sources: [...sourceInfos.values()].sort((left, right) =>
+        this.compareKeys(
+          `${left.kind}:${left.id}`,
+          `${right.kind}:${right.id}`,
+        )),
+      tools: tools.sort((left, right) => this.compareKeys(left.toolId, right.toolId)),
+    };
+  }
+
+  async buildToolSet(input: ToolFilterInput): Promise<Record<string, Tool> | undefined> {
+    return (await this.prepareToolSelection(input)).buildToolSet({
+      context: input.context,
+      allowedToolNames: input.allowedToolNames,
+    });
   }
 
   private async resolveTools(input: ToolFilterInput): Promise<ResolvedToolRecord[]> {
     return (await this.resolveAllTools(input.context))
       .filter((entry) => this.matchesFilters(entry.record, input));
+  }
+
+  async prepareToolSelection(input: ToolFilterInput): Promise<{
+    availableTools: PluginAvailableToolSummary[];
+    buildToolSet: (options: {
+      context: PluginCallContext;
+      allowedToolNames?: string[];
+    }) => Record<string, Tool> | undefined;
+  }> {
+    const resolvedTools = await this.resolveTools(input);
+
+    return {
+      availableTools: resolvedTools.map((entry) => this.toAvailableToolSummary(entry.record)),
+      buildToolSet: (options) => this.buildAiToolSetFromResolvedTools(
+        resolvedTools,
+        options.context,
+        options.allowedToolNames,
+      ),
+    };
   }
 
   private matchesFilters(record: ToolRecord, input: ToolFilterInput): boolean {
@@ -255,11 +268,25 @@ export class ToolRegistryService {
       tools.map((raw) => this.toResolvedToolRecord(provider, raw)));
   }
 
-  private async collectProviderState(context?: PluginCallContext) {
+  private async collectProviderState(context?: PluginCallContext): Promise<Array<{
+    provider: ToolProvider;
+    sources: ToolProviderState['sources'];
+    tools: ToolProviderState['tools'];
+  }>> {
     const providers = this.listProviders();
 
     return Promise.all(
       providers.map(async (provider) => {
+        if (provider.collectState) {
+          const state = await Promise.resolve(provider.collectState(context));
+
+          return {
+            provider,
+            sources: state.sources,
+            tools: state.tools,
+          };
+        }
+
         const [sources, tools] = await Promise.all([
           Promise.resolve(provider.listSources(context)),
           Promise.resolve(provider.listTools(context)),
@@ -272,6 +299,38 @@ export class ToolRegistryService {
         };
       }),
     );
+  }
+
+  private buildAiToolSetFromResolvedTools(
+    resolvedTools: ResolvedToolRecord[],
+    context: PluginCallContext,
+    allowedToolNames?: string[],
+  ): Record<string, Tool> | undefined {
+    const filteredTools = allowedToolNames
+      ? resolvedTools.filter((entry) => allowedToolNames.includes(entry.record.callName))
+      : resolvedTools;
+    if (filteredTools.length === 0) {
+      return undefined;
+    }
+
+    const toolSet: Record<string, Tool> = {};
+    for (const entry of filteredTools) {
+      toolSet[entry.record.callName] = tool({
+        description: entry.record.description,
+        inputSchema: this.paramSchemaToZod(entry.record.parameters),
+        execute: async (args: JsonObject) => {
+          try {
+            return await this.executeResolvedTool(entry, args, context);
+          } catch (error) {
+            return {
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        },
+      });
+    }
+
+    return toolSet;
   }
 
   private toResolvedToolRecord(
@@ -420,7 +479,7 @@ export class ToolRegistryService {
     };
   }
 
-  private toAvailableToolSummary(record: ToolRecord) {
+  private toAvailableToolSummary(record: ToolRecord): PluginAvailableToolSummary {
     return {
       name: record.callName,
       callName: record.callName,

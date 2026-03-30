@@ -54,7 +54,7 @@ describe('BootstrapAdminService', () => {
       BOOTSTRAP_ADMIN_ROLE: 'super_admin',
     });
 
-    await service.onModuleInit();
+    await service.ensureBootstrapAdminOnStartup();
 
     expect(prisma.user.findFirst).toHaveBeenCalledWith({
       where: {
@@ -81,7 +81,7 @@ describe('BootstrapAdminService', () => {
       BOOTSTRAP_ADMIN_USERNAME: 'admin',
     });
 
-    await service.onModuleInit();
+    await service.ensureBootstrapAdminOnStartup();
 
     expect(prisma.user.findFirst).not.toHaveBeenCalled();
     expect(prisma.user.create).not.toHaveBeenCalled();
@@ -96,7 +96,7 @@ describe('BootstrapAdminService', () => {
       { id: 'existing-admin' },
     );
 
-    await service.onModuleInit();
+    await service.ensureBootstrapAdminOnStartup();
 
     expect(prisma.user.findFirst).toHaveBeenCalled();
     expect(prisma.user.create).not.toHaveBeenCalled();

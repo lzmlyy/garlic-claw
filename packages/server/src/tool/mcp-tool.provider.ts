@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { PluginCallContext } from '@garlic-claw/shared';
 import type { JsonObject } from '../common/types/json-value';
 import { McpService } from '../mcp/mcp.service';
-import type { ToolProvider, ToolProviderTool } from './tool.types';
+import type { ToolProvider, ToolProviderState, ToolProviderTool } from './tool.types';
 
 const mcpSupportedActions: Array<'health-check' | 'reload' | 'reconnect'> = [
   'health-check',
@@ -16,8 +16,9 @@ export class McpToolProvider implements ToolProvider {
 
   constructor(private readonly mcpService: McpService) {}
 
-  listSources(_context?: PluginCallContext) {
-    return this.mcpService.listServerStatuses().map((status) => ({
+  async collectState(_context?: PluginCallContext): Promise<ToolProviderState> {
+    const snapshot = this.mcpService.getToolingSnapshot();
+    const sources = snapshot.statuses.map((status) => ({
       kind: 'mcp' as const,
       id: status.name,
       label: status.name,
@@ -27,19 +28,15 @@ export class McpToolProvider implements ToolProvider {
       lastCheckedAt: status.lastCheckedAt,
       supportedActions: mcpSupportedActions,
     }));
-  }
-
-  async listTools(_context?: PluginCallContext): Promise<ToolProviderTool[]> {
     const statusByName = new Map(
-      this.listSources().map((status) => [status.id, status]),
+      sources.map((status) => [status.id, status]),
     );
-
-    return (await this.mcpService.listToolDescriptors()).map((tool) => {
+    const tools = snapshot.tools.map((tool) => {
       const status = statusByName.get(tool.serverName);
 
       return {
         source: {
-          kind: 'mcp',
+          kind: 'mcp' as const,
           id: tool.serverName,
           label: tool.serverName,
           enabled: status?.enabled ?? true,
@@ -53,6 +50,19 @@ export class McpToolProvider implements ToolProvider {
         parameters: this.schemaToParams(tool.inputSchema),
       };
     });
+
+    return {
+      sources,
+      tools,
+    };
+  }
+
+  async listSources(context?: PluginCallContext) {
+    return (await this.collectState(context)).sources;
+  }
+
+  async listTools(_context?: PluginCallContext): Promise<ToolProviderTool[]> {
+    return (await this.collectState(_context)).tools;
   }
 
   executeTool(input: {

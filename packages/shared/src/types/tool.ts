@@ -44,6 +44,11 @@ export interface ToolSourceActionResult {
   message: string;
 }
 
+export interface ToolOverview {
+  sources: ToolSourceInfo[];
+  tools: ToolInfo[];
+}
+
 export interface McpServerConfig {
   name: string;
   command: string;

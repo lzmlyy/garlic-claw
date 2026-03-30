@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PluginInfo } from '@garlic-claw/shared'
 import PluginsView from './PluginsView.vue'
 
+vi.mock('vue-router', () => ({
+  useRoute: () => ({
+    query: {},
+  }),
+}))
+
 vi.mock('../composables/use-plugin-management', () => {
   const plugin = ref<PluginInfo | null>({
     id: 'plugin-1',
@@ -130,6 +136,7 @@ describe('PluginsView', () => {
     const wrapper = mount(PluginsView, {
       global: {
         stubs: {
+          PluginAttentionPanel: { template: '<div />' },
           PluginSidebar: { template: '<div />' },
           PluginConfigForm: { template: '<div />' },
           PluginScopeEditor: { template: '<div />' },

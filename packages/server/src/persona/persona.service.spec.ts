@@ -84,4 +84,66 @@ describe('PersonaService', () => {
       },
     });
   });
+
+  it('returns the current persona for the owned conversation only', async () => {
+    prisma.persona.findUnique.mockResolvedValue({
+      id: 'persona-writer',
+      name: 'Writer',
+      prompt: '你是一个偏文学表达的写作助手。',
+      description: '更偏文学润色',
+      isDefault: false,
+      createdAt: new Date('2026-03-27T14:01:00.000Z'),
+      updatedAt: new Date('2026-03-27T14:01:00.000Z'),
+    });
+    prisma.conversation.findUnique.mockResolvedValue({
+      id: 'conversation-1',
+      userId: 'user-1',
+      activePersonaId: 'persona-writer',
+    });
+
+    await expect(
+      service.getCurrentPersonaForUser('user-1', {
+        conversationId: 'conversation-1',
+      }),
+    ).resolves.toEqual({
+      source: 'conversation',
+      personaId: 'persona-writer',
+      name: 'Writer',
+      prompt: '你是一个偏文学表达的写作助手。',
+      description: '更偏文学润色',
+      isDefault: false,
+    });
+  });
+
+  it('rejects persona reads for a conversation that belongs to another user', async () => {
+    prisma.conversation.findUnique.mockResolvedValue({
+      id: 'conversation-1',
+      userId: 'user-2',
+      activePersonaId: 'persona-writer',
+    });
+
+    await expect(
+      service.getCurrentPersonaForUser('user-1', {
+        conversationId: 'conversation-1',
+      }),
+    ).rejects.toThrow('Not your conversation');
+  });
+
+  it('rejects persona activation for a conversation that belongs to another user', async () => {
+    prisma.conversation.findUnique.mockResolvedValue({
+      id: 'conversation-1',
+      userId: 'user-2',
+      activePersonaId: null,
+    });
+
+    await expect(
+      service.activateConversationPersonaForUser(
+        'user-1',
+        'conversation-1',
+        'persona-writer',
+      ),
+    ).rejects.toThrow('Not your conversation');
+
+    expect(prisma.conversation.update).not.toHaveBeenCalled();
+  });
 });

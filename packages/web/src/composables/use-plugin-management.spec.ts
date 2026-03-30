@@ -1,4 +1,4 @@
-import { defineComponent } from 'vue'
+import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -188,5 +188,207 @@ describe('usePluginManagement', () => {
       'conversation-1',
     )
     expect(api.listPluginConversationSessions).toHaveBeenCalledWith('builtin.demo')
+  })
+
+  it('prefers a user-facing plugin instead of a system builtin on first load', async () => {
+    vi.mocked(api.listPlugins).mockResolvedValue([
+      {
+        id: 'plugin-1',
+        name: 'builtin.tool-audit',
+        displayName: 'Tool Audit',
+        description: 'system builtin',
+        deviceType: 'builtin',
+        status: 'online',
+        capabilities: [],
+        connected: true,
+        runtimeKind: 'builtin',
+        manifest: {
+          id: 'builtin.tool-audit',
+          name: 'Tool Audit',
+          version: '1.0.0',
+          runtime: 'builtin',
+          permissions: ['storage:write'],
+          tools: [],
+        },
+        lastSeenAt: null,
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+      },
+      {
+        id: 'plugin-2',
+        name: 'builtin.provider-router',
+        displayName: 'Provider Router',
+        description: 'user-facing builtin',
+        deviceType: 'builtin',
+        status: 'online',
+        capabilities: [],
+        connected: true,
+        runtimeKind: 'builtin',
+        manifest: {
+          id: 'builtin.provider-router',
+          name: 'Provider Router',
+          version: '1.0.0',
+          runtime: 'builtin',
+          permissions: ['config:read', 'provider:read'],
+          tools: [],
+          config: {
+            fields: [
+              {
+                key: 'targetProviderId',
+                type: 'string',
+              },
+            ],
+          },
+        },
+        lastSeenAt: null,
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+      },
+    ] as PluginInfo[])
+    vi.mocked(api.getPluginConfig).mockResolvedValue({
+      schema: null,
+      values: {},
+    })
+    vi.mocked(api.getPluginCrons).mockResolvedValue([])
+    vi.mocked(api.getPluginScope).mockResolvedValue({
+      defaultEnabled: true,
+      conversations: {},
+    })
+    vi.mocked(api.getPluginHealth).mockResolvedValue({
+      status: 'healthy',
+      failureCount: 0,
+      consecutiveFailures: 0,
+      lastError: null,
+      lastErrorAt: null,
+      lastSuccessAt: null,
+      lastCheckedAt: null,
+    })
+    vi.mocked(api.listPluginConversationSessions).mockResolvedValue([])
+    vi.mocked(api.listPluginEvents).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+    })
+    vi.mocked(api.listPluginStorage).mockResolvedValue([])
+
+    let state!: ReturnType<typeof usePluginManagement>
+    const Harness = defineComponent({
+      setup() {
+        state = usePluginManagement()
+        return () => null
+      },
+    })
+
+    mount(Harness)
+    await flushPromises()
+
+    expect(state.selectedPluginName.value).toBe('builtin.provider-router')
+    expect(api.getPluginConfig).toHaveBeenCalledWith('builtin.provider-router')
+  })
+
+  it('honors a preferred plugin name from a business-page deep link', async () => {
+    const preferredPluginName = ref('builtin.persona-router')
+
+    vi.mocked(api.listPlugins).mockResolvedValue([
+      {
+        id: 'plugin-1',
+        name: 'builtin.provider-router',
+        displayName: 'Provider Router',
+        description: 'provider routing',
+        deviceType: 'builtin',
+        status: 'online',
+        capabilities: [],
+        connected: true,
+        runtimeKind: 'builtin',
+        manifest: {
+          id: 'builtin.provider-router',
+          name: 'Provider Router',
+          version: '1.0.0',
+          runtime: 'builtin',
+          permissions: ['config:read', 'provider:read'],
+          tools: [],
+          config: {
+            fields: [
+              {
+                key: 'targetProviderId',
+                type: 'string',
+              },
+            ],
+          },
+        },
+        lastSeenAt: null,
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+      },
+      {
+        id: 'plugin-2',
+        name: 'builtin.persona-router',
+        displayName: 'Persona Router',
+        description: 'persona routing',
+        deviceType: 'builtin',
+        status: 'online',
+        capabilities: [],
+        connected: true,
+        runtimeKind: 'builtin',
+        manifest: {
+          id: 'builtin.persona-router',
+          name: 'Persona Router',
+          version: '1.0.0',
+          runtime: 'builtin',
+          permissions: ['config:read', 'persona:read', 'persona:write'],
+          tools: [],
+          config: {
+            fields: [
+              {
+                key: 'targetPersonaId',
+                type: 'string',
+              },
+            ],
+          },
+        },
+        lastSeenAt: null,
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+      },
+    ] as PluginInfo[])
+    vi.mocked(api.getPluginConfig).mockResolvedValue({
+      schema: null,
+      values: {},
+    })
+    vi.mocked(api.getPluginCrons).mockResolvedValue([])
+    vi.mocked(api.getPluginScope).mockResolvedValue({
+      defaultEnabled: true,
+      conversations: {},
+    })
+    vi.mocked(api.getPluginHealth).mockResolvedValue({
+      status: 'healthy',
+      failureCount: 0,
+      consecutiveFailures: 0,
+      lastError: null,
+      lastErrorAt: null,
+      lastSuccessAt: null,
+      lastCheckedAt: null,
+    })
+    vi.mocked(api.listPluginConversationSessions).mockResolvedValue([])
+    vi.mocked(api.listPluginEvents).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+    })
+    vi.mocked(api.listPluginStorage).mockResolvedValue([])
+
+    let state!: ReturnType<typeof usePluginManagement>
+    const Harness = defineComponent({
+      setup() {
+        state = usePluginManagement({
+          preferredPluginName,
+        })
+        return () => null
+      },
+    })
+
+    mount(Harness)
+    await flushPromises()
+
+    expect(state.selectedPluginName.value).toBe('builtin.persona-router')
+    expect(api.getPluginConfig).toHaveBeenCalledWith('builtin.persona-router')
   })
 })

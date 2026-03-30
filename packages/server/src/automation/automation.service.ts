@@ -4,7 +4,6 @@ import {
   Logger,
   forwardRef,
   OnModuleDestroy,
-  OnModuleInit,
 } from '@nestjs/common';
 import type {
   ActionConfig,
@@ -25,7 +24,7 @@ interface CronEntry {
 }
 
 @Injectable()
-export class AutomationService implements OnModuleInit, OnModuleDestroy {
+export class AutomationService implements OnModuleDestroy {
   private readonly logger = new Logger(AutomationService.name);
   private readonly cronJobs = new Map<string, CronEntry>();
 
@@ -36,7 +35,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     private readonly chatMessageService: ChatMessageService,
   ) {}
 
-  async onModuleInit() {
+  async restoreCronJobsOnStartup() {
     await this.loadCronJobs();
   }
 

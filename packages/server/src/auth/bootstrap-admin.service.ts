@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,7 +20,7 @@ import { readBootstrapAdminConfig } from './bootstrap-admin-config';
  * - 持久化角色先写成 `user`，最终权限仍由环境变量决定
  */
 @Injectable()
-export class BootstrapAdminService implements OnModuleInit {
+export class BootstrapAdminService {
   private readonly logger = new Logger(BootstrapAdminService.name);
 
   constructor(
@@ -29,9 +29,9 @@ export class BootstrapAdminService implements OnModuleInit {
   ) {}
 
   /**
-   * 应用启动后检查并补建 bootstrap 管理员账号。
+   * 后端 ready 后检查并补建 bootstrap 管理员账号。
    */
-  async onModuleInit() {
+  async ensureBootstrapAdminOnStartup() {
     const bootstrapAdmin = readBootstrapAdminConfig(this.configService);
     if (!bootstrapAdmin) {
       return;

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -18,6 +18,11 @@ interface McpToolListResponse {
 
 interface McpToolCallResponse {
   content?: unknown;
+}
+
+interface McpToolingSnapshot {
+  statuses: McpServerStatus[];
+  tools: McpToolDescriptor[];
 }
 
 export type McpServerHealthStatus = 'healthy' | 'error' | 'unknown';
@@ -64,21 +69,28 @@ const MCP_TOOL_CALL_TIMEOUT = 10000; // 工具调用超时 10 秒
 const MCP_MAX_RETRIES = 2; // 最大重试次数
 
 @Injectable()
-export class McpService implements OnModuleInit {
+export class McpService {
   private readonly logger = new Logger(McpService.name);
   private clients = new Map<string, Client>();
   private serverRecords = new Map<string, McpServerRuntimeRecord>();
   private cityCoordinates = new Map<string, CityCoordinate>();
   private cityCoordinatesLoaded = false;
+  private startupWarmupPromise: Promise<void> | null = null;
 
   constructor(
     private configService: ConfigService,
     private readonly mcpConfig: McpConfigService,
   ) {}
 
-  async onModuleInit() {
-    await this.reloadServersFromConfig();
-    await this.loadCityCoordinates();
+  async warmupOnStartup(): Promise<void> {
+    if (!this.startupWarmupPromise) {
+      this.startupWarmupPromise = Promise.allSettled([
+        this.reloadServersFromConfig(),
+        this.loadCityCoordinates(),
+      ]).then(() => undefined);
+    }
+
+    return this.startupWarmupPromise;
   }
 
   /**
@@ -265,17 +277,37 @@ export class McpService implements OnModuleInit {
   }
 
   listServerStatuses(): McpServerStatus[] {
-    return [...this.serverRecords.values()].map((record) => ({
-      ...record.status,
-    }));
+    return this.getToolingSnapshot().statuses;
   }
 
   async listToolDescriptors(): Promise<McpToolDescriptor[]> {
-    return [...this.serverRecords.values()]
-      .filter((record) => record.status.connected)
-      .flatMap((record) => record.tools.map((tool) => ({
-        ...tool,
-      })));
+    return this.getToolingSnapshot().tools;
+  }
+
+  getToolingSnapshot(): McpToolingSnapshot {
+    const statuses: McpServerStatus[] = [];
+    const tools: McpToolDescriptor[] = [];
+
+    for (const record of this.serverRecords.values()) {
+      statuses.push({
+        ...record.status,
+      });
+
+      if (!record.status.connected) {
+        continue;
+      }
+
+      for (const tool of record.tools) {
+        tools.push({
+          ...tool,
+        });
+      }
+    }
+
+    return {
+      statuses,
+      tools,
+    };
   }
 
   async callTool(input: {

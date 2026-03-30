@@ -9,6 +9,13 @@
     <p v-if="error" class="page-banner error">{{ error }}</p>
     <p v-else-if="notice" class="page-banner success">{{ notice }}</p>
 
+    <PluginAttentionPanel
+      :plugins="attentionPlugins"
+      :running-action="runningAction"
+      @select-plugin="selectPlugin"
+      @run-action="runActionForPlugin"
+    />
+
     <div class="plugins-layout">
       <PluginSidebar
         :plugins="plugins"
@@ -98,6 +105,8 @@
 <script setup lang="ts">
 import type { PluginActionName, PluginHealthSnapshot, PluginInfo } from '@garlic-claw/shared'
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import PluginAttentionPanel from '../components/plugin-management/PluginAttentionPanel.vue'
 import PluginConfigForm from '../components/plugin-management/PluginConfigForm.vue'
 import PluginConversationSessionList from '../components/plugin-management/PluginConversationSessionList.vue'
 import PluginCronList from '../components/plugin-management/PluginCronList.vue'
@@ -108,7 +117,19 @@ import PluginRouteList from '../components/plugin-management/PluginRouteList.vue
 import PluginScopeEditor from '../components/plugin-management/PluginScopeEditor.vue'
 import PluginSidebar from '../components/plugin-management/PluginSidebar.vue'
 import PluginStoragePanel from '../components/plugin-management/PluginStoragePanel.vue'
+import {
+  hasPluginIssue,
+  pluginAttentionWeight,
+} from '../composables/plugin-management.helpers'
 import { usePluginManagement } from '../composables/use-plugin-management'
+
+const route = useRoute()
+const preferredPluginName = computed(() => {
+  const raw = route.query.plugin
+  return typeof raw === 'string' && raw.trim()
+    ? raw.trim()
+    : null
+})
 
 const {
   loading,
@@ -152,7 +173,9 @@ const {
   runAction,
   deleteStorageEntry,
   deleteSelectedPlugin,
-} = usePluginManagement()
+} = usePluginManagement({
+  preferredPluginName,
+})
 
 const selectedPluginHighlights = computed(() =>
   selectedPlugin.value ? pluginHighlights(selectedPlugin.value) : [],
@@ -167,6 +190,18 @@ const selectedCronJobs = computed(() =>
   cronJobs.value.length > 0 ? cronJobs.value : selectedPlugin.value?.crons ?? [],
 )
 const selectedConversationSessions = computed(() => conversationSessions.value)
+const attentionPlugins = computed(() =>
+  [...plugins.value]
+    .filter((plugin) => hasPluginIssue(plugin))
+    .sort((left, right) => {
+      const weightDiff = pluginAttentionWeight(left) - pluginAttentionWeight(right)
+      if (weightDiff !== 0) {
+        return weightDiff
+      }
+
+      return (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
+    }),
+)
 const onlinePluginCount = computed(() =>
   plugins.value.filter((plugin) => plugin.connected).length,
 )
@@ -282,22 +317,12 @@ function runtimeKindLabel(plugin: PluginInfo): string {
 }
 
 /**
- * 判断当前插件是否处于满并发繁忙态。
- * @param health 插件健康快照
- * @returns 是否繁忙
- */
-function isRuntimeBusy(health: PluginHealthSnapshot | null | undefined): boolean {
-  const pressure = health?.runtimePressure
-  return !!pressure && pressure.activeExecutions >= pressure.maxConcurrentExecutions
-}
-
-/**
  * 判断插件是否需要在总览里被视为“需关注”。
  * @param plugin 插件摘要
  * @returns 是否需要关注
  */
 function needsAttention(plugin: PluginInfo): boolean {
-  return isRuntimeBusy(plugin.health) || plugin.health?.status === 'error' || plugin.health?.status === 'degraded'
+  return hasPluginIssue(plugin)
 }
 
 /**
@@ -440,6 +465,17 @@ function pluginActions(plugin: PluginInfo): Array<{
     label: ACTION_LABELS[action].label,
     pendingLabel: ACTION_LABELS[action].pendingLabel,
   }))
+}
+
+async function runActionForPlugin(input: {
+  pluginName: string
+  action: PluginActionName
+}) {
+  if (selectedPluginName.value !== input.pluginName) {
+    await selectPlugin(input.pluginName)
+  }
+
+  await runAction(input.action)
 }
 </script>
 

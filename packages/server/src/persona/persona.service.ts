@@ -2,7 +2,11 @@ import type {
   PluginPersonaCurrentInfo,
   PluginPersonaSummary,
 } from '@garlic-claw/shared';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   DEFAULT_PERSONA_DESCRIPTION,
@@ -30,6 +34,28 @@ import {
 @Injectable()
 export class PersonaService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * 读取当前用户在指定会话下的人设上下文。
+   * @param userId 当前用户 ID
+   * @param input 可选会话 ID
+   * @returns 当前 persona 摘要
+   */
+  async getCurrentPersonaForUser(
+    userId: string,
+    input: {
+      conversationId?: string;
+    },
+  ): Promise<PluginPersonaCurrentInfo> {
+    if (!input.conversationId) {
+      return this.getCurrentPersona({});
+    }
+
+    await this.getOwnedConversationOrThrow(userId, input.conversationId);
+    return this.getCurrentPersona({
+      conversationId: input.conversationId,
+    });
+  }
 
   /**
    * 列出宿主当前可用的 persona。
@@ -115,6 +141,22 @@ export class PersonaService {
   }
 
   /**
+   * 为当前用户拥有的会话激活一个 persona。
+   * @param userId 当前用户 ID
+   * @param conversationId 会话 ID
+   * @param personaId persona ID
+   * @returns 激活后的当前 persona 摘要
+   */
+  async activateConversationPersonaForUser(
+    userId: string,
+    conversationId: string,
+    personaId: string,
+  ): Promise<PluginPersonaCurrentInfo> {
+    await this.getOwnedConversationOrThrow(userId, conversationId);
+    return this.activateConversationPersona(conversationId, personaId);
+  }
+
+  /**
    * 读取会话当前激活的 persona ID。
    * @param conversationId 会话 ID
    * @returns persona ID；未设置时返回 null
@@ -132,6 +174,39 @@ export class PersonaService {
     });
 
     return conversation?.activePersonaId ?? null;
+  }
+
+  /**
+   * 校验会话归属，避免通过 HTTP 路由读写其他用户的 persona 状态。
+   * @param userId 当前用户 ID
+   * @param conversationId 会话 ID
+   * @returns 会话最小信息
+   */
+  private async getOwnedConversationOrThrow(
+    userId: string,
+    conversationId: string,
+  ): Promise<{
+    id: string;
+    userId: string;
+  }> {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: {
+        id: conversationId,
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+    if (conversation.userId !== userId) {
+      throw new ForbiddenException('Not your conversation');
+    }
+
+    return conversation;
   }
 
   /**

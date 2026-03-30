@@ -23,10 +23,8 @@ import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ToolRegistryService } from '../tool/tool-registry.service';
 import {
-  buildChatToolSet,
   CHAT_SYSTEM_PROMPT,
   hasActiveAssistantMessage,
-  listChatAvailableTools,
   mapDtoParts,
   toRuntimeMessages,
   toUserMessageInput,
@@ -57,6 +55,10 @@ interface AppliedChatBeforeModelContinueResult {
   action: 'continue';
   modelConfig: ModelConfig;
   request: ChatBeforeModelRequest;
+  buildToolSet: (input: {
+    context: PluginCallContext;
+    allowedToolNames?: string[];
+  }) => ChatToolSet;
 }
 
 /**
@@ -114,6 +116,8 @@ interface ChatVisionFallbackMetadataEntry {
 type AppliedChatBeforeModelResult =
   | AppliedChatBeforeModelContinueResult
   | AppliedChatBeforeModelShortCircuitResult;
+
+type ChatToolSet = Awaited<ReturnType<ToolRegistryService['buildToolSet']>>;
 
 @Injectable()
 export class ChatMessageService {
@@ -269,18 +273,21 @@ export class ChatMessageService {
         visionFallbackEntries:
           preparedInvocation.transformResult?.visionFallback?.entries ?? [],
       });
-      const chatToolSet = await buildChatToolSet({
-        supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
-        toolRegistry: this.toolRegistry,
-        userId,
-        conversationId,
-        activeProviderId: beforeModelResult.modelConfig.providerId,
-        activeModelId: beforeModelResult.modelConfig.id,
-        activePersonaId: resolvedPersona.activePersonaId,
-        allowedToolNames: beforeModelResult.request.availableTools.map(
-          (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
-        ),
-      });
+      const chatToolSet = beforeModelResult.modelConfig.capabilities.toolCall
+        ? beforeModelResult.buildToolSet({
+          context: {
+            source: 'chat-tool',
+            userId,
+            conversationId,
+            activeProviderId: beforeModelResult.modelConfig.providerId,
+            activeModelId: beforeModelResult.modelConfig.id,
+            activePersonaId: resolvedPersona.activePersonaId,
+          },
+          allowedToolNames: beforeModelResult.request.availableTools.map(
+            (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
+          ),
+        })
+        : undefined;
 
       this.chatTaskService.startTask({
         assistantMessageId: assistantMessageWithMetadata.id,
@@ -423,18 +430,21 @@ export class ChatMessageService {
           visionFallbackEntries:
             preparedInvocation.transformResult?.visionFallback?.entries ?? [],
         });
-      const chatToolSet = await buildChatToolSet({
-        supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
-        toolRegistry: this.toolRegistry,
-        userId,
-        conversationId,
-        activeProviderId: beforeModelResult.modelConfig.providerId,
-        activeModelId: beforeModelResult.modelConfig.id,
-        activePersonaId: resolvedPersona.activePersonaId,
-        allowedToolNames: beforeModelResult.request.availableTools.map(
-          (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
-        ),
-      });
+      const chatToolSet = beforeModelResult.modelConfig.capabilities.toolCall
+        ? beforeModelResult.buildToolSet({
+          context: {
+            source: 'chat-tool',
+            userId,
+            conversationId,
+            activeProviderId: beforeModelResult.modelConfig.providerId,
+            activeModelId: beforeModelResult.modelConfig.id,
+            activePersonaId: resolvedPersona.activePersonaId,
+          },
+          allowedToolNames: beforeModelResult.request.availableTools.map(
+            (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
+          ),
+        })
+        : undefined;
 
       this.chatTaskService.startTask({
         assistantMessageId: assistantMessageWithMetadata.id,
@@ -922,7 +932,7 @@ export class ChatMessageService {
     activeProviderId: string;
     activeModelId: string;
     activePersonaId: string;
-    tools: Awaited<ReturnType<typeof buildChatToolSet>>;
+    tools: ChatToolSet;
   }) {
     return (abortSignal: AbortSignal) => {
       const hookContext = this.createChatLifecycleContext({
@@ -980,6 +990,16 @@ export class ChatMessageService {
       activeModelId: input.modelConfig.id,
       activePersonaId: input.activePersonaId,
     };
+    const toolSelection = await this.toolRegistry.prepareToolSelection({
+      context: {
+        source: 'chat-tool',
+        userId: input.userId,
+        conversationId: input.conversationId,
+        activeProviderId: input.modelConfig.providerId,
+        activeModelId: input.modelConfig.id,
+        activePersonaId: input.activePersonaId,
+      },
+    });
     const hookResult = await this.pluginRuntime.runChatBeforeModelHooks({
       context: hookContext,
       payload: {
@@ -989,14 +1009,7 @@ export class ChatMessageService {
           modelId: input.modelConfig.id,
           systemPrompt: input.systemPrompt,
           messages: input.messages,
-          availableTools: await listChatAvailableTools({
-            toolRegistry: this.toolRegistry,
-            userId: input.userId,
-            conversationId: input.conversationId,
-            activeProviderId: input.modelConfig.providerId,
-            activeModelId: input.modelConfig.id,
-            activePersonaId: input.activePersonaId,
-          }),
+          availableTools: toolSelection.availableTools,
         },
       },
     });
@@ -1025,6 +1038,7 @@ export class ChatMessageService {
         hookResult.request.providerId,
         hookResult.request.modelId,
       ),
+      buildToolSet: toolSelection.buildToolSet,
     };
   }
 

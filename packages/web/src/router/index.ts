@@ -36,6 +36,11 @@ const router = createRouter({
           component: () => import('../views/PluginsView.vue'),
         },
         {
+          path: 'personas',
+          name: 'persona-settings',
+          component: () => import('../views/PersonaSettingsView.vue'),
+        },
+        {
           path: 'tools',
           name: 'tools',
           component: () => import('../views/ToolsView.vue'),

@@ -7,6 +7,8 @@
       </div>
     </header>
 
+    <AiPluginQuickAccessPanel />
+
     <div class="settings-grid">
       <AiProviderSidebar
         class="settings-sidebar"
@@ -67,6 +69,7 @@
 
 <script setup lang="ts">
 import AiModelDiscoveryDialog from '../components/ai-settings/AiModelDiscoveryDialog.vue'
+import AiPluginQuickAccessPanel from '../components/ai-settings/AiPluginQuickAccessPanel.vue'
 import AiProviderEditorDialog from '../components/ai-settings/AiProviderEditorDialog.vue'
 import AiProviderModelsPanel from '../components/ai-settings/AiProviderModelsPanel.vue'
 import AiProviderSidebar from '../components/ai-settings/AiProviderSidebar.vue'

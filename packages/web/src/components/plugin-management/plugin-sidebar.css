@@ -72,6 +72,20 @@
   gap: 10px;
 }
 
+.sidebar-system-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0.65rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid rgba(133, 163, 199, 0.14);
+  background: rgba(9, 17, 29, 0.28);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 .filter-chips {
   display: flex;
   flex-wrap: wrap;

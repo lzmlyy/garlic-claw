@@ -1,6 +1,7 @@
 import type {
   PluginActionName,
   ToolInfo,
+  ToolOverview,
   ToolSourceActionResult,
   ToolSourceInfo,
   ToolSourceKind,
@@ -36,6 +37,11 @@ export class ToolController {
   @Get('sources')
   listSources(): Promise<ToolSourceInfo[]> {
     return this.toolRegistry.listSources();
+  }
+
+  @Get('overview')
+  listOverview(): Promise<ToolOverview> {
+    return this.toolRegistry.listOverview();
   }
 
   @Get()

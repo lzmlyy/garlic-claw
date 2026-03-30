@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { StartupWarmupService } from './startup/startup-warmup.service';
 
 function validateEnv() {
   const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
@@ -33,7 +34,27 @@ async function bootstrap() {
     }),
   );
 
-  // Swagger API docs
+  const port = process.env.PORT || 23330;
+  await app.listen(port);
+
+  const logger = app.get(Logger);
+  logger.log(`Server running on http://localhost:${port}`);
+
+  setImmediate(() => {
+    void app.get(StartupWarmupService).runPostListenWarmups();
+  });
+  setImmediate(() => {
+    void setupSwaggerDocs(app, logger, String(port));
+  });
+}
+
+bootstrap();
+
+async function setupSwaggerDocs(
+  app: Awaited<ReturnType<typeof NestFactory.create>>,
+  logger: Logger,
+  port: string,
+): Promise<void> {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Garlic Claw API')
     .setDescription('AI 秘书系统 — 设备控制与自动化')
@@ -42,13 +63,5 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
-
-  const port = process.env.PORT || 23330;
-  await app.listen(port);
-
-  const logger = app.get(Logger);
-  logger.log(`Server running on http://localhost:${port}`);
   logger.log(`Swagger docs at http://localhost:${port}/api/docs`);
 }
-
-bootstrap();

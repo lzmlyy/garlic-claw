@@ -40,6 +40,7 @@ describe('ChatMessageService', () => {
   };
 
   const toolRegistry = {
+    prepareToolSelection: jest.fn(),
     buildToolSet: jest.fn(),
     listAvailableToolSummaries: jest.fn(),
   };
@@ -92,8 +93,40 @@ describe('ChatMessageService', () => {
       async ({ payload }: { payload: unknown }) => payload,
     );
     pluginRuntime.runResponseAfterSendHooks.mockResolvedValue(undefined);
-    toolRegistry.buildToolSet.mockResolvedValue(undefined);
+    toolRegistry.buildToolSet.mockReturnValue(undefined);
     toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
+    toolRegistry.prepareToolSelection.mockImplementation(
+      async (input: {
+        context: {
+          source: 'chat-tool';
+          userId: string;
+          conversationId: string;
+          activeProviderId: string;
+          activeModelId: string;
+          activePersonaId?: string;
+        };
+      }) => ({
+        availableTools: await toolRegistry.listAvailableToolSummaries(input),
+        buildToolSet: ({
+          context,
+          allowedToolNames,
+        }: {
+          context: {
+            source: 'chat-tool';
+            userId: string;
+            conversationId: string;
+            activeProviderId: string;
+            activeModelId: string;
+            activePersonaId?: string;
+          };
+          allowedToolNames?: string[];
+        }) => toolRegistry.buildToolSet({
+          ...input,
+          context,
+          allowedToolNames,
+        }),
+      }),
+    );
     service = new ChatMessageService(
       prisma as never,
       chatService as never,
@@ -306,7 +339,7 @@ describe('ChatMessageService', () => {
         runtimeKind: 'builtin',
       },
     ]);
-    toolRegistry.buildToolSet.mockResolvedValue({
+    toolRegistry.buildToolSet.mockReturnValue({
       recall_memory: recallMemoryTool as never,
       create_automation: createAutomationTool as never,
     });

@@ -65,14 +65,26 @@ export function useToolManagement() {
       buildSourceKey(source) === selectedSourceKey.value)
     return selected ?? null
   })
+  const toolsBySourceKey = computed(() => {
+    const grouped = new Map<string, ToolInfo[]>()
+    for (const item of tools.value) {
+      const key = `${item.sourceKind}:${item.sourceId}`
+      const bucket = grouped.get(key)
+      if (bucket) {
+        bucket.push(item)
+      } else {
+        grouped.set(key, [item])
+      }
+    }
+
+    return grouped
+  })
   const visibleTools = computed(() => {
-    if (!selectedSource.value) {
+    if (!selectedSourceKey.value) {
       return []
     }
 
-    return tools.value.filter((tool) =>
-      tool.sourceKind === selectedSource.value?.kind
-      && tool.sourceId === selectedSource.value?.id)
+    return toolsBySourceKey.value.get(selectedSourceKey.value) ?? []
   })
   const filteredTools = computed(() =>
     visibleTools.value.filter((tool) =>
@@ -131,10 +143,9 @@ export function useToolManagement() {
     loading.value = true
     error.value = null
     try {
-      const [nextSources, nextTools] = await Promise.all([
-        api.listToolSources(),
-        api.listTools(),
-      ])
+      const overview = await api.listToolOverview()
+      const nextSources = overview.sources
+      const nextTools = overview.tools
       sources.value = nextSources
       tools.value = nextTools
       const fallback = nextSources.find((source) =>

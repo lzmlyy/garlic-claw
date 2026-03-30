@@ -12,6 +12,35 @@ describe('McpToolProvider', () => {
 
   it('projects MCP source health and delegates execution back to McpService', async () => {
     const mcpService = {
+      getToolingSnapshot: jest.fn().mockReturnValue({
+        statuses: [
+          {
+            name: 'weather',
+            connected: true,
+            enabled: true,
+            health: 'healthy',
+            lastError: null,
+            lastCheckedAt: '2026-03-30T10:00:00.000Z',
+          },
+        ],
+        tools: [
+          {
+            serverName: 'weather',
+            name: 'get_forecast',
+            description: '获取天气预报',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                city: {
+                  type: 'string',
+                  description: '城市',
+                },
+              },
+              required: ['city'],
+            },
+          },
+        ],
+      }),
       listServerStatuses: jest.fn().mockReturnValue([
         {
           name: 'weather',
@@ -90,5 +119,8 @@ describe('McpToolProvider', () => {
         city: 'Shanghai',
       },
     });
+    expect(mcpService.getToolingSnapshot).toHaveBeenCalledTimes(1);
+    expect(mcpService.listServerStatuses).not.toHaveBeenCalled();
+    expect(mcpService.listToolDescriptors).not.toHaveBeenCalled();
   });
 });

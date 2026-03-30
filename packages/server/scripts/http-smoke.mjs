@@ -100,12 +100,9 @@ async function main() {
 }
 
 async function runSmokeFlow(context) {
-  const adminLogin = await apiRequest(context, 'POST', '/auth/login', {
-    body: {
-      username: 'smoke-admin',
-      password: 'SmokePass123!',
-    },
-    expectedStatus: 200,
+  const adminLogin = await waitForBootstrapAdminLogin(context, {
+    username: 'smoke-admin',
+    password: 'SmokePass123!',
   });
   const userRegister = await apiRequest(context, 'POST', '/auth/register', {
     body: {
@@ -451,6 +448,29 @@ async function runSmokeFlow(context) {
     token: adminToken,
   });
   await apiRequest(context, 'DELETE', '/ai/providers/local-openai', { token: adminToken });
+}
+
+async function waitForBootstrapAdminLogin(context, credentials, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  const intervalMs = options.intervalMs ?? 250;
+  const startedAt = Date.now();
+  let lastError = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      return await apiRequest(context, 'POST', '/auth/login', {
+        body: credentials,
+        expectedStatus: 200,
+      });
+    } catch (error) {
+      lastError = error;
+      await delay(intervalMs);
+    }
+  }
+
+  throw new Error(
+    `Timed out waiting for bootstrap admin login: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
 }
 
 async function prepareConfigIsolation(tempDir) {

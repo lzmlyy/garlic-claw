@@ -2,6 +2,7 @@ import { ToolController } from './tool.controller';
 
 describe('ToolController', () => {
   const toolRegistry = {
+    listOverview: jest.fn(),
     listSources: jest.fn(),
     listToolInfos: jest.fn(),
     setSourceEnabled: jest.fn(),
@@ -23,6 +24,38 @@ describe('ToolController', () => {
   });
 
   it('lists unified tool sources and tool records', async () => {
+    toolRegistry.listOverview.mockResolvedValue({
+      sources: [
+        {
+          kind: 'plugin',
+          id: 'builtin.memory-tools',
+          label: '记忆工具',
+          enabled: true,
+          health: 'healthy',
+          lastError: null,
+          lastCheckedAt: '2026-03-30T12:00:00.000Z',
+          totalTools: 2,
+          enabledTools: 2,
+          supportedActions: ['health-check', 'reload'],
+        },
+      ],
+      tools: [
+        {
+          toolId: 'plugin:builtin.memory-tools:save_memory',
+          name: 'save_memory',
+          callName: 'save_memory',
+          description: '保存记忆',
+          parameters: {},
+          enabled: true,
+          sourceKind: 'plugin',
+          sourceId: 'builtin.memory-tools',
+          sourceLabel: '记忆工具',
+          health: 'healthy',
+          lastError: null,
+          lastCheckedAt: '2026-03-30T12:00:00.000Z',
+        },
+      ],
+    });
     toolRegistry.listSources.mockResolvedValue([
       {
         kind: 'plugin',
@@ -54,6 +87,19 @@ describe('ToolController', () => {
       },
     ]);
 
+    await expect(controller.listOverview()).resolves.toEqual({
+      sources: [
+        expect.objectContaining({
+          id: 'builtin.memory-tools',
+          totalTools: 2,
+        }),
+      ],
+      tools: [
+        expect.objectContaining({
+          toolId: 'plugin:builtin.memory-tools:save_memory',
+        }),
+      ],
+    });
     await expect(controller.listSources()).resolves.toEqual([
       expect.objectContaining({
         id: 'builtin.memory-tools',

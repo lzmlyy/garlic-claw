@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -13,6 +13,7 @@ import { PersonaModule } from './persona/persona.module';
 import { McpModule } from './mcp/mcp.module';
 import { PluginModule } from './plugin/plugin.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { StartupWarmupService } from './startup/startup-warmup.service';
 import { UserModule } from './user/user.module';
 
 @Module({
@@ -26,6 +27,12 @@ import { UserModule } from './user/user.module';
       limit: 60,
     }]),
     LoggerModule.forRoot({
+      forRoutes: [
+        {
+          path: '{*path}',
+          method: RequestMethod.ALL,
+        },
+      ],
       pinoHttp: {
         transport:
           process.env.NODE_ENV !== 'production'
@@ -47,6 +54,7 @@ import { UserModule } from './user/user.module';
     McpModule,
   ],
   providers: [
+    StartupWarmupService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

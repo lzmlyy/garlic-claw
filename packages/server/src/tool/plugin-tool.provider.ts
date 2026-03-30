@@ -3,7 +3,7 @@ import type { PluginCallContext } from '@garlic-claw/shared';
 import type { JsonObject } from '../common/types/json-value';
 import { PluginService } from '../plugin/plugin.service';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
-import type { ToolProvider, ToolProviderTool } from './tool.types';
+import type { ToolProvider, ToolProviderState, ToolProviderTool } from './tool.types';
 
 @Injectable()
 export class PluginToolProvider implements ToolProvider {
@@ -14,29 +14,21 @@ export class PluginToolProvider implements ToolProvider {
     private readonly pluginService: PluginService,
   ) {}
 
-  async listSources(_context?: PluginCallContext) {
-    return (await this.readSourceState()).sources;
+  async collectState(context?: PluginCallContext): Promise<ToolProviderState> {
+    const state = await this.readSourceState();
+
+    return {
+      sources: state.sources,
+      tools: this.buildToolsFromState(state, context),
+    };
+  }
+
+  async listSources(context?: PluginCallContext) {
+    return (await this.collectState(context)).sources;
   }
 
   async listTools(context?: PluginCallContext): Promise<ToolProviderTool[]> {
-    const { sourceById, pluginLabels } = await this.readSourceState();
-
-    return this.pluginRuntime.listTools(context).map((entry) => ({
-      source: sourceById.get(entry.pluginId) ?? {
-        kind: 'plugin',
-        id: entry.pluginId,
-        label: pluginLabels.get(entry.pluginId) ?? entry.pluginId,
-        enabled: true,
-        health: 'unknown',
-        lastError: null,
-        lastCheckedAt: null,
-      },
-      name: entry.tool.name,
-      description: entry.tool.description,
-      parameters: entry.tool.parameters,
-      pluginId: entry.pluginId,
-      runtimeKind: entry.runtimeKind,
-    }));
+    return (await this.collectState(context)).tools;
   }
 
   executeTool(input: {
@@ -98,5 +90,27 @@ export class PluginToolProvider implements ToolProvider {
         ]),
       ),
     };
+  }
+
+  private buildToolsFromState(
+    state: Awaited<ReturnType<PluginToolProvider['readSourceState']>>,
+    context?: PluginCallContext,
+  ): ToolProviderTool[] {
+    return this.pluginRuntime.listTools(context).map((entry) => ({
+      source: state.sourceById.get(entry.pluginId) ?? {
+        kind: 'plugin',
+        id: entry.pluginId,
+        label: state.pluginLabels.get(entry.pluginId) ?? entry.pluginId,
+        enabled: true,
+        health: 'unknown',
+        lastError: null,
+        lastCheckedAt: null,
+      },
+      name: entry.tool.name,
+      description: entry.tool.description,
+      parameters: entry.tool.parameters,
+      pluginId: entry.pluginId,
+      runtimeKind: entry.runtimeKind,
+    }));
   }
 }

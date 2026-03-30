@@ -1,9 +1,13 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { PluginInfo } from '@garlic-claw/shared'
 import PluginSidebar from './PluginSidebar.vue'
 
 describe('PluginSidebar', () => {
+  afterEach(() => {
+    localStorage.clear()
+  })
+
   it('shows runtime pressure in the sidebar when a plugin is currently busy', () => {
     const wrapper = mount(PluginSidebar, {
       props: {
@@ -364,5 +368,196 @@ describe('PluginSidebar', () => {
     expect(wrapper.text()).toContain('第 1 / 1 页')
     expect(wrapper.findAll('.plugin-item')).toHaveLength(1)
     expect(wrapper.text()).toContain('Plugin 11')
+  })
+
+  it('hides system builtin plugins by default and reveals them on demand', async () => {
+    const wrapper = mount(PluginSidebar, {
+      props: {
+        loading: false,
+        selectedPluginName: null,
+        error: null,
+        plugins: [
+          {
+            id: 'plugin-1',
+            name: 'builtin.tool-audit',
+            displayName: 'Tool Audit',
+            description: 'system builtin',
+            deviceType: 'builtin',
+            status: 'online',
+            capabilities: [],
+            connected: true,
+            runtimeKind: 'builtin',
+            manifest: {
+              id: 'builtin.tool-audit',
+              name: 'Tool Audit',
+              version: '1.0.0',
+              runtime: 'builtin',
+              permissions: ['storage:write'],
+              tools: [],
+            },
+            health: {
+              status: 'healthy',
+              failureCount: 0,
+              consecutiveFailures: 0,
+              lastError: null,
+              lastErrorAt: null,
+              lastSuccessAt: null,
+              lastCheckedAt: null,
+            },
+            lastSeenAt: null,
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+          {
+            id: 'plugin-2',
+            name: 'builtin.provider-router',
+            displayName: 'Provider Router',
+            description: 'user-facing builtin',
+            deviceType: 'builtin',
+            status: 'online',
+            capabilities: [],
+            connected: true,
+            runtimeKind: 'builtin',
+            manifest: {
+              id: 'builtin.provider-router',
+              name: 'Provider Router',
+              version: '1.0.0',
+              runtime: 'builtin',
+              permissions: ['config:read', 'provider:read'],
+              tools: [],
+              config: {
+                fields: [
+                  {
+                    key: 'targetProviderId',
+                    type: 'string',
+                  },
+                ],
+              },
+            },
+            health: {
+              status: 'healthy',
+              failureCount: 0,
+              consecutiveFailures: 0,
+              lastError: null,
+              lastErrorAt: null,
+              lastSuccessAt: null,
+              lastCheckedAt: null,
+            },
+            lastSeenAt: null,
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+          {
+            id: 'plugin-3',
+            name: 'remote.pc-host',
+            displayName: 'PC Host',
+            description: 'remote plugin',
+            deviceType: 'api',
+            status: 'online',
+            capabilities: [],
+            connected: true,
+            runtimeKind: 'remote',
+            health: {
+              status: 'healthy',
+              failureCount: 0,
+              consecutiveFailures: 0,
+              lastError: null,
+              lastErrorAt: null,
+              lastSuccessAt: null,
+              lastCheckedAt: null,
+            },
+            lastSeenAt: null,
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已隐藏 1 个系统内建插件')
+    let titles = wrapper.findAll('.plugin-item strong').map((node) => node.text())
+    expect(titles).toEqual(['PC Host', 'Provider Router'])
+    expect(wrapper.text()).not.toContain('Tool Audit')
+
+    await wrapper.get('[data-test="plugin-sidebar-toggle-system"]').trigger('click')
+
+    titles = wrapper.findAll('.plugin-item strong').map((node) => node.text())
+    expect(titles).toContain('Tool Audit')
+    expect(wrapper.text()).toContain('已显示系统内建插件')
+  })
+
+  it('restores and persists the show-system-builtins preference', async () => {
+    localStorage.setItem('garlic-claw:plugin-sidebar:show-system-builtins', 'true')
+
+    const wrapper = mount(PluginSidebar, {
+      props: {
+        loading: false,
+        selectedPluginName: null,
+        error: null,
+        plugins: [
+          {
+            id: 'plugin-1',
+            name: 'builtin.tool-audit',
+            displayName: 'Tool Audit',
+            description: 'system builtin',
+            deviceType: 'builtin',
+            status: 'online',
+            capabilities: [],
+            connected: true,
+            runtimeKind: 'builtin',
+            manifest: {
+              id: 'builtin.tool-audit',
+              name: 'Tool Audit',
+              version: '1.0.0',
+              runtime: 'builtin',
+              permissions: ['storage:write'],
+              tools: [],
+            },
+            health: {
+              status: 'healthy',
+              failureCount: 0,
+              consecutiveFailures: 0,
+              lastError: null,
+              lastErrorAt: null,
+              lastSuccessAt: null,
+              lastCheckedAt: null,
+            },
+            lastSeenAt: null,
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+          {
+            id: 'plugin-2',
+            name: 'remote.pc-host',
+            displayName: 'PC Host',
+            description: 'remote plugin',
+            deviceType: 'api',
+            status: 'online',
+            capabilities: [],
+            connected: true,
+            runtimeKind: 'remote',
+            health: {
+              status: 'healthy',
+              failureCount: 0,
+              consecutiveFailures: 0,
+              lastError: null,
+              lastErrorAt: null,
+              lastSuccessAt: null,
+              lastCheckedAt: null,
+            },
+            lastSeenAt: null,
+            createdAt: '2026-03-28T00:00:00.000Z',
+            updatedAt: '2026-03-28T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已显示系统内建插件')
+    expect(wrapper.text()).toContain('Tool Audit')
+
+    await wrapper.get('[data-test="plugin-sidebar-toggle-system"]').trigger('click')
+
+    expect(localStorage.getItem('garlic-claw:plugin-sidebar:show-system-builtins')).toBe('false')
   })
 })

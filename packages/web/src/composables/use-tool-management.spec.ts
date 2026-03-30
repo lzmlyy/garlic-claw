@@ -6,8 +6,7 @@ import { useToolManagement } from './use-tool-management'
 import * as api from '../api'
 
 vi.mock('../api', () => ({
-  listToolSources: vi.fn(),
-  listTools: vi.fn(),
+  listToolOverview: vi.fn(),
   updateToolSourceEnabled: vi.fn(),
   updateToolEnabled: vi.fn(),
   runToolSourceAction: vi.fn(),
@@ -82,8 +81,10 @@ describe('useToolManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     const fixtures = createFixtures()
-    vi.mocked(api.listToolSources).mockResolvedValue(fixtures.sources)
-    vi.mocked(api.listTools).mockResolvedValue(fixtures.tools)
+    vi.mocked(api.listToolOverview).mockResolvedValue({
+      sources: fixtures.sources,
+      tools: fixtures.tools,
+    })
     vi.mocked(api.updateToolSourceEnabled).mockImplementation(async (kind, sourceId, enabled) => ({
       ...fixtures.sources.find((source) => source.kind === kind && source.id === sourceId)!,
       enabled,

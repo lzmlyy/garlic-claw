@@ -32,6 +32,52 @@ describe('ToolRegistryService', () => {
     };
   }
 
+  function createCollectStateProvider(
+    kind: ToolProvider['kind'],
+    tools: ToolProviderTool[],
+    executeTool = jest.fn(),
+  ): ToolProvider & {
+    collectState: jest.Mock;
+  } {
+    const sources = [...new Map(
+      tools.map((tool) => [
+        `${tool.source.kind}:${tool.source.id}`,
+        tool.source,
+      ]),
+    ).values()];
+
+    return {
+      kind,
+      collectState: jest.fn().mockResolvedValue({
+        sources,
+        tools,
+      }),
+      listSources: jest.fn().mockResolvedValue(sources),
+      listTools: jest.fn().mockResolvedValue(tools),
+      executeTool,
+    };
+  }
+
+  function createStatefulSettings(options?: {
+    sourceOverrides?: Record<string, boolean>;
+    toolOverrides?: Record<string, boolean>;
+  }) {
+    const sourceOverrides = new Map(Object.entries(options?.sourceOverrides ?? {}));
+    const toolOverrides = new Map(Object.entries(options?.toolOverrides ?? {}));
+
+    return {
+      getSourceEnabled: jest.fn((kind: string, id: string) =>
+        sourceOverrides.get(`${kind}:${id}`)),
+      getToolEnabled: jest.fn((toolId: string) => toolOverrides.get(toolId)),
+      setSourceEnabled: jest.fn((kind: string, id: string, enabled: boolean) => {
+        sourceOverrides.set(`${kind}:${id}`, enabled);
+      }),
+      setToolEnabled: jest.fn((toolId: string, enabled: boolean) => {
+        toolOverrides.set(toolId, enabled);
+      }),
+    };
+  }
+
   function createPluginRuntime() {
     return {
       runToolBeforeCallHooks: jest.fn().mockImplementation(async (input) => ({
@@ -301,6 +347,88 @@ describe('ToolRegistryService', () => {
     });
   });
 
+  it('reuses one prepared tool selection to expose summaries and build a later tool set with a new execution context', async () => {
+    const pluginExecuteTool = jest.fn().mockResolvedValue({
+      saved: true,
+    });
+    const service = new ToolRegistryService(
+      {
+        getSourceEnabled: jest.fn(),
+        getToolEnabled: jest.fn(),
+      } as never,
+      createPluginRuntime() as never,
+      createProvider(
+        'plugin',
+        [
+          {
+            source: {
+              kind: 'plugin',
+              id: 'builtin.memory-tools',
+              label: '记忆工具',
+              enabled: true,
+              health: 'healthy',
+              lastError: null,
+              lastCheckedAt: '2026-03-30T09:01:00.000Z',
+            },
+            name: 'recall_memory',
+            description: '读取记忆',
+            parameters: {
+              query: {
+                type: 'string',
+                required: true,
+              },
+            },
+            pluginId: 'builtin.memory-tools',
+            runtimeKind: 'builtin',
+          },
+        ],
+        pluginExecuteTool,
+      ) as never,
+      createProvider('mcp', []) as never,
+    );
+
+    const selection = await service.prepareToolSelection({
+      context,
+    });
+
+    expect(selection.availableTools).toEqual([
+      expect.objectContaining({
+        name: 'recall_memory',
+        toolId: 'plugin:builtin.memory-tools:recall_memory',
+      }),
+    ]);
+
+    const toolSet = selection.buildToolSet({
+      context: {
+        ...context,
+        activeProviderId: 'anthropic',
+        activeModelId: 'claude-3-7-sonnet',
+      },
+      allowedToolNames: ['recall_memory'],
+    });
+    const executableToolSet = toolSet as Record<string, { execute: (args: unknown) => Promise<unknown> }>;
+
+    await executableToolSet.recall_memory.execute({
+      query: '咖啡',
+    });
+
+    expect(pluginExecuteTool).toHaveBeenCalledWith({
+      tool: expect.objectContaining({
+        name: 'recall_memory',
+        pluginId: 'builtin.memory-tools',
+      }),
+      params: {
+        query: '咖啡',
+      },
+      context: {
+        ...context,
+        activeProviderId: 'anthropic',
+        activeModelId: 'claude-3-7-sonnet',
+      },
+      skipLifecycleHooks: true,
+    });
+  });
+
   it('applies persisted source and tool enabled overrides to governance listings', async () => {
     const pluginProvider = createProvider('plugin', [
       {
@@ -456,5 +584,126 @@ describe('ToolRegistryService', () => {
       context,
       skipLifecycleHooks: false,
     });
+  });
+
+  it('updates source enabled state from one provider snapshot while preserving tool-level overrides', async () => {
+    const settings = createStatefulSettings({
+      sourceOverrides: {
+        'plugin:builtin.memory-tools': false,
+      },
+      toolOverrides: {
+        'plugin:builtin.memory-tools:recall_memory': false,
+      },
+    });
+    const pluginProvider = createCollectStateProvider('plugin', [
+      {
+        source: {
+          kind: 'plugin',
+          id: 'builtin.memory-tools',
+          label: '记忆工具',
+          enabled: true,
+          health: 'healthy',
+          lastError: null,
+          lastCheckedAt: '2026-03-30T18:00:00.000Z',
+        },
+        name: 'save_memory',
+        description: '保存记忆',
+        parameters: {},
+        pluginId: 'builtin.memory-tools',
+        runtimeKind: 'builtin',
+      },
+      {
+        source: {
+          kind: 'plugin',
+          id: 'builtin.memory-tools',
+          label: '记忆工具',
+          enabled: true,
+          health: 'healthy',
+          lastError: null,
+          lastCheckedAt: '2026-03-30T18:00:00.000Z',
+        },
+        name: 'recall_memory',
+        description: '读取记忆',
+        parameters: {},
+        pluginId: 'builtin.memory-tools',
+        runtimeKind: 'builtin',
+      },
+    ]);
+    const mcpProvider = createCollectStateProvider('mcp', []);
+    const service = new ToolRegistryService(
+      settings as never,
+      createPluginRuntime() as never,
+      pluginProvider as never,
+      mcpProvider as never,
+    );
+
+    await expect(
+      service.setSourceEnabled('plugin', 'builtin.memory-tools', true),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        kind: 'plugin',
+        id: 'builtin.memory-tools',
+        enabled: true,
+        totalTools: 2,
+        enabledTools: 1,
+      }),
+    );
+
+    expect(settings.setSourceEnabled).toHaveBeenCalledWith(
+      'plugin',
+      'builtin.memory-tools',
+      true,
+    );
+    expect(pluginProvider.collectState).toHaveBeenCalledTimes(1);
+    expect(mcpProvider.collectState).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates tool enabled state from one provider snapshot without re-reading all sources', async () => {
+    const settings = createStatefulSettings({
+      toolOverrides: {
+        'plugin:builtin.memory-tools:save_memory': false,
+      },
+    });
+    const pluginProvider = createCollectStateProvider('plugin', [
+      {
+        source: {
+          kind: 'plugin',
+          id: 'builtin.memory-tools',
+          label: '记忆工具',
+          enabled: true,
+          health: 'healthy',
+          lastError: null,
+          lastCheckedAt: '2026-03-30T19:00:00.000Z',
+        },
+        name: 'save_memory',
+        description: '保存记忆',
+        parameters: {},
+        pluginId: 'builtin.memory-tools',
+        runtimeKind: 'builtin',
+      },
+    ]);
+    const mcpProvider = createCollectStateProvider('mcp', []);
+    const service = new ToolRegistryService(
+      settings as never,
+      createPluginRuntime() as never,
+      pluginProvider as never,
+      mcpProvider as never,
+    );
+
+    await expect(
+      service.setToolEnabled('plugin:builtin.memory-tools:save_memory', true),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        toolId: 'plugin:builtin.memory-tools:save_memory',
+        enabled: true,
+      }),
+    );
+
+    expect(settings.setToolEnabled).toHaveBeenCalledWith(
+      'plugin:builtin.memory-tools:save_memory',
+      true,
+    );
+    expect(pluginProvider.collectState).toHaveBeenCalledTimes(1);
+    expect(mcpProvider.collectState).toHaveBeenCalledTimes(1);
   });
 });

@@ -62,6 +62,7 @@ export interface ToolFilterInput {
 
 export interface ToolProvider {
   kind: ToolSourceKind;
+  collectState?(context?: PluginCallContext): Promise<ToolProviderState> | ToolProviderState;
   listSources(context?: PluginCallContext): Promise<ToolSourceDescriptor[]> | ToolSourceDescriptor[];
   listTools(context?: PluginCallContext): Promise<ToolProviderTool[]> | ToolProviderTool[];
   executeTool(input: {
@@ -76,4 +77,9 @@ export interface ResolvedToolRecord {
   provider: ToolProvider;
   raw: ToolProviderTool;
   record: ToolRecord;
+}
+
+export interface ToolProviderState {
+  sources: ToolSourceDescriptor[];
+  tools: ToolProviderTool[];
 }

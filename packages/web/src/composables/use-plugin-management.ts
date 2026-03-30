@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch, type Ref } from 'vue'
 import type {
   PluginActionName,
   PluginConfigSnapshot,
@@ -12,6 +12,7 @@ import type {
   PluginStorageEntry,
 } from '@garlic-claw/shared'
 import * as api from '../api'
+import { pickDefaultPluginName } from './plugin-management.helpers'
 
 /**
  * 插件管理页的状态与行为收口。
@@ -23,7 +24,9 @@ import * as api from '../api'
  * - 页面只负责渲染
  * - 所有插件管理数据拉取与保存逻辑集中到此 composable
  */
-export function usePluginManagement() {
+export function usePluginManagement(options?: {
+  preferredPluginName?: Ref<string | null>
+}) {
   const loading = ref(false)
   const detailLoading = ref(false)
   const savingConfig = ref(false)
@@ -71,6 +74,19 @@ export function usePluginManagement() {
     void refreshAll()
   })
 
+  if (options?.preferredPluginName) {
+    watch(options.preferredPluginName, async (pluginName) => {
+      if (!pluginName || pluginName === selectedPluginName.value) {
+        return
+      }
+      if (!plugins.value.some((plugin) => plugin.name === pluginName)) {
+        return
+      }
+
+      await selectPlugin(pluginName)
+    })
+  }
+
   /**
    * 刷新插件列表，并尽量保持当前选中项。
    */
@@ -80,10 +96,15 @@ export function usePluginManagement() {
     try {
       const nextPlugins = await api.listPlugins()
       plugins.value = nextPlugins
-      const fallback = nextPlugins.find(
-        (plugin) => plugin.name === selectedPluginName.value,
-      ) ?? nextPlugins[0] ?? null
-      selectedPluginName.value = fallback?.name ?? null
+      const fallbackName = pickDefaultPluginName({
+        plugins: nextPlugins,
+        currentPluginName: selectedPluginName.value,
+        preferredPluginName: options?.preferredPluginName?.value ?? null,
+      })
+      const fallback = fallbackName
+        ? nextPlugins.find((plugin) => plugin.name === fallbackName) ?? null
+        : null
+      selectedPluginName.value = fallbackName
 
       if (fallback) {
         await refreshSelectedDetails(fallback.name)
