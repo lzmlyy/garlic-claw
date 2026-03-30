@@ -6,10 +6,18 @@ import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
  * 工具调用审计摘要。
  */
 interface ToolAuditSummary extends JsonObject {
+  /** 工具来源类型。 */
+  sourceKind: string;
+  /** 工具来源 ID。 */
+  sourceId: string;
   /** 被调用的插件 ID。 */
-  pluginId: string;
+  pluginId: string | null;
   /** 插件运行形态。 */
-  runtimeKind: string;
+  runtimeKind: string | null;
+  /** 统一工具 ID。 */
+  toolId: string;
+  /** LLM 看到的调用名。 */
+  callName: string;
   /** 工具名。 */
   toolName: string;
   /** 调用来源。 */
@@ -59,15 +67,18 @@ export function createToolAuditPlugin(): BuiltinPluginDefinition {
       'tool:after-call': async (payload, { host }) => {
         const afterCall = payload as unknown as ToolAfterCallHookPayload;
         const summary = buildToolAuditSummary(afterCall);
+        const storageScope = afterCall.source.kind === 'plugin'
+          ? afterCall.pluginId ?? afterCall.source.id
+          : `${afterCall.source.kind}.${afterCall.source.id}`;
 
         await host.setStorage(
-          `tool.${afterCall.pluginId}.${afterCall.tool.name}.last-call`,
+          `tool.${storageScope}.${afterCall.tool.name}.last-call`,
           summary,
         );
         await host.writeLog({
           level: 'info',
           type: 'tool:observed',
-          message: `工具 ${afterCall.pluginId}:${afterCall.tool.name} 执行完成`,
+          message: `工具 ${afterCall.source.id}:${afterCall.tool.name} 执行完成`,
           metadata: summary,
         });
 
@@ -88,8 +99,12 @@ function buildToolAuditSummary(
   payload: ToolAfterCallHookPayload,
 ): ToolAuditSummary {
   const summary: ToolAuditSummary = {
-    pluginId: payload.pluginId,
-    runtimeKind: payload.runtimeKind,
+    sourceKind: payload.source.kind,
+    sourceId: payload.source.id,
+    pluginId: payload.pluginId ?? null,
+    runtimeKind: payload.runtimeKind ?? null,
+    toolId: payload.tool.toolId,
+    callName: payload.tool.callName,
     toolName: payload.tool.name,
     callSource: payload.context.source,
     paramKeys: Object.keys(payload.params),

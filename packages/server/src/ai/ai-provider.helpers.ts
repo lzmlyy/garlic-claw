@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
@@ -109,6 +110,8 @@ const OFFICIAL_PROVIDER_FACTORIES: Record<
   openrouter: createLazyProviderFactory('@openrouter/ai-sdk-provider', 'createOpenRouter'),
 };
 
+const localRequire = createRequire(__filename);
+
 function createLazyProviderFactory(
   moduleName: string,
   exportName: string,
@@ -128,11 +131,14 @@ function createLazyProviderFactory(
 
 function loadOptionalModule(moduleName: string): Record<string, unknown> {
   try {
-    return require(moduleName) as Record<string, unknown>;
+    return localRequire(moduleName) as Record<string, unknown>;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(
       `缺少可选 Provider SDK "${moduleName}"。如需启用对应 provider，请先安装该依赖。原始错误: ${detail}`,
+      {
+        cause: error,
+      },
     );
   }
 }

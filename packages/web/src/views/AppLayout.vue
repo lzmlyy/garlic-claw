@@ -6,6 +6,7 @@
         <div class="sidebar-nav">
           <router-link to="/" class="nav-link" :class="{ active: $route.name === 'chat' }">💬 对话</router-link>
           <router-link to="/plugins" class="nav-link" :class="{ active: $route.name === 'plugins' }">🧩 插件</router-link>
+          <router-link to="/tools" class="nav-link" :class="{ active: $route.name === 'tools' }">🛠️ 工具</router-link>
           <router-link to="/automations" class="nav-link" :class="{ active: $route.name === 'automations' }">⚡ 自动化</router-link>
           <router-link to="/ai" class="nav-link" :class="{ active: $route.name === 'ai-settings' }">🧠 AI 设置</router-link>
         </div>

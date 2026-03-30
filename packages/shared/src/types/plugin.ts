@@ -573,10 +573,14 @@ export type SubagentAfterRunHookResult =
 /** 聊天模型前 Hook 可见的工具摘要。 */
 export interface PluginAvailableToolSummary {
   name: string;
+  callName?: string;
+  toolId?: string;
   description: string;
   parameters: Record<string, PluginParamSchema>;
   pluginId?: string;
   runtimeKind?: PluginRuntimeKind;
+  sourceKind?: 'plugin' | 'mcp';
+  sourceId?: string;
 }
 
 /** 聊天模型前 Hook 可改写的请求快照。 */
@@ -969,12 +973,31 @@ export type AutomationAfterRunHookResult =
 /** 最终回复来源。 */
 export type PluginResponseSource = 'model' | 'short-circuit';
 
+/** 工具 Hook 看到的来源类型。 */
+export type ToolHookSourceKind = 'plugin' | 'mcp';
+
+/** 工具 Hook 看到的工具来源信息。 */
+export interface ToolHookSourceInfo {
+  kind: ToolHookSourceKind;
+  id: string;
+  label: string;
+  pluginId?: string;
+  runtimeKind?: PluginRuntimeKind;
+}
+
+/** 工具 Hook 看到的统一工具信息。 */
+export interface ToolHookToolInfo extends PluginCapability {
+  toolId: string;
+  callName: string;
+}
+
 /** 工具调用前 Hook 的输入。 */
 export interface ToolBeforeCallHookPayload {
   context: PluginCallContext;
-  pluginId: string;
-  runtimeKind: PluginRuntimeKind;
-  tool: PluginCapability;
+  source: ToolHookSourceInfo;
+  tool: ToolHookToolInfo;
+  pluginId?: string;
+  runtimeKind?: PluginRuntimeKind;
   params: JsonObject;
 }
 
@@ -1004,9 +1027,10 @@ export type ToolBeforeCallHookResult =
 /** 工具调用后 Hook 的输入。 */
 export interface ToolAfterCallHookPayload {
   context: PluginCallContext;
-  pluginId: string;
-  runtimeKind: PluginRuntimeKind;
-  tool: PluginCapability;
+  source: ToolHookSourceInfo;
+  tool: ToolHookToolInfo;
+  pluginId?: string;
+  runtimeKind?: PluginRuntimeKind;
   params: JsonObject;
   output: JsonValue;
 }

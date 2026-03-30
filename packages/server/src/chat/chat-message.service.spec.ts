@@ -28,8 +28,6 @@ describe('ChatMessageService', () => {
   };
 
   const pluginRuntime = {
-    listTools: jest.fn(),
-    executeTool: jest.fn(),
     runMessageReceivedHooks: jest.fn(),
     runChatBeforeModelHooks: jest.fn(),
     runChatWaitingModelHooks: jest.fn(),
@@ -39,6 +37,11 @@ describe('ChatMessageService', () => {
     runMessageDeletedHooks: jest.fn(),
     runResponseBeforeSendHooks: jest.fn(),
     runResponseAfterSendHooks: jest.fn(),
+  };
+
+  const toolRegistry = {
+    buildToolSet: jest.fn(),
+    listAvailableToolSummaries: jest.fn(),
   };
 
   const modelInvocation = {
@@ -89,12 +92,15 @@ describe('ChatMessageService', () => {
       async ({ payload }: { payload: unknown }) => payload,
     );
     pluginRuntime.runResponseAfterSendHooks.mockResolvedValue(undefined);
+    toolRegistry.buildToolSet.mockResolvedValue(undefined);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     service = new ChatMessageService(
       prisma as never,
       chatService as never,
       aiProvider as never,
       personaService as never,
       pluginRuntime as never,
+      toolRegistry as never,
       modelInvocation as never,
       chatTaskService as never,
     );
@@ -232,60 +238,77 @@ describe('ChatMessageService', () => {
         maxOutputTokens: 128,
       },
     });
-    pluginRuntime.listTools.mockReturnValue([
+    const recallMemoryTool = {
+      execute: jest.fn().mockResolvedValue({
+        saved: true,
+      }),
+    };
+    const createAutomationTool = {
+      execute: jest.fn().mockResolvedValue({
+        saved: true,
+      }),
+    };
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([
       {
-        pluginId: 'builtin.memory-tools',
-        runtimeKind: 'builtin',
-        tool: {
-          name: 'save_memory',
-          description: '保存记忆',
-          parameters: {
-            content: {
-              type: 'string',
-              required: true,
-            },
+        name: 'save_memory',
+        callName: 'save_memory',
+        toolId: 'plugin:builtin.memory-tools:save_memory',
+        description: '保存记忆',
+        parameters: {
+          content: {
+            type: 'string',
+            required: true,
           },
         },
-      },
-      {
+        sourceKind: 'plugin',
+        sourceId: 'builtin.memory-tools',
         pluginId: 'builtin.memory-tools',
         runtimeKind: 'builtin',
-        tool: {
-          name: 'recall_memory',
-          description: '读取记忆',
-          parameters: {
-            query: {
-              type: 'string',
-              required: true,
-            },
-          },
-        },
       },
       {
+        name: 'recall_memory',
+        callName: 'recall_memory',
+        toolId: 'plugin:builtin.memory-tools:recall_memory',
+        description: '读取记忆',
+        parameters: {
+          query: {
+            type: 'string',
+            required: true,
+          },
+        },
+        sourceKind: 'plugin',
+        sourceId: 'builtin.memory-tools',
+        pluginId: 'builtin.memory-tools',
+        runtimeKind: 'builtin',
+      },
+      {
+        name: 'create_automation',
+        callName: 'create_automation',
+        toolId: 'plugin:builtin.automation-tools:create_automation',
+        description: '创建自动化',
+        parameters: {
+          name: {
+            type: 'string',
+            required: true,
+          },
+          triggerType: {
+            type: 'string',
+            required: true,
+          },
+          actions: {
+            type: 'array',
+            required: true,
+          },
+        },
+        sourceKind: 'plugin',
+        sourceId: 'builtin.automation-tools',
         pluginId: 'builtin.automation-tools',
         runtimeKind: 'builtin',
-        tool: {
-          name: 'create_automation',
-          description: '创建自动化',
-          parameters: {
-            name: {
-              type: 'string',
-              required: true,
-            },
-            triggerType: {
-              type: 'string',
-              required: true,
-            },
-            actions: {
-              type: 'array',
-              required: true,
-            },
-          },
-        },
       },
     ]);
-    pluginRuntime.executeTool.mockResolvedValue({
-      saved: true,
+    toolRegistry.buildToolSet.mockResolvedValue({
+      recall_memory: recallMemoryTool as never,
+      create_automation: createAutomationTool as never,
     });
     modelInvocation.streamPrepared.mockReturnValue({
       result: {
@@ -370,13 +393,16 @@ describe('ChatMessageService', () => {
 
     await taskConfig.createStream(new AbortController().signal);
 
-    expect(pluginRuntime.listTools).toHaveBeenCalledWith({
-      source: 'chat-tool',
-      userId: 'user-1',
-      conversationId: 'conversation-1',
-      activeProviderId: 'anthropic',
-      activeModelId: 'claude-3-7-sonnet',
-      activePersonaId: 'builtin.default-assistant',
+    expect(toolRegistry.buildToolSet).toHaveBeenCalledWith({
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'anthropic',
+        activeModelId: 'claude-3-7-sonnet',
+        activePersonaId: 'builtin.default-assistant',
+      },
+      allowedToolNames: ['recall_memory', 'create_automation'],
     });
 
     expect(Object.keys(modelInvocation.streamPrepared.mock.calls[0][0].tools)).toEqual([
@@ -393,37 +419,13 @@ describe('ChatMessageService', () => {
       actions: [],
     });
 
-    expect(pluginRuntime.executeTool).toHaveBeenCalledWith({
-      pluginId: 'builtin.memory-tools',
-      toolName: 'recall_memory',
-      params: {
-        query: '咖啡',
-      },
-      context: {
-        source: 'chat-tool',
-        userId: 'user-1',
-        conversationId: 'conversation-1',
-        activeProviderId: 'anthropic',
-        activeModelId: 'claude-3-7-sonnet',
-        activePersonaId: 'builtin.default-assistant',
-      },
+    expect(recallMemoryTool.execute).toHaveBeenCalledWith({
+      query: '咖啡',
     });
-    expect(pluginRuntime.executeTool).toHaveBeenCalledWith({
-      pluginId: 'builtin.automation-tools',
-      toolName: 'create_automation',
-      params: {
-        name: '咖啡提醒',
-        triggerType: 'manual',
-        actions: [],
-      },
-      context: {
-        source: 'chat-tool',
-        userId: 'user-1',
-        conversationId: 'conversation-1',
-        activeProviderId: 'anthropic',
-        activeModelId: 'claude-3-7-sonnet',
-        activePersonaId: 'builtin.default-assistant',
-      },
+    expect(createAutomationTool.execute).toHaveBeenCalledWith({
+      name: '咖啡提醒',
+      triggerType: 'manual',
+      actions: [],
     });
 
     expect(modelInvocation.streamPrepared).toHaveBeenCalledWith(
@@ -636,7 +638,7 @@ describe('ChatMessageService', () => {
         availableTools: [],
       },
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
 
     await service.startMessageGeneration('user-1', 'conversation-1', {
       content: '原始消息',
@@ -831,7 +833,7 @@ describe('ChatMessageService', () => {
         availableTools: [],
       },
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     modelInvocation.prepareResolved.mockResolvedValue({
       modelConfig: routedModelConfig,
       model: { provider: 'anthropic', modelId: 'claude-3-7-sonnet' },
@@ -1218,7 +1220,7 @@ describe('ChatMessageService', () => {
       providerId: 'anthropic',
       modelId: 'claude-3-7-sonnet',
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
 
     await expect(
       service.startMessageGeneration('user-1', 'conversation-1', {
@@ -1358,7 +1360,7 @@ describe('ChatMessageService', () => {
         availableTools: [],
       },
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     modelInvocation.streamPrepared.mockReturnValue({
       result: {
         fullStream: (async function* () {
@@ -1505,7 +1507,7 @@ describe('ChatMessageService', () => {
         availableTools: [],
       },
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     modelInvocation.streamPrepared.mockReturnValue({
       result: {
         fullStream: (async function* () {
@@ -1655,7 +1657,7 @@ describe('ChatMessageService', () => {
       modelId: 'claude-3-7-sonnet',
       reason: 'matched-rule',
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
 
     const result = await service.startMessageGeneration('user-1', 'conversation-1', {
       content: '帮我快速回复',
@@ -2322,7 +2324,7 @@ describe('ChatMessageService', () => {
       toolCalls: [],
       toolResults: [],
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
 
     await expect(
       service.startMessageGeneration('user-1', 'conversation-1', {
@@ -2499,7 +2501,7 @@ describe('ChatMessageService', () => {
       toolCalls: [],
       toolResults: [],
     });
-    pluginRuntime.listTools.mockReturnValue([]);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
 
     await expect(
       service.startMessageGeneration('user-1', 'conversation-1', {

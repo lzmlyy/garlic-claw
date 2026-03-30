@@ -2,9 +2,9 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import type { JsonObject, JsonValue } from '../common/types/json-value';
 
 interface McpServerConfig {
   name: string;
@@ -23,6 +23,30 @@ interface McpToolListResponse {
 
 interface McpToolCallResponse {
   content?: unknown;
+}
+
+export type McpServerHealthStatus = 'healthy' | 'error' | 'unknown';
+
+export interface McpServerStatus {
+  name: string;
+  connected: boolean;
+  enabled: boolean;
+  health: McpServerHealthStatus;
+  lastError: string | null;
+  lastCheckedAt: string | null;
+}
+
+export interface McpToolDescriptor {
+  serverName: string;
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
+}
+
+interface McpServerRuntimeRecord {
+  config: McpServerConfig;
+  status: McpServerStatus;
+  tools: McpToolDescriptor[];
 }
 
 interface CityCoordinate {
@@ -48,6 +72,7 @@ const MCP_MAX_RETRIES = 2; // 最大重试次数
 export class McpService implements OnModuleInit {
   private readonly logger = new Logger(McpService.name);
   private clients = new Map<string, Client>();
+  private serverRecords = new Map<string, McpServerRuntimeRecord>();
   private cityCoordinates = new Map<string, CityCoordinate>();
   private cityCoordinatesLoaded = false;
 
@@ -56,6 +81,39 @@ export class McpService implements OnModuleInit {
   async onModuleInit() {
     await this.loadMcpServers();
     await this.loadCityCoordinates();
+  }
+
+  private async resolveProjectRoot() {
+    let currentPath = process.cwd();
+    let projectRoot = currentPath;
+
+    while (currentPath !== path.parse(currentPath).root) {
+      const pkgJsonPath = path.join(currentPath, 'package.json');
+      try {
+        await fs.access(pkgJsonPath);
+        const pkgContent = await fs.readFile(pkgJsonPath, 'utf-8');
+        const pkg = JSON.parse(pkgContent) as { name?: string };
+        if (pkg.name !== '@garlic-claw/server') {
+          projectRoot = currentPath;
+          break;
+        }
+      } catch {
+        // package.json 不存在或无法读取，继续向上查找
+      }
+
+      const parentDir = path.dirname(currentPath);
+      if (
+        path.basename(parentDir) === 'packages'
+        && path.basename(currentPath) === 'server'
+      ) {
+        projectRoot = path.dirname(parentDir);
+        break;
+      }
+
+      currentPath = parentDir;
+    }
+
+    return projectRoot;
   }
 
   /**
@@ -72,59 +130,36 @@ export class McpService implements OnModuleInit {
 
   private async loadMcpServers() {
     try {
-      // 使用更可靠的方式定位项目根目录
-      // 从当前工作目录开始，向上查找包含 package.json 的目录
-      let currentPath = process.cwd();
-      let projectRoot = currentPath;
-      
-      // 向上查找项目根目录（包含 package.json 的目录）
-      while (currentPath !== path.parse(currentPath).root) {
-        const pkgJsonPath = path.join(currentPath, 'package.json');
-        try {
-          await fs.access(pkgJsonPath);
-          // 找到了 package.json，检查是否是项目根目录的 package.json
-          const pkgContent = await fs.readFile(pkgJsonPath, 'utf-8');
-          const pkg = JSON.parse(pkgContent);
-          
-          // 项目根目录的 package.json 应该有特定的结构
-          // 例如有 packages 字段，或者 name 字段不是 @garlic-claw/server
-          if (pkg.name !== '@garlic-claw/server') {
-            projectRoot = currentPath;
-            break;
-          }
-        } catch {
-          // package.json 不存在或无法读取，继续向上查找
-        }
-        
-        // 如果当前目录已经是 packages/server，就向上找到项目根目录
-        const parentDir = path.dirname(currentPath);
-        if (path.basename(parentDir) === 'packages' && 
-            path.basename(currentPath) === 'server') {
-          projectRoot = path.dirname(parentDir);
-          break;
-        }
-        
-        currentPath = parentDir;
-      }
-      
+      const projectRoot = await this.resolveProjectRoot();
       const mcpConfigPath = path.join(projectRoot, '.mcp', 'mcp.json');
-      this.logger.log(`process.cwd(): ${process.cwd()}`);
-      this.logger.log(`项目根目录: ${projectRoot}`);
-      this.logger.log(`MCP 配置文件路径: ${mcpConfigPath}`);
-      this.logger.log(`配置文件是否存在: ${await fs.access(mcpConfigPath).then(() => true).catch(() => false)}`);
-      
+      try {
+        await fs.access(mcpConfigPath);
+      } catch {
+        return;
+      }
+
       const configContent = await fs.readFile(mcpConfigPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      this.logger.log(`MCP 配置内容: ${JSON.stringify(config)}`);
+      const config = JSON.parse(configContent) as {
+        mcpServers?: Record<string, McpServerConfig>;
+      };
 
       const servers = config.mcpServers || {};
-      this.logger.log(`找到 ${Object.keys(servers).length} 个 MCP 服务器配置`);
-      
+
       for (const [name, serverConfig] of Object.entries(servers)) {
+        this.serverRecords.set(name, {
+          config: serverConfig as McpServerConfig,
+          status: {
+            name,
+            connected: false,
+            enabled: true,
+            health: 'unknown',
+            lastError: null,
+            lastCheckedAt: null,
+          },
+          tools: [],
+        });
         await this.connectMcpServer(name, serverConfig as McpServerConfig);
       }
-
-      this.logger.log(`成功加载 ${this.clients.size} 个 MCP 服务器`);
     } catch (error) {
       this.logger.warn('加载 MCP 服务器配置失败', error);
     }
@@ -135,21 +170,14 @@ export class McpService implements OnModuleInit {
    */
   private async loadCityCoordinates() {
     try {
-      // 从当前工作目录向上查找项目根目录
-      let currentPath = process.cwd();
-      let projectRoot = currentPath;
-
-      while (currentPath !== path.parse(currentPath).root) {
-        const parentDir = path.dirname(currentPath);
-        if (path.basename(parentDir) === 'packages' &&
-            path.basename(currentPath) === 'server') {
-          projectRoot = path.dirname(parentDir);
-          break;
-        }
-        currentPath = parentDir;
-      }
-
+      const projectRoot = await this.resolveProjectRoot();
       const cityCoordsPath = path.join(projectRoot, '.mcp', 'city-coordinates.json');
+
+      try {
+        await fs.access(cityCoordsPath);
+      } catch {
+        return;
+      }
 
       try {
         const configContent = await fs.readFile(cityCoordsPath, 'utf-8');
@@ -164,7 +192,7 @@ export class McpService implements OnModuleInit {
         this.cityCoordinatesLoaded = true;
         this.logger.log(`成功加载 ${this.cityCoordinates.size} 个城市坐标`);
       } catch (fileError) {
-        this.logger.warn(`城市坐标配置文件不存在或读取失败: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+        this.logger.warn(`城市坐标配置文件读取失败: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
       }
     } catch (error) {
       this.logger.warn('加载城市坐标失败', error);
@@ -221,7 +249,30 @@ export class McpService implements OnModuleInit {
           `连接 MCP 服务器 "${name}"`
         );
 
+        const toolsResponse = await this.withTimeout(
+          client.listTools(),
+          MCP_TOOL_CALL_TIMEOUT,
+          `获取 MCP 服务器 "${name}" 工具列表`
+        ) as McpToolListResponse;
+
         this.clients.set(name, client);
+        this.serverRecords.set(name, {
+          config,
+          status: {
+            name,
+            connected: true,
+            enabled: true,
+            health: 'healthy',
+            lastError: null,
+            lastCheckedAt: new Date().toISOString(),
+          },
+          tools: (toolsResponse.tools ?? []).map((tool) => ({
+            serverName: name,
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+          })),
+        });
         this.logger.log(`MCP 服务器 "${name}" 连接成功`);
         return; // 成功则退出
       } catch (error) {
@@ -242,59 +293,116 @@ export class McpService implements OnModuleInit {
       `MCP 服务器 "${name}" 连接失败，已重试 ${MCP_MAX_RETRIES} 次`,
       lastError
     );
+    this.serverRecords.set(name, {
+      config,
+      status: {
+        name,
+        connected: false,
+        enabled: true,
+        health: 'error',
+        lastError: lastError?.message ?? '连接失败',
+        lastCheckedAt: new Date().toISOString(),
+      },
+      tools: [],
+    });
   }
 
   async getTools() {
-    const allTools: Record<string, any> = {};
+    const allTools: Record<string, {
+      description: string;
+      inputSchema?: unknown;
+      execute: (args: JsonObject) => Promise<JsonValue>;
+    }> = {};
 
-    for (const [name, client] of this.clients) {
-      try {
-        const response = await this.withTimeout(
-          client.listTools(),
-          MCP_TOOL_CALL_TIMEOUT,
-          `获取 MCP 服务器 "${name}" 工具列表`
-        ) as McpToolListResponse;
-
-        for (const tool of response.tools ?? []) {
-          const toolName = `${name}__${tool.name}`;
-          allTools[toolName] = {
-            description: tool.description || `[MCP:${name}] ${tool.name}`,
-            inputSchema: tool.inputSchema,
-            execute: async (args: any) => {
-              try {
-                const result = await this.withTimeout(
-                  client.callTool({
-                    name: tool.name,
-                    arguments: args,
-                  }),
-                  MCP_TOOL_CALL_TIMEOUT,
-                  `调用 MCP 工具 "${toolName}"`
-                ) as McpToolCallResponse;
-                return result.content;
-              } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                this.logger.error(`调用 MCP 工具 "${toolName}" 失败: ${errorMessage}`);
-                return { error: errorMessage };
-              }
-            },
-          };
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.logger.error(`获取 MCP 服务器 "${name}" 的工具失败: ${errorMessage}`);
-      }
+    for (const tool of await this.listToolDescriptors()) {
+      const toolName = `${tool.serverName}__${tool.name}`;
+      allTools[toolName] = {
+        description: tool.description || `[MCP:${tool.serverName}] ${tool.name}`,
+        inputSchema: tool.inputSchema,
+        execute: async (args: JsonObject) => {
+          try {
+            return await this.callTool({
+              serverName: tool.serverName,
+              toolName: tool.name,
+              arguments: args,
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`调用 MCP 工具 "${toolName}" 失败: ${errorMessage}`);
+            return { error: errorMessage };
+          }
+        },
+      };
     }
 
     this.logger.log(`成功加载 ${Object.keys(allTools).length} 个 MCP 工具`);
     return allTools;
   }
 
+  listServerStatuses(): McpServerStatus[] {
+    return [...this.serverRecords.values()].map((record) => ({
+      ...record.status,
+    }));
+  }
+
+  async listToolDescriptors(): Promise<McpToolDescriptor[]> {
+    return [...this.serverRecords.values()]
+      .filter((record) => record.status.connected)
+      .flatMap((record) => record.tools.map((tool) => ({
+        ...tool,
+      })));
+  }
+
+  async callTool(input: {
+    serverName: string;
+    toolName: string;
+    arguments: JsonObject;
+  }): Promise<JsonValue> {
+    const client = this.clients.get(input.serverName);
+    if (!client) {
+      this.updateServerStatus(input.serverName, {
+        connected: false,
+        health: 'error',
+        lastError: `MCP 服务器 "${input.serverName}" 未连接`,
+      });
+      throw new Error(`MCP 服务器 "${input.serverName}" 未连接`);
+    }
+
+    try {
+      const result = await this.withTimeout(
+        client.callTool({
+          name: input.toolName,
+          arguments: input.arguments,
+        }),
+        MCP_TOOL_CALL_TIMEOUT,
+        `调用 MCP 工具 "${input.serverName}__${input.toolName}"`
+      ) as McpToolCallResponse;
+      this.updateServerStatus(input.serverName, {
+        connected: true,
+        health: 'healthy',
+        lastError: null,
+      });
+      return (result.content ?? null) as JsonValue;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`调用 MCP 工具 "${input.serverName}__${input.toolName}" 失败: ${errorMessage}`);
+      this.updateServerStatus(input.serverName, {
+        connected: true,
+        health: 'error',
+        lastError: errorMessage,
+      });
+      throw error;
+    }
+  }
+
   getConnectedServers(): string[] {
-    return Array.from(this.clients.keys());
+    return this.listServerStatuses()
+      .filter((status) => status.connected)
+      .map((status) => status.name);
   }
 
   isServerConnected(name: string): boolean {
-    return this.clients.has(name);
+    return this.listServerStatuses().some((status) => status.name === name && status.connected);
   }
 
   /**
@@ -396,5 +504,22 @@ export class McpService implements OnModuleInit {
       count: uniqueCities.size,
       countries: Object.fromEntries(countryStats),
     };
+  }
+
+  private updateServerStatus(
+    name: string,
+    patch: Partial<Pick<McpServerStatus, 'connected' | 'health' | 'lastError'>>,
+  ) {
+    const existing = this.serverRecords.get(name);
+    if (!existing) {
+      return;
+    }
+
+    existing.status = {
+      ...existing.status,
+      ...patch,
+      lastCheckedAt: new Date().toISOString(),
+    };
+    this.serverRecords.set(name, existing);
   }
 }

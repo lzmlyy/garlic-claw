@@ -14,6 +14,7 @@ import { createResponseRecorderPlugin } from './builtin/response-recorder.plugin
 import { createToolAuditPlugin } from './builtin/tool-audit.plugin';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { ChatMessageService } from '../chat/chat-message.service';
+import { ToolRegistryService } from '../tool/tool-registry.service';
 
 describe('PluginRuntimeService', () => {
   const pluginService = {
@@ -55,6 +56,11 @@ describe('PluginRuntimeService', () => {
   const chatMessageService = {
     getCurrentPluginMessageTarget: jest.fn(),
     sendPluginMessage: jest.fn(),
+  };
+
+  const toolRegistry = {
+    buildToolSet: jest.fn(),
+    listAvailableToolSummaries: jest.fn(),
   };
 
   const moduleRef = {
@@ -139,8 +145,13 @@ describe('PluginRuntimeService', () => {
       if (token === ChatMessageService) {
         return chatMessageService;
       }
+      if (token === ToolRegistryService) {
+        return toolRegistry;
+      }
       return automationService;
     });
+    toolRegistry.buildToolSet.mockResolvedValue(undefined);
+    toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     service = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
@@ -417,9 +428,20 @@ describe('PluginRuntimeService', () => {
       context: callContext,
       payload: {
         context: callContext,
+        source: {
+          kind: 'plugin',
+          id: 'builtin.memory-tools',
+          label: '记忆工具',
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+        },
         pluginId: 'builtin.memory-tools',
         runtimeKind: 'builtin',
-        tool: builtinManifest.tools[0],
+        tool: {
+          ...builtinManifest.tools[0],
+          toolId: 'plugin:builtin.memory-tools:save_memory',
+          callName: 'save_memory',
+        },
         params: {
           content: '插件改写后的参数',
         },
@@ -3374,6 +3396,26 @@ describe('PluginRuntimeService', () => {
         ],
       }),
     });
+    const recallMemoryTool = {
+      description: '读取记忆',
+      inputSchema: undefined,
+      execute: jest.fn().mockImplementation((params) =>
+        memoryToolTransport.executeTool({
+          toolName: 'recall_memory',
+          params,
+          context: {
+            source: 'subagent',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+            activeProviderId: 'openai',
+            activeModelId: 'gpt-5.2',
+            activePersonaId: 'builtin.default-assistant',
+          },
+        })),
+    };
+    toolRegistry.buildToolSet.mockResolvedValue({
+      recall_memory: recallMemoryTool,
+    });
     aiModelExecution.prepareResolved.mockReturnValue({
       modelConfig: {
         id: 'gpt-5.2',
@@ -3776,6 +3818,131 @@ describe('PluginRuntimeService', () => {
       expect.objectContaining({
         system: '你是更谨慎的子代理',
         stopWhen: expect.anything(),
+      }),
+    );
+  });
+
+  it('builds subagent-visible tools through ToolRegistryService instead of the legacy plugin helper path', async () => {
+    const recallMemoryTool = {
+      description: '读取记忆',
+      inputSchema: undefined,
+      execute: jest.fn().mockResolvedValue({
+        count: 1,
+      }),
+    };
+
+    toolRegistry.buildToolSet.mockResolvedValue({
+      recall_memory: recallMemoryTool,
+    });
+    aiModelExecution.prepareResolved.mockReturnValue({
+      modelConfig: {
+        id: 'gpt-5.2',
+        providerId: 'openai',
+        capabilities: {
+          input: { text: true, image: false },
+          output: { text: true, image: false },
+          reasoning: true,
+          toolCall: true,
+        },
+      },
+      model: {
+        provider: 'openai',
+        modelId: 'gpt-5.2',
+      },
+      sdkMessages: [],
+    });
+    aiModelExecution.streamPrepared.mockReturnValue({
+      result: {
+        fullStream: (async function* () {
+          yield {
+            type: 'tool-call',
+            toolCallId: 'call-1',
+            toolName: 'recall_memory',
+            input: {
+              query: '咖啡',
+            },
+          } as const;
+          yield {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'recall_memory',
+            output: {
+              count: 1,
+            },
+          } as const;
+          yield {
+            type: 'text-delta',
+            text: '已完成总结',
+          } as const;
+          yield { type: 'finish' } as const;
+        })(),
+        finishReason: Promise.resolve('stop'),
+      },
+    });
+
+    await service.registerPlugin({
+      manifest: {
+        ...builtinManifest,
+        id: 'builtin.subagent-delegate',
+        permissions: ['subagent:run'],
+        tools: [
+          {
+            name: 'delegate_work',
+            description: '委派工作',
+            parameters: {},
+          },
+        ],
+        hooks: [],
+      },
+      runtimeKind: 'builtin',
+      transport: createTransport(),
+    });
+
+    await service.callHost({
+      pluginId: 'builtin.subagent-delegate',
+      context: {
+        source: 'plugin',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'builtin.default-assistant',
+      },
+      method: 'subagent.run' as never,
+      params: {
+        messages: [
+          {
+            role: 'user',
+            content: '请结合工具帮我总结',
+          },
+        ],
+        toolNames: ['recall_memory'],
+      },
+    });
+
+    expect(toolRegistry.buildToolSet).toHaveBeenCalledWith({
+      context: {
+        source: 'subagent',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'builtin.default-assistant',
+      },
+      allowedToolNames: ['recall_memory'],
+      excludedSources: [
+        {
+          kind: 'plugin',
+          id: 'builtin.subagent-delegate',
+        },
+      ],
+    });
+
+    expect(aiModelExecution.streamPrepared).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: {
+          recall_memory: recallMemoryTool,
+        },
       }),
     );
   });
@@ -5002,10 +5169,19 @@ describe('PluginRuntimeService', () => {
     const definition = createToolAuditPlugin();
     const payload = {
       context: callContext,
+      source: {
+        kind: 'plugin' as const,
+        id: 'builtin.memory-tools',
+        label: '记忆工具',
+        pluginId: 'builtin.memory-tools',
+        runtimeKind: 'builtin' as const,
+      },
       pluginId: 'builtin.memory-tools',
       runtimeKind: 'builtin' as const,
       tool: {
         ...builtinManifest.tools[0],
+        toolId: 'plugin:builtin.memory-tools:save_memory',
+        callName: 'save_memory',
       },
       params: {
         content: '记住我喜欢咖啡',
@@ -5017,8 +5193,12 @@ describe('PluginRuntimeService', () => {
 
     hostService.call
       .mockResolvedValueOnce({
+        sourceKind: 'plugin',
+        sourceId: 'builtin.memory-tools',
         pluginId: 'builtin.memory-tools',
         runtimeKind: 'builtin',
+        toolId: 'plugin:builtin.memory-tools:save_memory',
+        callName: 'save_memory',
         toolName: 'save_memory',
         callSource: 'chat-tool',
         paramKeys: ['content'],
@@ -5050,8 +5230,12 @@ describe('PluginRuntimeService', () => {
       params: {
         key: 'tool.builtin.memory-tools.save_memory.last-call',
         value: {
+          sourceKind: 'plugin',
+          sourceId: 'builtin.memory-tools',
           pluginId: 'builtin.memory-tools',
           runtimeKind: 'builtin',
+          toolId: 'plugin:builtin.memory-tools:save_memory',
+          callName: 'save_memory',
           toolName: 'save_memory',
           callSource: 'chat-tool',
           paramKeys: ['content'],
@@ -5070,8 +5254,12 @@ describe('PluginRuntimeService', () => {
         type: 'tool:observed',
         message: '工具 builtin.memory-tools:save_memory 执行完成',
         metadata: {
+          sourceKind: 'plugin',
+          sourceId: 'builtin.memory-tools',
           pluginId: 'builtin.memory-tools',
           runtimeKind: 'builtin',
+          toolId: 'plugin:builtin.memory-tools:save_memory',
+          callName: 'save_memory',
           toolName: 'save_memory',
           callSource: 'chat-tool',
           paramKeys: ['content'],

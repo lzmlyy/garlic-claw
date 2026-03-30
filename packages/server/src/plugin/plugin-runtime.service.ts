@@ -78,6 +78,7 @@ import type {
   ToolBeforeCallHookPayload,
   ToolBeforeCallHookShortCircuitResult,
 } from '@garlic-claw/shared';
+import type { Tool } from 'ai';
 import {
   BadRequestException,
   ForbiddenException,
@@ -89,7 +90,6 @@ import {
 import { ModuleRef } from '@nestjs/core';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import { createStepLimit } from '../ai/sdk-adapter';
-import { filterToolSet, getPluginTools } from '../ai/tools';
 import { AutomationService } from '../automation/automation.service';
 import type { ChatRuntimeMessage } from '../chat/chat-message-session';
 import { toAiSdkMessages } from '../chat/sdk-message-converter';
@@ -496,6 +496,16 @@ export class PluginRuntimeService {
   private readonly conversationSessions = new Map<string, ConversationSessionRecord>();
   private automationService?: AutomationService;
   private chatMessageService?: PluginConversationMessageWriter;
+  private toolRegistryPromise?: Promise<{
+    buildToolSet: (input: {
+      context: PluginCallContext;
+      allowedToolNames?: string[];
+      excludedSources?: Array<{
+        kind: 'plugin' | 'mcp';
+        id: string;
+      }>;
+    }) => Promise<Record<string, Tool> | undefined>;
+  }>;
 
   constructor(
     private readonly pluginService: PluginService,
@@ -827,35 +837,52 @@ export class PluginRuntimeService {
     toolName: string;
     params: JsonObject;
     context: PluginCallContext;
+    skipLifecycleHooks?: boolean;
   }): Promise<JsonValue> {
     const record = this.getRecordOrThrow(input.pluginId);
     this.assertPluginEnabled(record, input.context);
     const targetTool = this.findToolOrThrow(record, input.toolName);
-    const beforeCallResult = await this.runToolBeforeCallHooks({
-      context: input.context,
-      payload: {
-        context: {
-          ...input.context,
-        },
+    const lifecyclePayload = {
+      context: {
+        ...input.context,
+      },
+      source: {
+        kind: 'plugin' as const,
+        id: input.pluginId,
+        label: record.manifest.name || input.pluginId,
         pluginId: input.pluginId,
         runtimeKind: record.runtimeKind,
-        tool: {
-          ...targetTool,
-          parameters: {
-            ...targetTool.parameters,
-          },
-        },
-        params: {
-          ...input.params,
+      },
+      pluginId: input.pluginId,
+      runtimeKind: record.runtimeKind,
+      tool: {
+        toolId: `plugin:${input.pluginId}:${targetTool.name}`,
+        callName: record.runtimeKind === 'builtin'
+          ? targetTool.name
+          : `${input.pluginId}__${targetTool.name}`,
+        ...targetTool,
+        parameters: {
+          ...targetTool.parameters,
         },
       },
-    });
+      params: {
+        ...input.params,
+      },
+    };
+    let toolParams = lifecyclePayload.params;
 
-    if (beforeCallResult.action === 'short-circuit') {
-      return beforeCallResult.output;
+    if (!input.skipLifecycleHooks) {
+      const beforeCallResult = await this.runToolBeforeCallHooks({
+        context: input.context,
+        payload: lifecyclePayload,
+      });
+
+      if (beforeCallResult.action === 'short-circuit') {
+        return beforeCallResult.output;
+      }
+
+      toolParams = beforeCallResult.payload.params;
     }
-
-    const toolParams = beforeCallResult.payload.params;
 
     try {
       const output = await this.runWithPluginExecutionSlot({
@@ -877,20 +904,14 @@ export class PluginRuntimeService {
         ),
       });
 
+      if (input.skipLifecycleHooks) {
+        return output;
+      }
+
       const afterCallPayload = await this.runToolAfterCallHooks({
         context: input.context,
         payload: {
-          context: {
-            ...input.context,
-          },
-          pluginId: input.pluginId,
-          runtimeKind: record.runtimeKind,
-          tool: {
-            ...targetTool,
-            parameters: {
-              ...targetTool.parameters,
-            },
-          },
+          ...lifecyclePayload,
           params: {
             ...toolParams,
           },
@@ -3370,6 +3391,26 @@ export class PluginRuntimeService {
     return resolved;
   }
 
+  private async getToolRegistry() {
+    if (this.toolRegistryPromise) {
+      return this.toolRegistryPromise;
+    }
+
+    this.toolRegistryPromise = (async () => {
+      const { ToolRegistryService } = await import('../tool/tool-registry.service');
+      const resolved = this.moduleRef.get(ToolRegistryService, {
+        strict: false,
+      });
+      if (!resolved) {
+        throw new NotFoundException('ToolRegistryService is not available');
+      }
+
+      return resolved;
+    })();
+
+    return this.toolRegistryPromise;
+  }
+
   /**
    * 为当前会话启动一条活动等待态。
    * @param input 插件、上下文与超时参数
@@ -4205,7 +4246,7 @@ export class PluginRuntimeService {
       modelConfig,
       sdkMessages: toAiSdkMessages(request.messages as unknown as ChatRuntimeMessage[]),
     });
-    const tools = this.buildSubagentToolSet({
+    const tools = await this.buildSubagentToolSet({
       pluginId: input.pluginId,
       context: input.context,
       providerId: String(modelConfig.providerId),
@@ -4291,7 +4332,7 @@ export class PluginRuntimeService {
    * @param input 调用参数
    * @returns 裁剪后的工具集合
    */
-  private buildSubagentToolSet(input: {
+  private async buildSubagentToolSet(input: {
     pluginId: string;
     context: PluginCallContext;
     providerId: string;
@@ -4302,28 +4343,24 @@ export class PluginRuntimeService {
       return undefined;
     }
 
-    const callerRecord = this.getRecordOrThrow(input.pluginId);
-    const ownVisibleToolNames = new Set(
-      (callerRecord.manifest.tools ?? []).map((tool) =>
-        callerRecord.runtimeKind === 'builtin'
-          ? tool.name
-          : `${input.pluginId}__${tool.name}`),
-    );
-    const visibleTools = getPluginTools(this, {
-      source: 'subagent',
-      userId: input.context.userId,
-      conversationId: input.context.conversationId,
-      activeProviderId: input.providerId,
-      activeModelId: input.modelId,
-      activePersonaId: input.context.activePersonaId,
+    const toolRegistry = await this.getToolRegistry();
+    return toolRegistry.buildToolSet({
+      context: {
+        source: 'subagent',
+        userId: input.context.userId,
+        conversationId: input.context.conversationId,
+        activeProviderId: input.providerId,
+        activeModelId: input.modelId,
+        activePersonaId: input.context.activePersonaId,
+      },
+      allowedToolNames: input.toolNames,
+      excludedSources: [
+        {
+          kind: 'plugin',
+          id: input.pluginId,
+        },
+      ],
     });
-    const filteredSelfTools = Object.fromEntries(
-      Object.entries(visibleTools).filter(
-        ([toolName]) => !ownVisibleToolNames.has(toolName),
-      ),
-    );
-
-    return filterToolSet(filteredSelfTools, input.toolNames);
   }
 
   /**
@@ -4674,8 +4711,11 @@ function cloneToolBeforeCallHookPayload(
     context: {
       ...payload.context,
     },
-    pluginId: payload.pluginId,
-    runtimeKind: payload.runtimeKind,
+    source: {
+      ...payload.source,
+    },
+    ...(payload.pluginId ? { pluginId: payload.pluginId } : {}),
+    ...(payload.runtimeKind ? { runtimeKind: payload.runtimeKind } : {}),
     tool: {
       ...payload.tool,
       parameters: {
@@ -4700,8 +4740,11 @@ function cloneToolAfterCallHookPayload(
     context: {
       ...payload.context,
     },
-    pluginId: payload.pluginId,
-    runtimeKind: payload.runtimeKind,
+    source: {
+      ...payload.source,
+    },
+    ...(payload.pluginId ? { pluginId: payload.pluginId } : {}),
+    ...(payload.runtimeKind ? { runtimeKind: payload.runtimeKind } : {}),
     tool: {
       ...payload.tool,
       parameters: {

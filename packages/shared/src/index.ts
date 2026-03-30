@@ -5,4 +5,5 @@ export * from './types/chat';
 export * from './types/json';
 export * from './types/plugin';
 export * from './types/roles';
+export * from './types/tool';
 

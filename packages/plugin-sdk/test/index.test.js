@@ -55,27 +55,94 @@ function createMessagePayload(content) {
   };
 }
 
-async function invokeMessageHook(client, payload) {
-  const responses = [];
-  client.send = (type, action, responsePayload, requestId) => {
-    responses.push({
+function createConversationSessionInfo(overrides = {}) {
+  return {
+    pluginId: 'plugin.sdk.test',
+    conversationId: 'conv-1',
+    timeoutMs: 60000,
+    startedAt: '2026-03-30T10:00:00.000Z',
+    expiresAt: '2026-03-30T10:01:00.000Z',
+    lastMatchedAt: null,
+    captureHistory: false,
+    historyMessages: [],
+    ...overrides,
+  };
+}
+
+function installHostCallMock(client, handlers) {
+  const sent = [];
+  client.ws = {
+    readyState: 1,
+  };
+  client.send = (type, action, payload, requestId) => {
+    sent.push({
       type,
       action,
-      payload: responsePayload,
+      payload,
       requestId,
+    });
+
+    if (action !== WS_ACTION.HOST_CALL) {
+      return;
+    }
+
+    const handler = handlers[payload.method];
+    if (!handler) {
+      throw new Error(`Unexpected host method: ${payload.method}`);
+    }
+
+    queueMicrotask(() => {
+      const data = typeof handler === 'function'
+        ? handler(payload.params, payload.context, requestId)
+        : handler;
+
+      void client.handleMessage({
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_RESULT,
+        requestId,
+        payload: {
+          data,
+        },
+      });
     });
   };
 
-  await client.handleHookInvoke({
-    type: WS_TYPE.PLUGIN,
-    action: WS_ACTION.HOOK_INVOKE,
-    requestId: 'req-1',
-    payload: {
-      hookName: 'message:received',
-      context: payload.context,
-      payload,
-    },
-  });
+  return sent;
+}
+
+async function invokeMessageHook(client, payload) {
+  const responses = [];
+  const previousSend = client.send;
+  client.send = (type, action, responsePayload, requestId) => {
+    if (action === WS_ACTION.HOOK_RESULT) {
+      responses.push({
+        type,
+        action,
+        payload: responsePayload,
+        requestId,
+      });
+      return;
+    }
+
+    if (typeof previousSend === 'function') {
+      previousSend(type, action, responsePayload, requestId);
+    }
+  };
+
+  try {
+    await client.handleHookInvoke({
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.HOOK_INVOKE,
+      requestId: 'req-1',
+      payload: {
+        hookName: 'message:received',
+        context: payload.context,
+        payload,
+      },
+    });
+  } finally {
+    client.send = previousSend;
+  }
 
   assert.equal(responses.length, 1);
   return responses[0];
@@ -389,4 +456,244 @@ test('execution context exposes message target lookup and generic send host APIs
     },
     requestId: sent[2].requestId,
   });
+});
+
+test('execution context exposes a conversation session controller helper', async () => {
+  const client = createClient();
+  let activeSession = createConversationSessionInfo();
+  const sent = installHostCallMock(client, {
+    'conversation.session.start': (params) => {
+      activeSession = createConversationSessionInfo({
+        timeoutMs: params.timeoutMs,
+        captureHistory: Boolean(params.captureHistory),
+        metadata: params.metadata,
+      });
+      return activeSession;
+    },
+    'conversation.session.get': () => activeSession,
+    'conversation.session.keep': (params) => {
+      activeSession = {
+        ...activeSession,
+        timeoutMs: params.timeoutMs,
+        expiresAt: '2026-03-30T10:02:00.000Z',
+      };
+      return activeSession;
+    },
+    'conversation.session.finish': () => {
+      activeSession = null;
+      return true;
+    },
+  });
+
+  const executionContext = client.createExecutionContext({
+    source: 'chat-hook',
+    conversationId: 'conv-1',
+  });
+
+  assert.ok(executionContext.host.conversationSession);
+
+  const controller = executionContext.host.conversationSession;
+  const started = await controller.start({
+    timeoutMs: 60000,
+    captureHistory: true,
+    metadata: {
+      step: 'profile-name',
+    },
+  });
+
+  assert.equal(controller.conversationId, 'conv-1');
+  assert.equal(controller.timeoutMs, 60000);
+  assert.equal(controller.captureHistory, true);
+  assert.deepEqual(controller.metadata, {
+    step: 'profile-name',
+  });
+  assert.deepEqual(started, createConversationSessionInfo({
+    captureHistory: true,
+    metadata: {
+      step: 'profile-name',
+    },
+  }));
+
+  const kept = await controller.keep({
+    timeoutMs: 90000,
+    resetTimeout: true,
+  });
+  assert.equal(kept.timeoutMs, 90000);
+  assert.equal(controller.expiresAt, '2026-03-30T10:02:00.000Z');
+
+  const synced = await controller.sync();
+  assert.equal(synced.timeoutMs, 90000);
+  assert.equal(controller.session.timeoutMs, 90000);
+
+  const finished = await controller.finish();
+  assert.equal(finished, true);
+  assert.equal(controller.session, null);
+  assert.equal(controller.expiresAt, null);
+
+  assert.deepEqual(
+    sent.map((entry) => entry.payload.method),
+    [
+      'conversation.session.start',
+      'conversation.session.keep',
+      'conversation.session.get',
+      'conversation.session.finish',
+    ],
+  );
+});
+
+test('sessionWaiter routes active session messages before the regular message pipeline', async () => {
+  const client = createClient();
+  const seen = [];
+  let activeSession = createConversationSessionInfo({
+    captureHistory: true,
+    metadata: {
+      step: 1,
+    },
+  });
+  const sent = installHostCallMock(client, {
+    'conversation.session.start': (params) => {
+      activeSession = createConversationSessionInfo({
+        timeoutMs: params.timeoutMs,
+        captureHistory: Boolean(params.captureHistory),
+        metadata: params.metadata,
+      });
+      return activeSession;
+    },
+    'conversation.session.keep': (params) => {
+      activeSession = createConversationSessionInfo({
+        timeoutMs: params.timeoutMs,
+        captureHistory: true,
+        metadata: {
+          step: 2,
+        },
+        lastMatchedAt: '2026-03-30T10:00:30.000Z',
+        historyMessages: [
+          {
+            role: 'user',
+            content: '第二步',
+            parts: [
+              {
+                type: 'text',
+                text: '第二步',
+              },
+            ],
+          },
+        ],
+      });
+      return activeSession;
+    },
+  });
+
+  client.onMessage((payload) => {
+    seen.push(`fallback:${payload.message.content}`);
+    return {
+      action: 'short-circuit',
+      assistantContent: `fallback:${payload.message.content}`,
+    };
+  });
+
+  assert.equal(typeof client.sessionWaiter, 'function');
+  const waiter = client.sessionWaiter(async (controller, payload) => {
+    seen.push(`waiter:${payload.message.content}`);
+    assert.equal(controller.conversationId, 'conv-1');
+    assert.equal(controller.timeoutMs, 60000);
+    assert.deepEqual(controller.metadata, {
+      step: 1,
+    });
+
+    await controller.keep({
+      timeoutMs: 45000,
+      resetTimeout: true,
+    });
+
+    return {
+      action: 'short-circuit',
+      assistantContent: `waiter:${payload.message.content}`,
+    };
+  });
+
+  const executionContext = client.createExecutionContext({
+    source: 'chat-hook',
+    conversationId: 'conv-1',
+  });
+  await waiter.start(executionContext, {
+    timeoutMs: 60000,
+    captureHistory: true,
+    metadata: {
+      step: 1,
+    },
+  });
+
+  const response = await invokeMessageHook(client, {
+    ...createMessagePayload('第二步'),
+    session: createConversationSessionInfo({
+      captureHistory: true,
+      metadata: {
+        step: 1,
+      },
+    }),
+  });
+
+  assert.equal(response.payload.data.assistantContent, 'waiter:第二步');
+  assert.deepEqual(seen, ['waiter:第二步']);
+  assert.deepEqual(
+    sent.map((entry) => entry.payload.method),
+    [
+      'conversation.session.start',
+      'conversation.session.keep',
+    ],
+  );
+});
+
+test('sessionWaiter unregisters after finish and later messages fall back to regular handlers', async () => {
+  const client = createClient();
+  let activeSession = createConversationSessionInfo();
+  const sent = installHostCallMock(client, {
+    'conversation.session.start': () => activeSession,
+    'conversation.session.finish': () => {
+      activeSession = null;
+      return true;
+    },
+  });
+
+  client.onMessage((payload) => ({
+    action: 'short-circuit',
+    assistantContent: `fallback:${payload.message.content}`,
+  }));
+
+  assert.equal(typeof client.sessionWaiter, 'function');
+  const waiter = client.sessionWaiter(async (controller, payload) => {
+    await controller.finish();
+    return {
+      action: 'short-circuit',
+      assistantContent: `waiter:${payload.message.content}`,
+    };
+  });
+
+  const executionContext = client.createExecutionContext({
+    source: 'chat-hook',
+    conversationId: 'conv-1',
+  });
+  await waiter.start(executionContext, {
+    timeoutMs: 60000,
+  });
+
+  const first = await invokeMessageHook(client, {
+    ...createMessagePayload('退出'),
+    session: createConversationSessionInfo(),
+  });
+  assert.equal(first.payload.data.assistantContent, 'waiter:退出');
+
+  const second = await invokeMessageHook(
+    client,
+    createMessagePayload('普通消息'),
+  );
+  assert.equal(second.payload.data.assistantContent, 'fallback:普通消息');
+  assert.deepEqual(
+    sent.map((entry) => entry.payload.method),
+    [
+      'conversation.session.start',
+      'conversation.session.finish',
+    ],
+  );
 });

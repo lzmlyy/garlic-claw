@@ -1,9 +1,3 @@
-import {
-  filterToolSet,
-  getPluginToolSummaries,
-  getPluginTools,
-} from '../ai/tools';
-import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import type { ChatRuntimeMessage } from './chat-message-session';
 import type { SendMessagePartDto } from './dto/chat.dto';
 import {
@@ -11,6 +5,7 @@ import {
   type UserMessageInput,
 } from './message-parts';
 import { DEFAULT_PERSONA_PROMPT } from '../persona/default-persona';
+import { ToolRegistryService } from '../tool/tool-registry.service';
 
 export const CHAT_SYSTEM_PROMPT = DEFAULT_PERSONA_PROMPT;
 
@@ -101,9 +96,9 @@ export function hasActiveAssistantMessage(
  * @param conversationId 当前对话 ID
  * @returns 工具集合；模型不支持时返回 undefined
  */
-export function buildChatToolSet(params: {
+export async function buildChatToolSet(params: {
   supportsToolCall: boolean;
-  pluginRuntime: PluginRuntimeService;
+  toolRegistry: ToolRegistryService;
   userId: string;
   conversationId: string;
   activeProviderId: string;
@@ -115,15 +110,17 @@ export function buildChatToolSet(params: {
     return undefined;
   }
 
-  return filterToolSet({
-    ...getPluginTools(params.pluginRuntime, {
+  return params.toolRegistry.buildToolSet({
+    context: {
       userId: params.userId,
       conversationId: params.conversationId,
+      source: 'chat-tool',
       activeProviderId: params.activeProviderId,
       activeModelId: params.activeModelId,
       activePersonaId: params.activePersonaId,
-    }),
-  }, params.allowedToolNames);
+    },
+    allowedToolNames: params.allowedToolNames,
+  });
 }
 
 /**
@@ -135,20 +132,23 @@ export function buildChatToolSet(params: {
  * @param activeModelId 当前 model ID
  * @returns 当前聊天链路可见的工具摘要列表
  */
-export function listChatAvailableTools(params: {
-  pluginRuntime: PluginRuntimeService;
+export async function listChatAvailableTools(params: {
+  toolRegistry: ToolRegistryService;
   userId: string;
   conversationId: string;
   activeProviderId: string;
   activeModelId: string;
   activePersonaId?: string;
 }) {
-  return getPluginToolSummaries(params.pluginRuntime, {
-    userId: params.userId,
-    conversationId: params.conversationId,
-    activeProviderId: params.activeProviderId,
-    activeModelId: params.activeModelId,
-    activePersonaId: params.activePersonaId,
+  return params.toolRegistry.listAvailableToolSummaries({
+    context: {
+      userId: params.userId,
+      conversationId: params.conversationId,
+      source: 'chat-tool',
+      activeProviderId: params.activeProviderId,
+      activeModelId: params.activeModelId,
+      activePersonaId: params.activePersonaId,
+    },
   });
 }
 

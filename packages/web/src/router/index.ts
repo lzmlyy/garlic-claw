@@ -36,6 +36,11 @@ const router = createRouter({
           component: () => import('../views/PluginsView.vue'),
         },
         {
+          path: 'tools',
+          name: 'tools',
+          component: () => import('../views/ToolsView.vue'),
+        },
+        {
           path: 'automations',
           name: 'automations',
           component: () => import('../views/AutomationsView.vue'),

@@ -9,7 +9,7 @@ interface CacheEntry<T> {
 @Injectable()
 export class CacheService implements OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
-  private memoryCache = new Map<string, CacheEntry<any>>();
+  private memoryCache = new Map<string, CacheEntry<unknown>>();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private useRedis: boolean;
 

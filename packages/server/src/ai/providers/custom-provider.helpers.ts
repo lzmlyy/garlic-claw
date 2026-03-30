@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
@@ -44,6 +45,7 @@ const createGeminiProvider = createLazyCompatibleProviderFactory(
   '@ai-sdk/google',
   'createGoogleGenerativeAI',
 );
+const localRequire = createRequire(__filename);
 
 function createLazyCompatibleProviderFactory(
   moduleName: string,
@@ -64,11 +66,14 @@ function createLazyCompatibleProviderFactory(
 
 function loadOptionalModule(moduleName: string): Record<string, unknown> {
   try {
-    return require(moduleName) as Record<string, unknown>;
+    return localRequire(moduleName) as Record<string, unknown>;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(
       `缺少兼容 Provider SDK "${moduleName}"。如需启用对应格式，请先安装该依赖。原始错误: ${detail}`,
+      {
+        cause: error,
+      },
     );
   }
 }

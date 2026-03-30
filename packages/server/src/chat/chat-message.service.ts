@@ -21,6 +21,7 @@ import type { ModelConfig } from '../ai/types/provider.types';
 import { PersonaService } from '../persona/persona.service';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ToolRegistryService } from '../tool/tool-registry.service';
 import {
   buildChatToolSet,
   CHAT_SYSTEM_PROMPT,
@@ -123,6 +124,7 @@ export class ChatMessageService {
     private readonly personaService: PersonaService,
     @Inject(forwardRef(() => PluginRuntimeService))
     private readonly pluginRuntime: PluginRuntimeService,
+    private readonly toolRegistry: ToolRegistryService,
     private readonly modelInvocation: ChatModelInvocationService,
     private readonly chatTaskService: ChatTaskService,
   ) {}
@@ -267,6 +269,18 @@ export class ChatMessageService {
         visionFallbackEntries:
           preparedInvocation.transformResult?.visionFallback?.entries ?? [],
       });
+      const chatToolSet = await buildChatToolSet({
+        supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
+        toolRegistry: this.toolRegistry,
+        userId,
+        conversationId,
+        activeProviderId: beforeModelResult.modelConfig.providerId,
+        activeModelId: beforeModelResult.modelConfig.id,
+        activePersonaId: resolvedPersona.activePersonaId,
+        allowedToolNames: beforeModelResult.request.availableTools.map(
+          (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
+        ),
+      });
 
       this.chatTaskService.startTask({
         assistantMessageId: assistantMessageWithMetadata.id,
@@ -282,7 +296,7 @@ export class ChatMessageService {
           activeProviderId: beforeModelResult.modelConfig.providerId,
           activeModelId: beforeModelResult.modelConfig.id,
           activePersonaId: resolvedPersona.activePersonaId,
-          supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
+          tools: chatToolSet,
         }),
         onComplete: (result) =>
           this.applyFinalResponseHooks({
@@ -409,6 +423,18 @@ export class ChatMessageService {
           visionFallbackEntries:
             preparedInvocation.transformResult?.visionFallback?.entries ?? [],
         });
+      const chatToolSet = await buildChatToolSet({
+        supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
+        toolRegistry: this.toolRegistry,
+        userId,
+        conversationId,
+        activeProviderId: beforeModelResult.modelConfig.providerId,
+        activeModelId: beforeModelResult.modelConfig.id,
+        activePersonaId: resolvedPersona.activePersonaId,
+        allowedToolNames: beforeModelResult.request.availableTools.map(
+          (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
+        ),
+      });
 
       this.chatTaskService.startTask({
         assistantMessageId: assistantMessageWithMetadata.id,
@@ -424,7 +450,7 @@ export class ChatMessageService {
           activeProviderId: beforeModelResult.modelConfig.providerId,
           activeModelId: beforeModelResult.modelConfig.id,
           activePersonaId: resolvedPersona.activePersonaId,
-          supportsToolCall: beforeModelResult.modelConfig.capabilities.toolCall,
+          tools: chatToolSet,
         }),
         onComplete: (result) =>
           this.applyFinalResponseHooks({
@@ -896,7 +922,7 @@ export class ChatMessageService {
     activeProviderId: string;
     activeModelId: string;
     activePersonaId: string;
-    supportsToolCall: boolean;
+    tools: Awaited<ReturnType<typeof buildChatToolSet>>;
   }) {
     return (abortSignal: AbortSignal) => {
       const hookContext = this.createChatLifecycleContext({
@@ -922,18 +948,7 @@ export class ChatMessageService {
       return this.modelInvocation.streamPrepared({
         prepared: input.preparedInvocation,
         system: input.request.systemPrompt,
-        tools: buildChatToolSet({
-          supportsToolCall: input.supportsToolCall,
-          pluginRuntime: this.pluginRuntime,
-          userId: input.userId,
-          conversationId: input.conversationId,
-          activeProviderId: input.activeProviderId,
-          activeModelId: input.activeModelId,
-          activePersonaId: input.activePersonaId,
-          allowedToolNames: input.request.availableTools.map(
-            (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
-          ),
-        }),
+        tools: input.tools,
         variant: input.request.variant,
         providerOptions: input.request.providerOptions,
         headers: input.request.headers,
@@ -974,8 +989,8 @@ export class ChatMessageService {
           modelId: input.modelConfig.id,
           systemPrompt: input.systemPrompt,
           messages: input.messages,
-          availableTools: listChatAvailableTools({
-            pluginRuntime: this.pluginRuntime,
+          availableTools: await listChatAvailableTools({
+            toolRegistry: this.toolRegistry,
             userId: input.userId,
             conversationId: input.conversationId,
             activeProviderId: input.modelConfig.providerId,

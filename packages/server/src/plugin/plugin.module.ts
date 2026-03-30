@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { KbModule } from '../kb/kb.module';
 import { PersonaModule } from '../persona/persona.module';
+import { ToolModule } from '../tool/tool.module';
 import { BuiltinPluginLoader } from './builtin/builtin-plugin.loader';
 import { PluginAdminService } from './plugin-admin.service';
 import { PluginCronService } from './plugin-cron.service';
@@ -14,7 +15,7 @@ import { PluginStateService } from './plugin-state.service';
 import { PluginService } from './plugin.service';
 
 @Module({
-  imports: [JwtModule.register({}), KbModule, PersonaModule],
+  imports: [JwtModule.register({}), KbModule, PersonaModule, forwardRef(() => ToolModule)],
   providers: [
     PluginService,
     PluginGateway,
