@@ -65,6 +65,28 @@ export class ToolAdminService {
     sourceId: string,
     action: PluginActionName,
   ): Promise<ToolSourceActionResult> {
+    if (action === 'reload') {
+      await this.mcpService.reloadServer(sourceId);
+      return {
+        accepted: true,
+        action,
+        sourceKind: 'mcp',
+        sourceId,
+        message: 'MCP source reloaded',
+      };
+    }
+
+    if (action === 'reconnect') {
+      await this.mcpService.reconnectServer(sourceId);
+      return {
+        accepted: true,
+        action,
+        sourceKind: 'mcp',
+        sourceId,
+        message: 'MCP source reconnected',
+      };
+    }
+
     if (action !== 'health-check') {
       throw new BadRequestException(`MCP source does not support action: ${action}`);
     }

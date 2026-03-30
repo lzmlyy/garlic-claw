@@ -301,6 +301,12 @@
         <h2>暂无工具源</h2>
         <p>当插件工具或 MCP 工具源完成加载后，这里会展示统一治理面。</p>
       </section>
+
+      <McpConfigPanel
+        class="detail-span"
+        :preferred-server-name="selectedSource?.kind === 'mcp' ? selectedSource.id : null"
+        @changed="refreshToolGovernance"
+      />
     </div>
   </div>
 </template>
@@ -308,6 +314,7 @@
 <script setup lang="ts">
 import type { PluginActionName, ToolInfo, ToolSourceInfo } from '@garlic-claw/shared'
 import { computed } from 'vue'
+import McpConfigPanel from '../components/tool-management/McpConfigPanel.vue'
 import { useToolManagement } from '../composables/use-tool-management'
 
 const {
@@ -457,6 +464,10 @@ function formatTime(value: string | null): string {
 function parameterSummary(tool: ToolInfo): string {
   const count = Object.keys(tool.parameters).length
   return count === 0 ? '无参数' : `${count} 个参数`
+}
+
+async function refreshToolGovernance() {
+  await refreshAll(selectedSourceKey.value)
 }
 </script>
 

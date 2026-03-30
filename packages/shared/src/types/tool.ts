@@ -43,3 +43,20 @@ export interface ToolSourceActionResult {
   sourceId: string;
   message: string;
 }
+
+export interface McpServerConfig {
+  name: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+export interface McpConfigSnapshot {
+  configPath: string;
+  servers: McpServerConfig[];
+}
+
+export interface McpServerDeleteResult {
+  deleted: boolean;
+  name: string;
+}

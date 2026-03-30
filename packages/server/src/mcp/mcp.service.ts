@@ -2,16 +2,11 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import * as path from 'path';
 import * as fs from 'fs/promises';
+import type { McpServerConfig } from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
-
-interface McpServerConfig {
-  name: string;
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
-}
+import { McpConfigService } from './mcp-config.service';
+import { resolveCityCoordinatesFilePath } from './mcp-path.util';
 
 interface McpToolListResponse {
   tools?: Array<{
@@ -76,44 +71,14 @@ export class McpService implements OnModuleInit {
   private cityCoordinates = new Map<string, CityCoordinate>();
   private cityCoordinatesLoaded = false;
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private readonly mcpConfig: McpConfigService,
+  ) {}
 
   async onModuleInit() {
-    await this.loadMcpServers();
+    await this.reloadServersFromConfig();
     await this.loadCityCoordinates();
-  }
-
-  private async resolveProjectRoot() {
-    let currentPath = process.cwd();
-    let projectRoot = currentPath;
-
-    while (currentPath !== path.parse(currentPath).root) {
-      const pkgJsonPath = path.join(currentPath, 'package.json');
-      try {
-        await fs.access(pkgJsonPath);
-        const pkgContent = await fs.readFile(pkgJsonPath, 'utf-8');
-        const pkg = JSON.parse(pkgContent) as { name?: string };
-        if (pkg.name !== '@garlic-claw/server') {
-          projectRoot = currentPath;
-          break;
-        }
-      } catch {
-        // package.json 不存在或无法读取，继续向上查找
-      }
-
-      const parentDir = path.dirname(currentPath);
-      if (
-        path.basename(parentDir) === 'packages'
-        && path.basename(currentPath) === 'server'
-      ) {
-        projectRoot = path.dirname(parentDir);
-        break;
-      }
-
-      currentPath = parentDir;
-    }
-
-    return projectRoot;
   }
 
   /**
@@ -128,41 +93,34 @@ export class McpService implements OnModuleInit {
     ]);
   }
 
-  private async loadMcpServers() {
+  async reloadServersFromConfig(): Promise<void> {
     try {
-      const projectRoot = await this.resolveProjectRoot();
-      const mcpConfigPath = path.join(projectRoot, '.mcp', 'mcp.json');
-      try {
-        await fs.access(mcpConfigPath);
-      } catch {
-        return;
-      }
+      await this.disconnectAllClients();
+      this.serverRecords.clear();
 
-      const configContent = await fs.readFile(mcpConfigPath, 'utf-8');
-      const config = JSON.parse(configContent) as {
-        mcpServers?: Record<string, McpServerConfig>;
-      };
-
-      const servers = config.mcpServers || {};
-
-      for (const [name, serverConfig] of Object.entries(servers)) {
-        this.serverRecords.set(name, {
-          config: serverConfig as McpServerConfig,
-          status: {
-            name,
-            connected: false,
-            enabled: true,
-            health: 'unknown',
-            lastError: null,
-            lastCheckedAt: null,
-          },
-          tools: [],
-        });
-        await this.connectMcpServer(name, serverConfig as McpServerConfig);
+      const snapshot = await this.mcpConfig.getSnapshot();
+      for (const server of snapshot.servers) {
+        this.setInitialServerRecord(server);
+        await this.connectMcpServer(server.name, server);
       }
     } catch (error) {
       this.logger.warn('加载 MCP 服务器配置失败', error);
     }
+  }
+
+  async reloadServer(name: string): Promise<void> {
+    const config = await this.mcpConfig.getServer(name);
+    if (!config) {
+      throw new Error(`MCP server not found: ${name}`);
+    }
+
+    await this.disconnectServer(name);
+    this.setInitialServerRecord(config);
+    await this.connectMcpServer(config.name, config);
+  }
+
+  async reconnectServer(name: string): Promise<void> {
+    await this.reloadServer(name);
   }
 
   /**
@@ -170,8 +128,7 @@ export class McpService implements OnModuleInit {
    */
   private async loadCityCoordinates() {
     try {
-      const projectRoot = await this.resolveProjectRoot();
-      const cityCoordsPath = path.join(projectRoot, '.mcp', 'city-coordinates.json');
+      const cityCoordsPath = resolveCityCoordinatesFilePath();
 
       try {
         await fs.access(cityCoordsPath);
@@ -207,7 +164,7 @@ export class McpService implements OnModuleInit {
         this.logger.log(`尝试连接 MCP 服务器 "${name}" (第 ${attempt}/${MCP_MAX_RETRIES} 次)`);
 
         // 替换环境变量
-        const env = config.env || {};
+        const env: Record<string, string> = config.env ?? {};
         const resolvedEnv: Record<string, string> = {};
         for (const [key, value] of Object.entries(env)) {
           if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
@@ -479,5 +436,45 @@ export class McpService implements OnModuleInit {
       lastCheckedAt: new Date().toISOString(),
     };
     this.serverRecords.set(name, existing);
+  }
+
+  private setInitialServerRecord(config: McpServerConfig): void {
+    this.serverRecords.set(config.name, {
+      config,
+      status: {
+        name: config.name,
+        connected: false,
+        enabled: true,
+        health: 'unknown',
+        lastError: null,
+        lastCheckedAt: null,
+      },
+      tools: [],
+    });
+  }
+
+  private async disconnectAllClients(): Promise<void> {
+    await Promise.all(
+      [...this.clients.values()].map(async (client) => {
+        try {
+          await client.close();
+        } catch {
+          // 忽略关闭阶段的清理错误，避免阻塞整体重载。
+        }
+      }),
+    );
+    this.clients.clear();
+  }
+
+  private async disconnectServer(name: string): Promise<void> {
+    const client = this.clients.get(name);
+    if (client) {
+      try {
+        await client.close();
+      } catch {
+        // 忽略关闭阶段的清理错误，避免阻塞单个 server 重连。
+      }
+      this.clients.delete(name);
+    }
   }
 }

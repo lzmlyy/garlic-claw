@@ -4,6 +4,12 @@ import type { JsonObject } from '../common/types/json-value';
 import { McpService } from '../mcp/mcp.service';
 import type { ToolProvider, ToolProviderTool } from './tool.types';
 
+const mcpSupportedActions: Array<'health-check' | 'reload' | 'reconnect'> = [
+  'health-check',
+  'reload',
+  'reconnect',
+];
+
 @Injectable()
 export class McpToolProvider implements ToolProvider {
   readonly kind = 'mcp' as const;
@@ -19,7 +25,7 @@ export class McpToolProvider implements ToolProvider {
       health: status.health,
       lastError: status.lastError,
       lastCheckedAt: status.lastCheckedAt,
-      supportedActions: ['health-check' as const],
+      supportedActions: mcpSupportedActions,
     }));
   }
 
@@ -40,7 +46,7 @@ export class McpToolProvider implements ToolProvider {
           health: status?.health ?? 'unknown',
           lastError: status?.lastError ?? null,
           lastCheckedAt: status?.lastCheckedAt ?? null,
-          supportedActions: status?.supportedActions ?? ['health-check'],
+          supportedActions: status?.supportedActions ?? mcpSupportedActions,
         },
         name: tool.name,
         description: tool.description || tool.name,

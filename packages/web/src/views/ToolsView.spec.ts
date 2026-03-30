@@ -118,6 +118,13 @@ vi.mock('../composables/use-tool-management', () => ({
   }),
 }))
 
+vi.mock('../components/tool-management/McpConfigPanel.vue', () => ({
+  default: {
+    name: 'McpConfigPanel',
+    template: '<section data-test="mcp-config-panel">MCP Config Panel</section>',
+  },
+}))
+
 describe('ToolsView', () => {
   it('renders the unified tool governance summary and selected tool list', () => {
     const wrapper = mount(ToolsView)
@@ -128,5 +135,6 @@ describe('ToolsView', () => {
     expect(wrapper.text()).toContain('mcp__weather-server__get_forecast')
     expect(wrapper.text()).toContain('获取天气预报')
     expect(wrapper.text()).toContain('工具总数')
+    expect(wrapper.text()).toContain('MCP Config Panel')
   })
 })

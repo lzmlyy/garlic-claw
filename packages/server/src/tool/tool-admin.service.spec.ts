@@ -10,6 +10,8 @@ describe('ToolAdminService', () => {
   };
   const mcpService = {
     listServerStatuses: jest.fn(),
+    reloadServer: jest.fn(),
+    reconnectServer: jest.fn(),
   };
 
   let service: ToolAdminService;
@@ -68,7 +70,7 @@ describe('ToolAdminService', () => {
         lastCheckedAt: '2026-03-30T14:00:00.000Z',
         totalTools: 1,
         enabledTools: 1,
-        supportedActions: ['health-check'],
+        supportedActions: ['health-check', 'reload', 'reconnect'],
       },
     ]);
     mcpService.listServerStatuses.mockReturnValue([
@@ -91,6 +93,45 @@ describe('ToolAdminService', () => {
       sourceId: 'weather-server',
       message: 'MCP source health check passed',
     });
+  });
+
+  it('runs MCP reload and reconnect actions through McpService', async () => {
+    toolRegistry.listSources.mockResolvedValue([
+      {
+        kind: 'mcp',
+        id: 'weather-server',
+        label: 'weather-server',
+        enabled: true,
+        health: 'error',
+        lastError: 'connection lost',
+        lastCheckedAt: '2026-03-30T14:00:00.000Z',
+        totalTools: 1,
+        enabledTools: 0,
+        supportedActions: ['health-check', 'reload', 'reconnect'],
+      },
+    ]);
+
+    await expect(
+      service.runSourceAction('mcp', 'weather-server', 'reload'),
+    ).resolves.toEqual({
+      accepted: true,
+      action: 'reload',
+      sourceKind: 'mcp',
+      sourceId: 'weather-server',
+      message: 'MCP source reloaded',
+    });
+    await expect(
+      service.runSourceAction('mcp', 'weather-server', 'reconnect'),
+    ).resolves.toEqual({
+      accepted: true,
+      action: 'reconnect',
+      sourceKind: 'mcp',
+      sourceId: 'weather-server',
+      message: 'MCP source reconnected',
+    });
+
+    expect(mcpService.reloadServer).toHaveBeenCalledWith('weather-server');
+    expect(mcpService.reconnectServer).toHaveBeenCalledWith('weather-server');
   });
 
   it('rejects unsupported source actions', async () => {

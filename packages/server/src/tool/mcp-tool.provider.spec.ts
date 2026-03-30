@@ -57,7 +57,7 @@ describe('McpToolProvider', () => {
           health: 'healthy',
           lastError: null,
           lastCheckedAt: '2026-03-30T10:00:00.000Z',
-          supportedActions: ['health-check'],
+          supportedActions: ['health-check', 'reload', 'reconnect'],
         },
         name: 'get_forecast',
         description: '获取天气预报',
