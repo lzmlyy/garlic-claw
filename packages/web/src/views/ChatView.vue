@@ -76,13 +76,17 @@ const {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 16px;
+  padding: 16px;
 }
 
 .chat-toolbar {
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--bg-card);
+  border-radius: var(--radius);
+  background: var(--header-gradient);
+  box-shadow: var(--shadow-sm), 0 0 15px rgba(103, 199, 207, 0.1);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .capability-row {
@@ -95,9 +99,10 @@ const {
 .capability-chip {
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(68, 204, 136, 0.14);
+  background: rgba(89, 207, 155, 0.14);
   color: var(--success);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .no-conversation {

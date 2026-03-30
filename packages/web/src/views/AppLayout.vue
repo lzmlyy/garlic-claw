@@ -73,6 +73,7 @@ function handleLogout() {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
+  box-shadow: 2px 0 20px rgba(103, 199, 207, 0.08);
 }
 
 .sidebar-header {
@@ -96,7 +97,7 @@ function handleLogout() {
   flex: 1 1 100px;
   text-align: center;
   padding: 0.4em;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   color: var(--text-muted);
   transition: background 0.15s, color 0.15s;
@@ -104,7 +105,7 @@ function handleLogout() {
 }
 
 .nav-link:hover {
-  background: var(--bg-card);
+  background: var(--bg-glass-light);
   color: var(--text);
 }
 
@@ -129,14 +130,14 @@ function handleLogout() {
   display: flex;
   align-items: center;
   padding: 0.6em 0.8em;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   margin-bottom: 2px;
   transition: background 0.15s;
 }
 
 .conversation-item:hover {
-  background: var(--bg-card);
+  background: var(--bg-glass-light);
 }
 
 .conversation-item.active {

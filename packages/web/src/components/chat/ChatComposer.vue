@@ -96,10 +96,12 @@ function handleInput(event: Event) {
 <style scoped>
 .input-area {
   padding: 16px;
-  border: 1px solid rgba(124, 106, 246, 0.18);
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: var(--bg-card);
-  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.18);
+  background: rgba(14, 24, 38, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.08);
 }
 
 .upload-notices {
@@ -169,12 +171,19 @@ function handleInput(event: Event) {
   min-height: 58px;
   max-height: 180px;
   padding: 16px 18px;
-  border: 1px solid rgba(124, 106, 246, 0.2);
+  border: 1px solid var(--border);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(16, 17, 31, 0.88), rgba(42, 43, 69, 0.92));
+  background: rgba(11, 21, 35, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text);
   resize: none;
   overflow-y: auto;
+}
+
+.composer-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.24);
 }
 
 .composer-button {

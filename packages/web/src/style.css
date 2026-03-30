@@ -1,17 +1,37 @@
 /* === Garlic Claw Global Styles === */
 :root {
-  --bg: #1a1b2e;
-  --bg-sidebar: #141525;
-  --bg-card: #222340;
-  --bg-input: #2a2b45;
-  --text: #e0e0ef;
-  --text-muted: #8888aa;
-  --accent: #7c6af6;
-  --accent-hover: #9b8aff;
-  --danger: #e05555;
-  --success: #44cc88;
-  --border: #333455;
-  --radius: 8px;
+  /* Plugins 风格 - 深蓝黑色渐变背景 */
+  --bg-card: rgba(14, 24, 38, 0.9);
+  --bg-input: rgba(18, 33, 52, 0.88);
+  --bg-sidebar: rgba(9, 15, 24, 0.98);
+  --bg-glass: rgba(15, 25, 40, 0.96);
+  --bg-glass-light: rgba(10, 17, 29, 0.96);
+
+  /* 颜色系统 */
+  --text: #ecf3ff;
+  --text-muted: #92a6c4;
+  --accent: #67c7cf;
+  --accent-hover: #9ce8e0;
+  --accent-light: rgba(103, 199, 207, 0.14);
+  --success: #59cf9b;
+  --danger: #f36c6c;
+  --warning: #f0c676;
+  --border: rgba(133, 163, 199, 0.18);
+  --border-hover: rgba(133, 163, 199, 0.3);
+  --border-glow: rgba(103, 199, 207, 0.15);
+
+  /* 间距与效果 */
+  --radius: 22px;
+  --radius-sm: 12px;
+  --radius-lg: 24px;
+  --shadow: 0 24px 56px rgba(1, 6, 15, 0.28);
+  --shadow-sm: 0 12px 28px rgba(1, 6, 15, 0.2);
+  --glass-blur: 18px;
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+
+  /* 标题渐变背景 */
+  --header-gradient: linear-gradient(135deg, rgba(103, 199, 207, 0.12), rgba(103, 199, 207, 0.05));
 }
 
 * {
@@ -24,9 +44,27 @@ html, body, #app {
   height: 100%;
   width: 100%;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top right, rgba(103, 199, 207, 0.14), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(240, 198, 118, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(9, 15, 24, 0.98), rgba(8, 13, 21, 0.99));
   color: var(--text);
   line-height: 1.6;
+  position: relative;
+}
+
+/* 添加全局网格背景图案 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent 72%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 a {
@@ -39,17 +77,24 @@ a:hover {
 
 button {
   cursor: pointer;
-  border: none;
-  border-radius: var(--radius);
-  padding: 0.5em 1em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 1.2rem;
   font-size: 0.9rem;
   font-family: inherit;
   background: var(--accent);
   color: #fff;
-  transition: background 0.2s;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 button:hover:not(:disabled) {
   background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+button:active:not(:disabled) {
+  background: var(--accent);
 }
 button:disabled {
   opacity: 0.5;
@@ -57,18 +102,25 @@ button:disabled {
 }
 
 input, textarea {
-  background: var(--bg-input);
-  color: var(--text);
+  width: 100%;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6em 0.8em;
-  font-size: 0.95rem;
+  background: rgba(11, 21, 35, 0.9);
+  color: var(--text);
+  padding: 0.65rem 0.82rem;
+  font-size: 0.92rem;
   font-family: inherit;
   outline: none;
-  width: 100%;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 input:focus, textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.24), 0 0 15px rgba(103, 199, 207, 0.15);
+}
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
 }
 
 /* Auth Pages */
@@ -78,10 +130,16 @@ input:focus, textarea:focus {
   justify-content: center;
   min-height: 100vh;
 }
+
 .auth-card {
-  background: var(--bg-card);
+  background:
+    linear-gradient(180deg, rgba(15, 25, 40, 0.96), rgba(10, 17, 29, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
   padding: 2.5rem;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow), 0 0 20px rgba(103, 199, 207, 0.12);
+  backdrop-filter: blur(var(--glass-blur));
   width: 380px;
   max-width: 90vw;
 }
@@ -160,15 +218,15 @@ input:focus, textarea:focus {
 .nav-link {
   flex: 1;
   text-align: center;
-  padding: 0.4em;
-  border-radius: var(--radius);
+  padding: 0.5em;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   color: var(--text-muted);
-  transition: background 0.15s, color 0.15s;
+  transition: all var(--transition-fast);
   text-decoration: none;
 }
 .nav-link:hover {
-  background: var(--bg-card);
+  background: var(--bg-glass-light);
   color: var(--text);
 }
 .nav-link.active {
@@ -184,14 +242,15 @@ input:focus, textarea:focus {
 .conversation-item {
   display: flex;
   align-items: center;
-  padding: 0.6em 0.8em;
-  border-radius: var(--radius);
+  padding: 0.7em 1em;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  margin-bottom: 2px;
-  transition: background 0.15s;
+  margin-bottom: 4px;
+  transition: all var(--transition-fast);
 }
 .conversation-item:hover {
-  background: var(--bg-card);
+  background: var(--bg-glass-light);
+  color: var(--text);
 }
 .conversation-item.active {
   background: var(--accent);

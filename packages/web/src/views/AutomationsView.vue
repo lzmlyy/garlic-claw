@@ -184,11 +184,14 @@ const {
 
 /* 创建表单 */
 .create-form {
-  background: var(--bg-card);
+  background: rgba(14, 24, 38, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   padding: 1.2rem;
-  border-radius: 12px;
+  border-radius: var(--radius);
   margin-bottom: 1.5rem;
   border: 1px solid var(--border);
+  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.08);
 }
 .create-form .field {
   margin-bottom: 0.8rem;
@@ -200,19 +203,23 @@ const {
   margin-bottom: 0.3rem;
 }
 .create-form select {
-  background: var(--bg-input);
+  background: rgba(11, 21, 35, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   padding: 0.5em 0.8em;
   font-size: 0.9rem;
   width: 100%;
 }
 .create-form textarea {
-  background: var(--bg-input);
+  background: rgba(11, 21, 35, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   padding: 0.65em 0.8em;
   font-size: 0.9rem;
   width: 100%;
@@ -233,10 +240,18 @@ const {
   gap: 0.8rem;
 }
 .automation-card {
-  background: var(--bg-card);
-  border-radius: 12px;
+  background: rgba(14, 24, 38, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-radius: var(--radius);
   padding: 1rem 1.2rem;
   border: 1px solid var(--border);
+  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.08);
+  transition: all 0.15s ease;
+}
+
+.automation-card:hover {
+  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 20px rgba(103, 199, 207, 0.12);
 }
 .automation-card.disabled {
   opacity: 0.6;

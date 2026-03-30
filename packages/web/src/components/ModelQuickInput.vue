@@ -222,15 +222,18 @@ defineExpose({
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 14px;
-  background: var(--bg-input);
+  background: rgba(11, 21, 35, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text);
 }
 
 .quick-input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.24);
 }
 
 .quick-input:disabled {
@@ -247,8 +250,10 @@ defineExpose({
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--bg-card);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
+  background: rgba(14, 24, 38, 0.95);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.1);
   z-index: 20;
 }
 
