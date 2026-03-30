@@ -1,5 +1,4 @@
 import type { PluginCallContext } from '@garlic-claw/shared';
-import { ToolGovernanceService } from './tool-governance.service';
 import { ToolRegistryService } from './tool-registry.service';
 import type { ToolProvider, ToolProviderTool } from './tool.types';
 
@@ -105,7 +104,6 @@ describe('ToolRegistryService', () => {
       },
     ]);
     const service = new ToolRegistryService(
-      new ToolGovernanceService(),
       {
         getSourceEnabled: jest.fn(),
         getToolEnabled: jest.fn(),
@@ -242,7 +240,6 @@ describe('ToolRegistryService', () => {
       mcpExecuteTool,
     );
     const service = new ToolRegistryService(
-      new ToolGovernanceService(),
       {
         getSourceEnabled: jest.fn(),
         getToolEnabled: jest.fn(),
@@ -324,7 +321,6 @@ describe('ToolRegistryService', () => {
       },
     ]);
     const service = new ToolRegistryService(
-      new ToolGovernanceService(),
       {
         getSourceEnabled: jest.fn().mockImplementation((kind: string, id: string) =>
           kind === 'plugin' && id === 'builtin.memory-tools' ? false : undefined),
@@ -380,7 +376,6 @@ describe('ToolRegistryService', () => {
       },
     }));
     const service = new ToolRegistryService(
-      new ToolGovernanceService(),
       {
         getSourceEnabled: jest.fn(),
         getToolEnabled: jest.fn(),

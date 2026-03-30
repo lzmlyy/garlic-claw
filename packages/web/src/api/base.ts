@@ -10,15 +10,6 @@ export class ApiError extends Error {
 }
 
 /**
- * 带响应元数据的 API 返回值。
- */
-export interface ApiResponse<T> {
-  status: number
-  headers: Record<string, string>
-  body: T
-}
-
-/**
  * 获取当前 API 基础路径。
  * @returns API 根路径
  */
@@ -41,22 +32,25 @@ export async function request<T>(
 }
 
 /**
- * 发起请求并保留状态码与响应头。
+ * 统一请求封装，并保留响应状态码与响应头。
  * @param url API 路径
  * @param options fetch 选项
- * @returns 带元数据的响应结果
+ * @returns 解析后的响应体与元数据
  */
 export async function requestWithMetadata<T>(
   url: string,
-  options: RequestInit,
-): Promise<ApiResponse<T>> {
+  options: RequestInit = {},
+): Promise<{
+  status: number
+  headers: Record<string, string>
+  body: T
+}> {
   const resolved = await sendRequest(url, options)
-  const body = await parseResponse<T>(resolved)
 
   return {
     status: resolved.status,
-    headers: readResponseHeaders(resolved.headers),
-    body,
+    headers: collectHeaders(resolved.headers),
+    body: await parseResponse<T>(resolved),
   }
 }
 
@@ -146,16 +140,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 /**
- * 把响应头拍平成普通对象，方便 UI 展示。
- * @param headers fetch Headers
- * @returns 普通对象形式的响应头
+ * 把响应头序列化为普通对象，便于 UI 展示。
+ * @param headers fetch 响应头
+ * @returns 键值化响应头
  */
-function readResponseHeaders(headers: Headers): Record<string, string> {
-  const result: Record<string, string> = {}
-  headers.forEach((value, key) => {
-    result[key] = value
-  })
-  return result
+function collectHeaders(headers: Headers): Record<string, string> {
+  return Object.fromEntries(headers.entries())
 }
 
 /**

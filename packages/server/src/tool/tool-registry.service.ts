@@ -6,7 +6,6 @@ import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { McpToolProvider } from './mcp-tool.provider';
 import { PluginToolProvider } from './plugin-tool.provider';
-import { ToolGovernanceService } from './tool-governance.service';
 import { ToolSettingsService } from './tool-settings.service';
 import type {
   ResolvedToolRecord,
@@ -37,7 +36,6 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 @Injectable()
 export class ToolRegistryService {
   constructor(
-    private readonly governance: ToolGovernanceService,
     private readonly settings: ToolSettingsService,
     @Inject(forwardRef(() => PluginRuntimeService))
     private readonly pluginRuntime: PluginRuntimeService,
@@ -53,7 +51,7 @@ export class ToolRegistryService {
 
   async listAvailableToolSummaries(input: ToolFilterInput) {
     return (await this.resolveTools(input)).map((entry) =>
-      this.governance.toAvailableToolSummary(entry.record),
+      this.toAvailableToolSummary(entry.record),
     );
   }
 
@@ -280,7 +278,7 @@ export class ToolRegistryService {
     provider: ToolProvider,
     raw: ToolProviderTool,
   ): ResolvedToolRecord {
-    const normalized = this.governance.normalizeTool(raw);
+    const normalized = this.normalizeTool(raw);
     const sourceEnabled = this.settings.getSourceEnabled(
       normalized.source.kind,
       normalized.source.id,
@@ -396,6 +394,68 @@ export class ToolRegistryService {
 
   private compareKeys(left: string, right: string): number {
     return left.localeCompare(right, 'zh-CN');
+  }
+
+  private normalizeTool(input: ToolProviderTool): ToolRecord {
+    const sourceEnabled = input.source.enabled ?? true;
+
+    return {
+      toolId: this.buildToolId(input),
+      toolName: input.name,
+      callName: this.buildCallName(input),
+      description: this.buildDescription(input),
+      parameters: input.parameters,
+      enabled: input.enabled ?? sourceEnabled,
+      source: {
+        kind: input.source.kind,
+        id: input.source.id,
+        label: input.source.label,
+        enabled: sourceEnabled,
+        health: input.source.health ?? 'unknown',
+        lastError: input.source.lastError ?? null,
+        lastCheckedAt: input.source.lastCheckedAt ?? null,
+      },
+      ...(input.pluginId ? { pluginId: input.pluginId } : {}),
+      ...(input.runtimeKind ? { runtimeKind: input.runtimeKind } : {}),
+    };
+  }
+
+  private toAvailableToolSummary(record: ToolRecord) {
+    return {
+      name: record.callName,
+      callName: record.callName,
+      toolId: record.toolId,
+      description: record.description,
+      parameters: record.parameters,
+      sourceKind: record.source.kind,
+      sourceId: record.source.id,
+      ...(record.pluginId ? { pluginId: record.pluginId } : {}),
+      ...(record.runtimeKind ? { runtimeKind: record.runtimeKind } : {}),
+    };
+  }
+
+  private buildToolId(input: ToolProviderTool): string {
+    return `${input.source.kind}:${input.source.id}:${input.name}`;
+  }
+
+  private buildCallName(input: ToolProviderTool): string {
+    if (input.source.kind === 'plugin') {
+      return input.runtimeKind === 'builtin'
+        ? input.name
+        : `${input.source.id}__${input.name}`;
+    }
+
+    return `mcp__${input.source.id}__${input.name}`;
+  }
+
+  private buildDescription(input: ToolProviderTool): string {
+    if (input.source.kind === 'plugin') {
+      return input.runtimeKind === 'builtin'
+        ? input.description
+        : `[插件：${input.source.id}] ${input.description}`;
+    }
+
+    return `[MCP：${input.source.id}] ${input.description}`;
   }
 
   private paramSchemaToZod(params: Record<string, ToolParameterSchema>) {

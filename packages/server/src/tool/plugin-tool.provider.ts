@@ -15,47 +15,11 @@ export class PluginToolProvider implements ToolProvider {
   ) {}
 
   async listSources(_context?: PluginCallContext) {
-    const persistedPlugins = await this.pluginService.findAll();
-    const persistedByName = new Map(
-      persistedPlugins.map((plugin) => [plugin.name, plugin]),
-    );
-
-    return this.pluginRuntime.listPlugins().map((entry) => {
-      const persisted = persistedByName.get(entry.pluginId);
-
-      return {
-        kind: 'plugin' as const,
-        id: entry.pluginId,
-        label: entry.manifest.name || entry.pluginId,
-        enabled: true,
-        health: persisted?.status === 'online'
-          ? ((persisted.healthStatus as 'healthy' | 'error' | 'unknown' | 'degraded' | null) === 'degraded'
-            ? 'error'
-            : (persisted.healthStatus as 'healthy' | 'error' | 'unknown' | null) ?? 'unknown')
-          : 'unknown',
-        lastError: persisted?.lastError ?? null,
-        lastCheckedAt: persisted?.lastCheckedAt?.toISOString() ?? null,
-        supportedActions: entry.supportedActions,
-        pluginId: entry.pluginId,
-        runtimeKind: entry.runtimeKind,
-      };
-    });
+    return (await this.readSourceState()).sources;
   }
 
   async listTools(context?: PluginCallContext): Promise<ToolProviderTool[]> {
-    const sources = await this.listSources(context);
-    const sourceById = new Map(
-      sources.map((source) => [
-        source.id,
-        source,
-      ]),
-    );
-    const pluginLabels = new Map(
-      this.pluginRuntime.listPlugins().map((entry) => [
-        entry.pluginId,
-        entry.manifest.name || entry.pluginId,
-      ]),
-    );
+    const { sourceById, pluginLabels } = await this.readSourceState();
 
     return this.pluginRuntime.listTools(context).map((entry) => ({
       source: sourceById.get(entry.pluginId) ?? {
@@ -88,5 +52,51 @@ export class PluginToolProvider implements ToolProvider {
       context: input.context,
       skipLifecycleHooks: input.skipLifecycleHooks,
     });
+  }
+
+  private async readSourceState() {
+    const [persistedPlugins, runtimePlugins] = await Promise.all([
+      this.pluginService.findAll(),
+      Promise.resolve(this.pluginRuntime.listPlugins()),
+    ]);
+    const persistedByName = new Map(
+      persistedPlugins.map((plugin) => [plugin.name, plugin]),
+    );
+    const sources = runtimePlugins.map((entry) => {
+      const persisted = persistedByName.get(entry.pluginId);
+
+      return {
+        kind: 'plugin' as const,
+        id: entry.pluginId,
+        label: entry.manifest.name || entry.pluginId,
+        enabled: true,
+        health: persisted?.status === 'online'
+          ? ((persisted.healthStatus as 'healthy' | 'error' | 'unknown' | 'degraded' | null) === 'degraded'
+            ? 'error'
+            : (persisted.healthStatus as 'healthy' | 'error' | 'unknown' | null) ?? 'unknown')
+          : 'unknown',
+        lastError: persisted?.lastError ?? null,
+        lastCheckedAt: persisted?.lastCheckedAt?.toISOString() ?? null,
+        supportedActions: entry.supportedActions,
+        pluginId: entry.pluginId,
+        runtimeKind: entry.runtimeKind,
+      };
+    });
+
+    return {
+      sources,
+      sourceById: new Map(
+        sources.map((source) => [
+          source.id,
+          source,
+        ]),
+      ),
+      pluginLabels: new Map(
+        runtimePlugins.map((entry) => [
+          entry.pluginId,
+          entry.manifest.name || entry.pluginId,
+        ]),
+      ),
+    };
   }
 }

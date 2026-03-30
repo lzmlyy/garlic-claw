@@ -1,12 +1,8 @@
 import type {
-  PluginAvailableToolSummary,
   PluginCallContext,
   PluginParamSchema,
   PluginRuntimeKind,
-  ToolInfo,
-  ToolSourceInfo,
 } from '@garlic-claw/shared';
-import type { Tool } from 'ai';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 
 export type ToolSourceKind = 'plugin' | 'mcp';
@@ -80,21 +76,4 @@ export interface ResolvedToolRecord {
   provider: ToolProvider;
   raw: ToolProviderTool;
   record: ToolRecord;
-}
-
-export type UnifiedToolInfo = ToolInfo;
-
-export type UnifiedToolSourceInfo = ToolSourceInfo;
-
-export interface ToolSetBuildResult {
-  records: ToolRecord[];
-  toolSet: Record<string, Tool> | undefined;
-  summaries: UnifiedToolSummary[];
-}
-
-export interface UnifiedToolSummary extends PluginAvailableToolSummary {
-  callName?: string;
-  toolId?: string;
-  sourceKind?: ToolSourceKind;
-  sourceId?: string;
 }

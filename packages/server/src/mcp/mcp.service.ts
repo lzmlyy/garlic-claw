@@ -307,38 +307,6 @@ export class McpService implements OnModuleInit {
     });
   }
 
-  async getTools() {
-    const allTools: Record<string, {
-      description: string;
-      inputSchema?: unknown;
-      execute: (args: JsonObject) => Promise<JsonValue>;
-    }> = {};
-
-    for (const tool of await this.listToolDescriptors()) {
-      const toolName = `${tool.serverName}__${tool.name}`;
-      allTools[toolName] = {
-        description: tool.description || `[MCP:${tool.serverName}] ${tool.name}`,
-        inputSchema: tool.inputSchema,
-        execute: async (args: JsonObject) => {
-          try {
-            return await this.callTool({
-              serverName: tool.serverName,
-              toolName: tool.name,
-              arguments: args,
-            });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.error(`调用 MCP 工具 "${toolName}" 失败: ${errorMessage}`);
-            return { error: errorMessage };
-          }
-        },
-      };
-    }
-
-    this.logger.log(`成功加载 ${Object.keys(allTools).length} 个 MCP 工具`);
-    return allTools;
-  }
-
   listServerStatuses(): McpServerStatus[] {
     return [...this.serverRecords.values()].map((record) => ({
       ...record.status,
@@ -393,16 +361,6 @@ export class McpService implements OnModuleInit {
       });
       throw error;
     }
-  }
-
-  getConnectedServers(): string[] {
-    return this.listServerStatuses()
-      .filter((status) => status.connected)
-      .map((status) => status.name);
-  }
-
-  isServerConnected(name: string): boolean {
-    return this.listServerStatuses().some((status) => status.name === name && status.connected);
   }
 
   /**

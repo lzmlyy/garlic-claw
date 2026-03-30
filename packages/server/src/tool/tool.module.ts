@@ -5,7 +5,6 @@ import { McpToolProvider } from './mcp-tool.provider';
 import { PluginToolProvider } from './plugin-tool.provider';
 import { ToolAdminService } from './tool-admin.service';
 import { ToolController } from './tool.controller';
-import { ToolGovernanceService } from './tool-governance.service';
 import { ToolRegistryService } from './tool-registry.service';
 import { ToolSettingsService } from './tool-settings.service';
 
@@ -13,7 +12,6 @@ import { ToolSettingsService } from './tool-settings.service';
   imports: [forwardRef(() => PluginModule), McpModule],
   controllers: [ToolController],
   providers: [
-    ToolGovernanceService,
     ToolSettingsService,
     PluginToolProvider,
     McpToolProvider,
@@ -21,7 +19,6 @@ import { ToolSettingsService } from './tool-settings.service';
     ToolAdminService,
   ],
   exports: [
-    ToolGovernanceService,
     ToolSettingsService,
     ToolRegistryService,
     ToolAdminService,
