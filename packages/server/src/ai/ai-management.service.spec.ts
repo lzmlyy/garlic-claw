@@ -5,11 +5,12 @@
  * - provider / model / vision fallback 的管理请求
  *
  * 输出:
- * - 断言官方 provider 目录包含多家供应商
+ * - 断言 provider 目录会区分 core 协议族和供应商 preset
  * - 断言 provider 与 model 配置会被正确持久化和注册
  *
  * 预期行为:
- * - 官方 provider 不应只剩三家
+ * - core 协议族固定为 openai / anthropic / gemini
+ * - provider preset 可以有很多
  * - 兼容 provider 只允许 openai / anthropic / gemini
  * - 视觉转述配置通过统一管理服务读写
  */
@@ -47,16 +48,18 @@ describe('AiManagementService', () => {
     );
   });
 
-  it('exposes more than three official providers in the catalog', () => {
+  it('classifies the provider catalog into core protocols and presets', () => {
     const catalog = service.listOfficialProviderCatalog();
 
-    expect(catalog.length).toBeGreaterThan(3);
-    expect(catalog).toEqual(
+    expect(catalog.filter((item) => item.kind === 'core')).toEqual([
+      expect.objectContaining({ id: 'openai', kind: 'core' }),
+      expect.objectContaining({ id: 'anthropic', kind: 'core' }),
+      expect.objectContaining({ id: 'gemini', kind: 'core' }),
+    ]);
+    expect(catalog.filter((item) => item.kind === 'preset')).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: 'openai' }),
-        expect.objectContaining({ id: 'anthropic' }),
-        expect.objectContaining({ id: 'gemini' }),
-        expect.objectContaining({ id: 'groq' }),
+        expect.objectContaining({ id: 'groq', kind: 'preset' }),
+        expect.objectContaining({ id: 'openrouter', kind: 'preset' }),
       ]),
     );
   });

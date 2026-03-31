@@ -10,6 +10,7 @@ import {
 const catalog: OfficialProviderCatalogItem[] = [
   {
     id: 'openai',
+    kind: 'core',
     name: 'OpenAI',
     npm: '@ai-sdk/openai',
     defaultBaseUrl: 'https://api.openai.com/v1',
@@ -17,6 +18,7 @@ const catalog: OfficialProviderCatalogItem[] = [
   },
   {
     id: 'anthropic',
+    kind: 'core',
     name: 'Anthropic',
     npm: '@ai-sdk/anthropic',
     defaultBaseUrl: 'https://api.anthropic.com/v1',
@@ -24,6 +26,7 @@ const catalog: OfficialProviderCatalogItem[] = [
   },
   {
     id: 'gemini',
+    kind: 'core',
     name: 'Google Gemini',
     npm: '@ai-sdk/google',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',

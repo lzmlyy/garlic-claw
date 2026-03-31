@@ -28,6 +28,11 @@ export type OfficialProviderDriver =
   | 'openrouter';
 
 /**
+ * AI provider 目录项分类。
+ */
+export type AiProviderCatalogKind = 'core' | 'preset';
+
+/**
  * 模态能力。
  */
 export interface AiModalityCapabilities {
@@ -87,6 +92,8 @@ export interface AiModelConfig {
 export interface OfficialProviderCatalogItem {
   /** 官方 provider ID。 */
   id: OfficialProviderDriver;
+  /** 目录项分类。 */
+  kind: AiProviderCatalogKind;
   /** 显示名称。 */
   name: string;
   /** SDK 包名。 */

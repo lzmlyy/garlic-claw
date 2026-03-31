@@ -4,6 +4,13 @@
 
 记得使用 planning with file 做规划
 
+## TODO 管理
+
+- 开始复杂任务、重构、架构调整或长期路线讨论前，先读取 `TODO.md`
+- 做这类工作时，除 `task_plan.md / progress.md / findings.md` 外，还要把长期方向同步到 `TODO.md`
+- 如果某次改动已经推进、完成、废弃或重排了 `TODO.md` 中的事项，必须在同一轮里更新 `TODO.md`
+- `TODO.md` 是项目级长期路线，不属于 skill 中间产物；是否提交按用户要求决定，但内容必须保持可读和可持续维护
+
 ## 类型检查（重要）
 
 **⚠️ 本项目使用 SWC 编译，SWC 不进行类型检查！**
@@ -57,6 +64,13 @@ cd packages/web && npx vue-tsc --noEmit
 
 - 公共API/服务方法用 JSDoc（含 @param/@returns/@throws）
 - 关键逻辑用 `//`，标记用 TODO/FIXME/NOTE
+
+## AI Provider 适配维护
+
+- 对特定厂商的 AI provider / API 适配文件，必须在文件最上方注释里贴上对应厂商官方 API 文档链接
+- 这个官方文档链接注释属于维护锚点，后续重构、格式化或清理时都**不能删除**
+- 如果一个适配同时依赖多个官方文档，优先贴主入口文档，再补充最关键的子页面链接
+- 新增或修改厂商适配时，先检查这个链接是否仍然存在、是否仍然指向官方文档
 
 ## Vue 组件
 
@@ -127,6 +141,7 @@ packages/: server(NestJS) | web(Vue) | shared | plugin-sdk | plugins
   - `tmp/session-persistence.md`
 - `tmp/session-persistence.md` 只用于本地持久化和跨会话恢复，不提交 git
 - 后续如果需要记录当前在做什么、还有哪些未完成项，优先追加到这个文件，而不是删除旧条目重写
+- 如果未完成事项已经沉淀为项目级长期方向，也要同步更新 `TODO.md`，不要只留在本地 planning 文件里
 
 ### 提交前检查约束
 

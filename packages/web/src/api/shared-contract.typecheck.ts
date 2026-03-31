@@ -134,6 +134,7 @@ const pluginStorageEntry: PluginStorageEntry = {
 
 const catalogItem: OfficialProviderCatalogItem = {
   id: 'openai',
+  kind: 'core',
   name: 'OpenAI',
   npm: '@ai-sdk/openai',
   defaultBaseUrl: 'https://api.openai.com/v1',

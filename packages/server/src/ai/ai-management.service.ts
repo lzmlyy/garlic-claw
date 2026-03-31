@@ -8,7 +8,7 @@
  * - 统一的 provider、model、capabilities、vision 配置结果
  *
  * 预期行为:
- * - 官方 provider 支持多家目录
+ * - provider 目录显式区分 core 协议族和供应商 preset
  * - 兼容 provider 仅支持 openai / anthropic / gemini
  * - 管理操作统一落到配置存储和模型注册表
  */
