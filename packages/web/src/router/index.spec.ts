@@ -23,4 +23,9 @@ describe('router', () => {
     expect(router.hasRoute('subagent-tasks')).toBe(true)
     expect(router.resolve({ name: 'subagent-tasks' }).path).toBe('/subagents')
   })
+
+  it('registers the scoped api key management route', () => {
+    expect(router.hasRoute('api-keys')).toBe(true)
+    expect(router.resolve({ name: 'api-keys' }).path).toBe('/api-keys')
+  })
 })

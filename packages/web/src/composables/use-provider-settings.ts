@@ -1,5 +1,6 @@
 import { onMounted, ref } from 'vue'
 import type {
+  AiHostModelRoutingConfig,
   AiModelConfig,
   AiProviderConfig,
   AiProviderSummary,
@@ -10,12 +11,14 @@ import type {
 import * as api from '../api'
 import {
   formatConnectionSuccess,
+  loadHostModelRoutingOptions,
   importDiscoveredProviderModels,
   loadProviderSelectionData,
   loadProviderSettingsBaseData,
   loadVisionModelOptions,
   saveProviderConfig,
   toErrorMessage,
+  type HostModelRoutingOption,
   type ProviderConnectionResult,
   type VisionModelOption,
 } from './provider-settings.data'
@@ -42,7 +45,12 @@ export function useProviderSettings() {
   const selectedProvider = ref<AiProviderConfig | null>(null)
   const selectedModels = ref<AiModelConfig[]>([])
   const visionConfig = ref<VisionFallbackConfig>({ enabled: false })
+  const hostModelRoutingConfig = ref<AiHostModelRoutingConfig>({
+    fallbackChatModels: [],
+    utilityModelRoles: {},
+  })
   const visionOptions = ref<VisionModelOption[]>([])
+  const hostModelRoutingOptions = ref<HostModelRoutingOption[]>([])
   const showProviderDialog = ref(false)
   const showDiscoveryDialog = ref(false)
   const editingProvider = ref<AiProviderConfig | null>(null)
@@ -64,8 +72,13 @@ export function useProviderSettings() {
       catalog.value = baseData.catalog
       providers.value = baseData.providers
       visionConfig.value = baseData.visionConfig
+      hostModelRoutingConfig.value = baseData.hostModelRoutingConfig ?? {
+        fallbackChatModels: [],
+        utilityModelRoles: {},
+      }
       await selectFallbackProvider()
       await refreshVisionOptions()
+      await refreshHostModelRoutingOptions()
     } catch (caughtError) {
       error.value = toErrorMessage(
         caughtError instanceof Error ? caughtError : undefined,
@@ -156,6 +169,7 @@ export function useProviderSettings() {
     })
     await selectProvider(selectedProvider.value.id)
     await refreshVisionOptions()
+    await refreshHostModelRoutingOptions()
   }
 
   /**
@@ -221,6 +235,7 @@ export function useProviderSettings() {
     )
     await selectProvider(providerId)
     await refreshVisionOptions()
+    await refreshHostModelRoutingOptions()
   }
 
   async function deleteModel(modelId: string) {
@@ -230,6 +245,7 @@ export function useProviderSettings() {
     await api.deleteAiModel(selectedProvider.value.id, modelId)
     await selectProvider(selectedProvider.value.id)
     await refreshVisionOptions()
+    await refreshHostModelRoutingOptions()
   }
 
   async function setDefaultModel(modelId: string) {
@@ -259,6 +275,7 @@ export function useProviderSettings() {
     )
     await selectProvider(selectedProvider.value.id)
     await refreshVisionOptions()
+    await refreshHostModelRoutingOptions()
   }
 
   /**
@@ -319,11 +336,19 @@ export function useProviderSettings() {
     }
   }
 
+  async function saveHostModelRoutingConfig(config: AiHostModelRoutingConfig) {
+    hostModelRoutingConfig.value = await api.updateHostModelRoutingConfig(config)
+  }
+
   /**
    * 重新构建 Vision Fallback 可选模型列表。
    */
   async function refreshVisionOptions() {
     visionOptions.value = await loadVisionModelOptions(providers.value)
+  }
+
+  async function refreshHostModelRoutingOptions() {
+    hostModelRoutingOptions.value = await loadHostModelRoutingOptions(providers.value)
   }
 
   return {
@@ -338,7 +363,9 @@ export function useProviderSettings() {
     selectedProvider,
     selectedModels,
     visionConfig,
+    hostModelRoutingConfig,
     visionOptions,
+    hostModelRoutingOptions,
     showProviderDialog,
     showDiscoveryDialog,
     editingProvider,
@@ -358,5 +385,6 @@ export function useProviderSettings() {
     updateCapabilities,
     testProviderConnection,
     saveVisionConfig,
+    saveHostModelRoutingConfig,
   }
 }

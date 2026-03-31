@@ -1,4 +1,6 @@
 import type {
+  AiHostModelRoutingConfig,
+  AiModelRouteTarget,
   AiProviderConfig,
   JsonValue,
   VisionFallbackConfig,
@@ -15,6 +17,16 @@ export interface StoredAiProviderConfig extends AiProviderConfig {}
 export interface StoredVisionFallbackConfig extends VisionFallbackConfig {}
 
 /**
+ * 持久化的模型路由目标。
+ */
+export interface StoredAiModelRouteTarget extends AiModelRouteTarget {}
+
+/**
+ * 持久化的宿主 AI 模型路由配置。
+ */
+export interface StoredAiHostModelRoutingConfig extends AiHostModelRoutingConfig {}
+
+/**
  * AI 设置文件结构。
  */
 export interface AiSettingsFile {
@@ -26,6 +38,8 @@ export interface AiSettingsFile {
   providers: StoredAiProviderConfig[];
   /** 视觉转述配置。 */
   visionFallback: StoredVisionFallbackConfig;
+  /** 宿主模型路由配置。 */
+  hostModelRouting: StoredAiHostModelRoutingConfig;
 }
 
 /**
@@ -50,4 +64,12 @@ export interface RawStoredAiProviderConfig {
   defaultModel?: JsonValue;
   /** 模型列表。 */
   models?: JsonValue;
+}
+
+/**
+ * 设置文件中的宽松模型路由目标形状。
+ */
+export interface RawStoredAiModelRouteTarget {
+  providerId?: JsonValue;
+  modelId?: JsonValue;
 }

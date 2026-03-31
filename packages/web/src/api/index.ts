@@ -1,5 +1,6 @@
 export * from './base'
 export * from './auth'
+export * from './api-keys'
 export * from './chat'
 export * from './ai'
 export * from './plugins'

@@ -33,6 +33,7 @@ vi.mock('../api', () => ({
   updateAiModelCapabilities: vi.fn(),
   testAiProviderConnection: vi.fn(),
   updateVisionFallbackConfig: vi.fn(),
+  updateHostModelRoutingConfig: vi.fn(),
 }))
 
 function createProviderSummary(id: string, name = id): AiProviderSummary {
@@ -149,6 +150,10 @@ describe('useProviderSettings', () => {
       catalog,
       providers,
       visionConfig,
+      hostModelRoutingConfig: {
+        fallbackChatModels: [],
+        utilityModelRoles: {},
+      },
     })
     vi.mocked(providerData.loadProviderSelectionData)
       .mockImplementationOnce(() => firstSelection)
@@ -195,6 +200,10 @@ describe('useProviderSettings', () => {
         createProviderSummary('provider-b', 'Provider B'),
       ],
       visionConfig: { enabled: false },
+      hostModelRoutingConfig: {
+        fallbackChatModels: [],
+        utilityModelRoles: {},
+      },
     })
     vi.mocked(providerData.loadProviderSelectionData).mockImplementation(
       async (providerId: string) => createSelectionData(providerId),
@@ -231,6 +240,10 @@ describe('useProviderSettings', () => {
         createProviderSummary('provider-b', 'Provider B'),
       ],
       visionConfig: { enabled: false },
+      hostModelRoutingConfig: {
+        fallbackChatModels: [],
+        utilityModelRoles: {},
+      },
     })
     vi.mocked(providerData.loadProviderSelectionData).mockImplementation(
       async (providerId: string) => createSelectionData(providerId),
@@ -251,5 +264,68 @@ describe('useProviderSettings', () => {
 
     expect(state.selectedProviderId.value).toBe('provider-b')
     expect(state.connectionResult.value).toBeNull()
+  })
+
+  it('saves host model routing config and updates local state', async () => {
+    vi.mocked(providerData.loadProviderSettingsBaseData).mockResolvedValue({
+      catalog: [],
+      providers: [createProviderSummary('provider-a', 'Provider A')],
+      visionConfig: { enabled: false },
+      hostModelRoutingConfig: {
+        fallbackChatModels: [],
+        utilityModelRoles: {},
+      },
+    })
+    vi.mocked(providerData.loadProviderSelectionData).mockResolvedValue(
+      createSelectionData('provider-a'),
+    )
+    vi.mocked(providerData.loadVisionModelOptions).mockResolvedValue([])
+    vi.mocked(api.updateHostModelRoutingConfig).mockResolvedValue({
+      fallbackChatModels: [
+        {
+          providerId: 'provider-a',
+          modelId: 'provider-a-model',
+        },
+      ],
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'provider-a',
+          modelId: 'provider-a-model',
+        },
+      },
+    })
+
+    const state = await mountProviderSettingsHarness()
+    await state.saveHostModelRoutingConfig({
+      fallbackChatModels: [
+        {
+          providerId: 'provider-a',
+          modelId: 'provider-a-model',
+        },
+      ],
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'provider-a',
+          modelId: 'provider-a-model',
+        },
+      },
+    })
+
+    expect(api.updateHostModelRoutingConfig).toHaveBeenCalledWith({
+      fallbackChatModels: [
+        {
+          providerId: 'provider-a',
+          modelId: 'provider-a-model',
+        },
+      ],
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'provider-a',
+          modelId: 'provider-a-model',
+        },
+      },
+    })
+    expect(state.hostModelRoutingConfig.value.utilityModelRoles.conversationTitle?.modelId)
+      .toBe('provider-a-model')
   })
 })

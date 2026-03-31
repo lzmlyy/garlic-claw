@@ -1,4 +1,5 @@
 import type { JsonValue } from './json';
+import type { ChatMessagePart } from './chat';
 
 export interface ApiResponse<T = JsonValue> {
   success: boolean;
@@ -34,4 +35,40 @@ export interface RegisterRequest {
   username: string;
   email: string;
   password: string;
+}
+
+export const API_KEY_SCOPES = [
+  'plugin.route.invoke',
+  'conversation.message.write',
+] as const;
+
+export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
+
+export interface ApiKeySummary {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  scopes: ApiKeyScope[];
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  scopes: ApiKeyScope[];
+  expiresAt?: string;
+}
+
+export interface CreateApiKeyResponse extends ApiKeySummary {
+  token: string;
+}
+
+export interface WriteAssistantMessageRequest {
+  content?: string;
+  parts?: ChatMessagePart[];
+  provider?: string;
+  model?: string;
 }

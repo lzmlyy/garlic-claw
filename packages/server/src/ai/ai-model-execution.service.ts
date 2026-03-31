@@ -18,6 +18,10 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import type {
+  AiModelRouteTarget,
+  AiUtilityModelRole,
+} from '@garlic-claw/shared';
 import {
   runGenerateText,
   runStreamText,
@@ -28,6 +32,7 @@ import {
   type AiSdkToolSet,
 } from './sdk-adapter';
 import { AiProviderService } from './ai-provider.service';
+import { ConfigManagerService } from './config/config-manager.service';
 import type { ModelConfig } from './types/provider.types';
 import {
   resolveChatModelInvocationRequestOptions,
@@ -43,6 +48,8 @@ export interface PrepareAiModelExecutionInput {
   providerId?: string;
   /** model ID，可选。 */
   modelId?: string;
+  /** utility model role，可选。 */
+  utilityRole?: AiUtilityModelRole;
   /** 已转换好的 SDK 消息。 */
   sdkMessages: AiSdkMessage[];
 }
@@ -67,6 +74,8 @@ export interface PreparedAiModelExecution {
   model: AiSdkLanguageModel;
   /** 已规范化的 SDK 消息。 */
   sdkMessages: AiSdkMessage[];
+  /** 原始 SDK 消息，用于重新选择 fallback 模型时再次归一化。 */
+  sourceSdkMessages: AiSdkMessage[];
 }
 
 /**
@@ -76,6 +85,8 @@ export interface StreamPreparedAiModelExecutionInput
   extends ChatModelInvocationRequestOptionsInput {
   /** 已准备好的执行载荷。 */
   prepared: PreparedAiModelExecution;
+  /** 是否启用聊天 fallback model 链。 */
+  allowFallbackChatModels?: boolean;
   /** 可选系统提示词。 */
   system?: string;
   /** 可选工具集合。 */
@@ -90,6 +101,7 @@ export interface StreamPreparedAiModelExecutionInput
 export class AiModelExecutionService {
   constructor(
     private readonly aiProvider: AiProviderService,
+    private readonly configManager: ConfigManagerService,
   ) {}
 
   /**
@@ -98,7 +110,18 @@ export class AiModelExecutionService {
    * @param modelId model ID，可选
    * @returns 已解析模型配置
    */
-  resolveModelConfig(providerId?: string, modelId?: string): ModelConfig {
+  resolveModelConfig(
+    providerId?: string,
+    modelId?: string,
+    utilityRole?: AiUtilityModelRole,
+  ): ModelConfig {
+    if (utilityRole) {
+      const target = this.resolveUtilityRoleTarget(utilityRole);
+      if (target) {
+        return this.aiProvider.getModelConfig(target.providerId, target.modelId);
+      }
+    }
+
     return this.aiProvider.getModelConfig(providerId, modelId);
   }
 
@@ -113,6 +136,7 @@ export class AiModelExecutionService {
     const modelConfig = this.resolveModelConfig(
       input.providerId,
       input.modelId,
+      input.utilityRole,
     );
 
     return this.prepareResolved({
@@ -135,6 +159,7 @@ export class AiModelExecutionService {
         input.modelConfig.providerId as string,
         input.modelConfig.id as string,
       ),
+      sourceSdkMessages: input.sdkMessages,
       sdkMessages: normalizeChatModelInvocationMessages({
         modelConfig: input.modelConfig,
         sdkMessages: input.sdkMessages,
@@ -149,6 +174,7 @@ export class AiModelExecutionService {
    */
   async generateText(
     input: PrepareAiModelExecutionInput & ChatModelInvocationRequestOptionsInput & {
+      allowFallbackChatModels?: boolean;
       system?: string;
     },
   ): Promise<
@@ -160,6 +186,7 @@ export class AiModelExecutionService {
     return this.generatePrepared({
       prepared,
       system: input.system,
+      allowFallbackChatModels: input.allowFallbackChatModels,
       variant: input.variant,
       providerOptions: input.providerOptions,
       headers: input.headers,
@@ -175,6 +202,7 @@ export class AiModelExecutionService {
   async generatePrepared(
     input: {
       prepared: PreparedAiModelExecution;
+      allowFallbackChatModels?: boolean;
       system?: string;
     } & ChatModelInvocationRequestOptionsInput,
   ): Promise<
@@ -182,23 +210,27 @@ export class AiModelExecutionService {
       result: Awaited<ReturnType<typeof runGenerateText>>;
     }
   > {
-    const requestOptions = resolveChatModelInvocationRequestOptions({
-      modelConfig: input.prepared.modelConfig,
-      requestOptions: input,
-    });
-    const result = await runGenerateText({
-      model: input.prepared.model,
-      system: input.system,
-      messages: input.prepared.sdkMessages,
-      providerOptions: requestOptions.providerOptions,
-      headers: requestOptions.headers,
-      maxOutputTokens: requestOptions.maxOutputTokens,
-    });
+    const execution = await this.executeWithOptionalChatFallback(
+      input.prepared,
+      input.allowFallbackChatModels === true,
+      async (prepared) => {
+        const requestOptions = resolveChatModelInvocationRequestOptions({
+          modelConfig: prepared.modelConfig,
+          requestOptions: input,
+        });
 
-    return {
-      ...input.prepared,
-      result,
-    };
+        return runGenerateText({
+          model: prepared.model,
+          system: input.system,
+          messages: prepared.sdkMessages,
+          providerOptions: requestOptions.providerOptions,
+          headers: requestOptions.headers,
+          maxOutputTokens: requestOptions.maxOutputTokens,
+        });
+      },
+    );
+
+    return execution;
   }
 
   /**
@@ -211,25 +243,115 @@ export class AiModelExecutionService {
   ): PreparedAiModelExecution & {
     result: AiSdkStreamTextResult;
   } {
-    const requestOptions = resolveChatModelInvocationRequestOptions({
-      modelConfig: input.prepared.modelConfig,
-      requestOptions: input,
-    });
-    const result = runStreamText({
-      model: input.prepared.model,
-      system: input.system,
-      messages: input.prepared.sdkMessages,
-      tools: input.tools,
-      stopWhen: input.stopWhen,
-      abortSignal: input.abortSignal,
-      providerOptions: requestOptions.providerOptions,
-      headers: requestOptions.headers,
-      maxOutputTokens: requestOptions.maxOutputTokens,
-    });
+    return this.executeStreamingWithOptionalChatFallback(
+      input.prepared,
+      input.allowFallbackChatModels === true,
+      (prepared) => {
+        const requestOptions = resolveChatModelInvocationRequestOptions({
+          modelConfig: prepared.modelConfig,
+          requestOptions: input,
+        });
 
-    return {
-      ...input.prepared,
-      result,
-    };
+        return runStreamText({
+          model: prepared.model,
+          system: input.system,
+          messages: prepared.sdkMessages,
+          tools: input.tools,
+          stopWhen: input.stopWhen,
+          abortSignal: input.abortSignal,
+          providerOptions: requestOptions.providerOptions,
+          headers: requestOptions.headers,
+          maxOutputTokens: requestOptions.maxOutputTokens,
+        });
+      },
+    );
+  }
+
+  private async executeWithOptionalChatFallback<T>(
+    prepared: PreparedAiModelExecution,
+    allowFallbackChatModels: boolean,
+    execute: (prepared: PreparedAiModelExecution) => Promise<T>,
+  ): Promise<PreparedAiModelExecution & { result: T }> {
+    const candidates = this.buildExecutionCandidates(
+      prepared,
+      allowFallbackChatModels,
+    );
+    let lastError: unknown = null;
+
+    for (const candidate of candidates) {
+      try {
+        return {
+          ...candidate,
+          result: await execute(candidate),
+        };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError;
+  }
+
+  private executeStreamingWithOptionalChatFallback(
+    prepared: PreparedAiModelExecution,
+    allowFallbackChatModels: boolean,
+    execute: (prepared: PreparedAiModelExecution) => AiSdkStreamTextResult,
+  ): PreparedAiModelExecution & { result: AiSdkStreamTextResult } {
+    const candidates = this.buildExecutionCandidates(
+      prepared,
+      allowFallbackChatModels,
+    );
+    let lastError: unknown = null;
+
+    for (const candidate of candidates) {
+      try {
+        return {
+          ...candidate,
+          result: execute(candidate),
+        };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError;
+  }
+
+  private buildExecutionCandidates(
+    prepared: PreparedAiModelExecution,
+    allowFallbackChatModels: boolean,
+  ): PreparedAiModelExecution[] {
+    if (!allowFallbackChatModels) {
+      return [prepared];
+    }
+
+    const fallbackTargets = this.configManager
+      .getHostModelRoutingConfig()
+      .fallbackChatModels.filter(
+        (target) =>
+          target.providerId !== prepared.modelConfig.providerId
+          || target.modelId !== prepared.modelConfig.id,
+      );
+
+    return [
+      prepared,
+      ...fallbackTargets.map((target) =>
+        this.prepareResolved({
+          modelConfig: this.aiProvider.getModelConfig(
+            target.providerId,
+            target.modelId,
+          ),
+          sdkMessages: prepared.sourceSdkMessages,
+        }),
+      ),
+    ];
+  }
+
+  private resolveUtilityRoleTarget(
+    utilityRole: AiUtilityModelRole,
+  ): AiModelRouteTarget | null {
+    return this.configManager.getHostModelRoutingConfig().utilityModelRoles[
+      utilityRole
+    ] ?? null;
   }
 }

@@ -31,6 +31,9 @@ describe('ChatModelInvocationService', () => {
     getModelConfig: jest.fn(),
     getModel: jest.fn(),
   };
+  const configManager = {
+    getHostModelRoutingConfig: jest.fn(),
+  };
 
   const messageTransform = {
     transformMessages: jest.fn(),
@@ -96,8 +99,12 @@ describe('ChatModelInvocationService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    configManager.getHostModelRoutingConfig.mockReturnValue({
+      fallbackChatModels: [],
+      utilityModelRoles: {},
+    });
     service = new ChatModelInvocationService(
-      new AiModelExecutionService(aiProvider as never),
+      new AiModelExecutionService(aiProvider as never, configManager as never),
       messageTransform as never,
     );
   });
@@ -127,6 +134,17 @@ describe('ChatModelInvocationService', () => {
       modelConfig,
       model: { provider: 'ds2api', modelId: 'deepseek-reasoner' },
       sdkMessages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '请帮我总结这段日志',
+            },
+          ],
+        },
+      ],
+      sourceSdkMessages: [
         {
           role: 'user',
           content: [
@@ -279,6 +297,17 @@ describe('ChatModelInvocationService', () => {
           ],
         },
       ],
+      sourceSdkMessages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '请帮我总结这段日志',
+            },
+          ],
+        },
+      ],
       transformResult: {
         messages: runtimeMessages,
         visionFallback: null,
@@ -303,6 +332,17 @@ describe('ChatModelInvocationService', () => {
         modelConfig,
         model: { provider: 'ds2api', modelId: 'deepseek-reasoner' } as never,
         sdkMessages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: '请帮我总结这段日志',
+              },
+            ],
+          },
+        ],
+        sourceSdkMessages: [
           {
             role: 'user',
             content: [
@@ -361,6 +401,17 @@ describe('ChatModelInvocationService', () => {
       modelConfig,
       model: { provider: 'ds2api', modelId: 'deepseek-reasoner' },
       sdkMessages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '请帮我总结这段日志',
+            },
+          ],
+        },
+      ],
+      sourceSdkMessages: [
         {
           role: 'user',
           content: [

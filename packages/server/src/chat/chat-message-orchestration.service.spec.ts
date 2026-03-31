@@ -55,6 +55,10 @@ describe('ChatMessageOrchestrationService', () => {
     pluginRuntime.runResponseBeforeSendHooks.mockImplementation(async ({ payload }) => payload);
     pluginRuntime.runResponseAfterSendHooks.mockResolvedValue(undefined);
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig: {
+        id: 'claude-3-7-sonnet',
+        providerId: 'anthropic',
+      },
       result: {
         fullStream: {},
       },
@@ -158,6 +162,7 @@ describe('ChatMessageOrchestrationService', () => {
         },
         model: {},
         sdkMessages: [],
+        sourceSdkMessages: [],
       } as never,
       activeProviderId: 'anthropic',
       activeModelId: 'claude-3-7-sonnet',
@@ -185,7 +190,11 @@ describe('ChatMessageOrchestrationService', () => {
     });
     expect(modelInvocation.streamPrepared).toHaveBeenCalled();
     expect(streamResult).toEqual({
-      fullStream: {},
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      stream: {
+        fullStream: {},
+      },
     });
   });
 

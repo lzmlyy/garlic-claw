@@ -394,8 +394,9 @@ describe('BuiltinPluginTransport', () => {
       },
       method: 'llm.generate-text',
       params: expect.objectContaining({
-        providerId: 'openai',
-        modelId: 'gpt-5.2',
+        system:
+          '你是一个对话标题生成器。请基于给定对话生成一个简短、准确、自然的中文标题。',
+        maxOutputTokens: 32,
       }),
     });
     expect(hostService.call).toHaveBeenNthCalledWith(5, {

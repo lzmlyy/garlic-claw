@@ -1,4 +1,5 @@
 import type {
+  AiUtilityModelRole,
   ChatMessagePart,
   HostCallPayload,
   PluginEventLevel,
@@ -112,9 +113,9 @@ export class PluginHostService {
       case 'conversation.title.set':
         return this.setConversationTitle(input.context, input.params);
       case 'llm.generate':
-        return this.generate(input.params);
+        return this.generate(input.pluginId, input.context, input.params);
       case 'llm.generate-text':
-        return this.generateText(input.params);
+        return this.generateText(input.pluginId, input.context, input.params);
       case 'plugin.self.get':
         return this.getPluginSelf(input.pluginId);
       case 'storage.delete':
@@ -436,12 +437,18 @@ export class PluginHostService {
 
   /**
    * 通过宿主统一入口执行一次文本生成。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
    * @param params 模型选择与提示词参数
    * @returns 生成结果摘要
    */
-  private async generateText(params: JsonObject): Promise<JsonValue> {
+  private async generateText(
+    pluginId: string,
+    context: PluginCallContext,
+    params: JsonObject,
+  ): Promise<JsonValue> {
     const prompt = this.requireString(params, 'prompt');
-    const result = await this.generateCore({
+    const result = await this.generateCore(pluginId, context, {
       providerId: this.readString(params, 'providerId') ?? undefined,
       modelId: this.readString(params, 'modelId') ?? undefined,
       system: this.readString(params, 'system') ?? undefined,
@@ -471,11 +478,17 @@ export class PluginHostService {
 
   /**
    * 通过宿主统一入口执行一次结构化生成。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
    * @param params 模型选择与消息参数
    * @returns 生成结果摘要
    */
-  private async generate(params: JsonObject): Promise<JsonValue> {
-    return toJsonValue(await this.generateCore({
+  private async generate(
+    pluginId: string,
+    context: PluginCallContext,
+    params: JsonObject,
+  ): Promise<JsonValue> {
+    return toJsonValue(await this.generateCore(pluginId, context, {
       providerId: this.readString(params, 'providerId') ?? undefined,
       modelId: this.readString(params, 'modelId') ?? undefined,
       system: this.readString(params, 'system') ?? undefined,
@@ -690,15 +703,25 @@ export class PluginHostService {
 
   /**
    * 执行一次统一的结构化 LLM 生成。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
    * @param params 已解析的生成参数
    * @returns 统一的生成结果
    */
   private async generateCore(
+    pluginId: string,
+    context: PluginCallContext,
     params: PluginLlmGenerateParams,
   ): Promise<PluginLlmGenerateResult> {
+    const utilityRole = this.resolveUtilityRoleForGeneration(
+      pluginId,
+      context,
+      params,
+    );
     const executed = await this.aiModelExecution.generateText({
       ...(params.providerId ? { providerId: params.providerId } : {}),
       ...(params.modelId ? { modelId: params.modelId } : {}),
+      ...(utilityRole ? { utilityRole } : {}),
       ...(params.system ? { system: params.system } : {}),
       ...(params.variant ? { variant: params.variant } : {}),
       ...(params.providerOptions ? { providerOptions: params.providerOptions } : {}),
@@ -727,6 +750,35 @@ export class PluginHostService {
         ? { usage: toJsonValue(executed.result.usage as never) }
         : {}),
     };
+  }
+
+  /**
+   * 为未显式指定 provider/model 的插件生成请求选择 utility role。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
+   * @param params 已解析的生成参数
+   * @returns 可选 utility role
+   */
+  private resolveUtilityRoleForGeneration(
+    pluginId: string,
+    context: PluginCallContext,
+    params: Pick<PluginLlmGenerateParams, 'providerId' | 'modelId'>,
+  ): AiUtilityModelRole | undefined {
+    if (params.providerId || params.modelId) {
+      return undefined;
+    }
+
+    if (
+      pluginId === 'builtin.conversation-title'
+      && context.activeProviderId
+      && context.activeModelId
+    ) {
+      params.providerId = context.activeProviderId;
+      params.modelId = context.activeModelId;
+      return 'conversationTitle';
+    }
+
+    return 'pluginGenerateText';
   }
 
   /**

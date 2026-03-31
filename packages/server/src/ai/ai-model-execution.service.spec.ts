@@ -33,6 +33,9 @@ describe('AiModelExecutionService', () => {
     getModelConfig: jest.fn(),
     getModel: jest.fn(),
   };
+  const configManager = {
+    getHostModelRoutingConfig: jest.fn(),
+  };
 
   const modelConfig = {
     id: 'claude-3-7-sonnet',
@@ -75,7 +78,14 @@ describe('AiModelExecutionService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AiModelExecutionService(aiProvider as never);
+    configManager.getHostModelRoutingConfig.mockReturnValue({
+      fallbackChatModels: [],
+      utilityModelRoles: {},
+    });
+    service = new AiModelExecutionService(
+      aiProvider as never,
+      configManager as never,
+    );
   });
 
   it('generates text with normalized messages and merged request options', async () => {
@@ -183,6 +193,17 @@ describe('AiModelExecutionService', () => {
             ],
           },
         ],
+        sourceSdkMessages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: '测试消息',
+              },
+            ],
+          },
+        ],
       },
       system: '你是一个测试助手',
       stopWhen: { type: 'step-count', count: 5 } as never,
@@ -221,5 +242,146 @@ describe('AiModelExecutionService', () => {
     expect(executed.result).toEqual({
       fullStream,
     });
+  });
+
+  it('retries chat generation with configured fallback chat models when the primary call fails', async () => {
+    const fallbackModelConfig = {
+      ...modelConfig,
+      id: 'gpt-4.1-mini',
+      providerId: 'openai',
+      api: {
+        id: 'gpt-4.1-mini',
+        url: 'https://api.openai.com/v1',
+        npm: '@ai-sdk/openai',
+      },
+    } satisfies ModelConfig;
+
+    configManager.getHostModelRoutingConfig.mockReturnValue({
+      fallbackChatModels: [
+        {
+          providerId: 'openai',
+          modelId: 'gpt-4.1-mini',
+        },
+      ],
+      utilityModelRoles: {},
+    });
+    aiProvider.getModel.mockImplementation((providerId: string, modelId: string) => ({
+      provider: providerId,
+      modelId,
+    }));
+    aiProvider.getModelConfig.mockImplementation((providerId?: string, modelId?: string) => {
+      if (providerId === 'openai' && modelId === 'gpt-4.1-mini') {
+        return fallbackModelConfig;
+      }
+
+      return modelConfig;
+    });
+    (runGenerateText as jest.Mock)
+      .mockRejectedValueOnce(new Error('primary provider down'))
+      .mockResolvedValueOnce({ text: 'fallback ok' });
+
+    const executed = await service.generatePrepared({
+      prepared: {
+        modelConfig,
+        model: {
+          provider: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        } as never,
+        sdkMessages: [
+          {
+            role: 'user',
+            content: [{ type: 'text', text: 'hello' }],
+          },
+        ],
+        sourceSdkMessages: [
+          {
+            role: 'user',
+            content: [{ type: 'text', text: 'hello' }],
+          },
+        ],
+      },
+      system: 'retry me',
+      allowFallbackChatModels: true,
+    });
+
+    expect(runGenerateText).toHaveBeenCalledTimes(2);
+    expect(executed.modelConfig.providerId).toBe('openai');
+    expect(executed.modelConfig.id).toBe('gpt-4.1-mini');
+    expect(executed.result.text).toBe('fallback ok');
+  });
+
+  it('retries chat streaming with configured fallback chat models when the primary stream fails before start', () => {
+    const fallbackStream = (async function* () {
+      yield {
+        type: 'finish',
+      } as const;
+    })();
+    const fallbackModelConfig = {
+      ...modelConfig,
+      id: 'gpt-4.1-mini',
+      providerId: 'openai',
+      api: {
+        id: 'gpt-4.1-mini',
+        url: 'https://api.openai.com/v1',
+        npm: '@ai-sdk/openai',
+      },
+    } satisfies ModelConfig;
+
+    configManager.getHostModelRoutingConfig.mockReturnValue({
+      fallbackChatModels: [
+        {
+          providerId: 'openai',
+          modelId: 'gpt-4.1-mini',
+        },
+      ],
+      utilityModelRoles: {},
+    });
+    aiProvider.getModel.mockImplementation((providerId: string, modelId: string) => ({
+      provider: providerId,
+      modelId,
+    }));
+    aiProvider.getModelConfig.mockImplementation((providerId?: string, modelId?: string) => {
+      if (providerId === 'openai' && modelId === 'gpt-4.1-mini') {
+        return fallbackModelConfig;
+      }
+
+      return modelConfig;
+    });
+    (runStreamText as jest.Mock)
+      .mockImplementationOnce(() => {
+        throw new Error('primary stream setup failed');
+      })
+      .mockReturnValueOnce({
+        fullStream: fallbackStream,
+      });
+
+    const executed = service.streamPrepared({
+      prepared: {
+        modelConfig,
+        model: {
+          provider: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        } as never,
+        sdkMessages: [
+          {
+            role: 'user',
+            content: [{ type: 'text', text: 'hello' }],
+          },
+        ],
+        sourceSdkMessages: [
+          {
+            role: 'user',
+            content: [{ type: 'text', text: 'hello' }],
+          },
+        ],
+      },
+      system: 'retry me',
+      allowFallbackChatModels: true,
+    });
+
+    expect(runStreamText).toHaveBeenCalledTimes(2);
+    expect(executed.modelConfig.providerId).toBe('openai');
+    expect(executed.modelConfig.id).toBe('gpt-4.1-mini');
+    expect(executed.result.fullStream).toBe(fallbackStream);
   });
 });

@@ -2,10 +2,12 @@ import { ApiError, getApiBase, request } from './base'
 import type {
   Conversation,
   ConversationDetail,
+  ConversationHostServices,
   Message,
   RetryMessagePayload,
   SSEEvent,
   SendMessagePayload,
+  UpdateConversationHostServicesPayload,
   UpdateMessagePayload,
 } from '@garlic-claw/shared'
 
@@ -26,6 +28,20 @@ export function getConversation(id: string) {
 
 export function deleteConversation(id: string) {
   return request<{ message: string }>(`/chat/conversations/${id}`, { method: 'DELETE' })
+}
+
+export function getConversationHostServices(conversationId: string) {
+  return request<ConversationHostServices>(`/chat/conversations/${conversationId}/services`)
+}
+
+export function updateConversationHostServices(
+  conversationId: string,
+  payload: UpdateConversationHostServicesPayload,
+) {
+  return request<ConversationHostServices>(`/chat/conversations/${conversationId}/services`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function updateConversationMessage(

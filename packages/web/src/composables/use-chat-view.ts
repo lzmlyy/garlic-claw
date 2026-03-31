@@ -1,5 +1,11 @@
 import { computed, ref, watch } from 'vue'
-import type { AiModelCapabilities, ChatMessageMetadata, ChatMessagePart } from '@garlic-claw/shared'
+import type {
+  AiModelCapabilities,
+  ChatMessageMetadata,
+  ChatMessagePart,
+  ConversationHostServices,
+  UpdateConversationHostServicesPayload,
+} from '@garlic-claw/shared'
 import * as api from '../api'
 import type { useChatStore } from '../stores/chat'
 import {
@@ -44,9 +50,11 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
   const inputText = ref('')
   const pendingImages = ref<PendingImage[]>([])
   const selectedCapabilities = ref<AiModelCapabilities | null>(null)
+  const conversationHostServices = ref<ConversationHostServices | null>(null)
   const uploadProcessingNotices = ref<UploadNotice[]>([])
   const visionFallbackEnabled = ref(false)
   let capabilityRequestId = 0
+  let conversationHostServicesRequestId = 0
   const imageFallbackNotice = computed<UploadNotice[]>(() => {
     if (
       pendingImages.value.length === 0 ||
@@ -72,14 +80,31 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
     const lastMessage = chat.messages[chat.messages.length - 1]
     return lastMessage?.role ?? null
   })
+  const conversationSendDisabledReason = computed(() => {
+    if (!chat.currentConversationId) {
+      return null
+    }
+
+    if (conversationHostServices.value?.sessionEnabled === false) {
+      return '当前会话宿主服务已停用'
+    }
+
+    if (conversationHostServices.value?.llmEnabled === false) {
+      return '当前会话已关闭 LLM 自动回复'
+    }
+
+    return null
+  })
   const canSend = computed(() =>
-    Boolean(inputText.value.trim() || pendingImages.value.length > 0) && !chat.streaming,
+    Boolean(inputText.value.trim() || pendingImages.value.length > 0) &&
+    !chat.streaming &&
+    !conversationSendDisabledReason.value,
   )
   const retryActionLabel = computed(() =>
     chat.retryableMessageId ? '重试' : lastMessageRole.value === 'user' ? '发送' : '重试',
   )
   const canTriggerRetryAction = computed(() => {
-    if (chat.streaming) {
+    if (chat.streaming || conversationSendDisabledReason.value) {
       return false
     }
 
@@ -103,6 +128,13 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
     },
     { immediate: true },
   )
+  watch(
+    () => chat.currentConversationId,
+    async (conversationId) => {
+      await refreshConversationHostServices(conversationId)
+    },
+    { immediate: true },
+  )
   void refreshVisionFallbackAvailability()
 
   /**
@@ -123,6 +155,10 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
    * 把当前文本和待发送图片一起发给聊天 store。
    */
   async function send() {
+    if (conversationSendDisabledReason.value) {
+      return
+    }
+
     const text = inputText.value.trim()
     if (!selectedCapabilities.value && chat.selectedProvider && chat.selectedModel) {
       await refreshSelectedCapabilities(chat.selectedProvider, chat.selectedModel)
@@ -273,6 +309,10 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
    * @param messageId assistant 消息 ID
    */
   async function retryMessage(messageId: string) {
+    if (conversationSendDisabledReason.value) {
+      return
+    }
+
     await chat.retryMessage(messageId)
   }
 
@@ -287,7 +327,7 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
    * - 按钮位置固定，不再因为有无可重试消息频繁跳布局
    */
   async function triggerRetryAction() {
-    if (chat.streaming) {
+    if (chat.streaming || conversationSendDisabledReason.value) {
       return
     }
 
@@ -342,10 +382,97 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
     }
   }
 
+  /**
+   * 读取当前会话的宿主服务开关。
+   * @param conversationId 当前会话 ID
+   */
+  async function refreshConversationHostServices(
+    conversationId: string | null = chat.currentConversationId,
+  ) {
+    const requestId = ++conversationHostServicesRequestId
+    if (!conversationId) {
+      conversationHostServices.value = null
+      return
+    }
+
+    try {
+      const services = await api.getConversationHostServices(conversationId)
+      if (
+        requestId !== conversationHostServicesRequestId ||
+        chat.currentConversationId !== conversationId
+      ) {
+        return
+      }
+
+      conversationHostServices.value = services
+    } catch {
+      if (
+        requestId !== conversationHostServicesRequestId ||
+        chat.currentConversationId !== conversationId
+      ) {
+        return
+      }
+
+      conversationHostServices.value = {
+        sessionEnabled: true,
+        llmEnabled: true,
+        ttsEnabled: true,
+      }
+    }
+  }
+
+  /**
+   * 更新当前会话的 LLM 自动回复开关。
+   * @param enabled 是否启用
+   */
+  async function setConversationLlmEnabled(enabled: boolean) {
+    await updateConversationHostServices({
+      llmEnabled: enabled,
+    })
+  }
+
+  /**
+   * 更新当前会话的宿主总开关。
+   * @param enabled 是否启用
+   */
+  async function setConversationSessionEnabled(enabled: boolean) {
+    await updateConversationHostServices({
+      sessionEnabled: enabled,
+    })
+  }
+
+  /**
+   * 更新当前会话的宿主服务开关，并在必要时停止当前流。
+   * @param patch 局部更新
+   */
+  async function updateConversationHostServices(
+    patch: UpdateConversationHostServicesPayload,
+  ) {
+    const conversationId = chat.currentConversationId
+    if (!conversationId) {
+      return
+    }
+
+    conversationHostServices.value = await api.updateConversationHostServices(
+      conversationId,
+      patch,
+    )
+
+    if (
+      chat.streaming &&
+      (conversationHostServices.value.sessionEnabled === false ||
+        conversationHostServices.value.llmEnabled === false)
+    ) {
+      await chat.stopStreaming()
+    }
+  }
+
   return {
     inputText,
     pendingImages,
     selectedCapabilities,
+    conversationHostServices,
+    conversationSendDisabledReason,
     uploadNotices,
     canSend,
     canTriggerRetryAction,
@@ -359,6 +486,8 @@ export function useChatView(chat: ReturnType<typeof useChatStore>) {
     deleteMessage,
     retryMessage,
     triggerRetryAction,
+    setConversationLlmEnabled,
+    setConversationSessionEnabled,
   }
 }
 

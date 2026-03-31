@@ -22,6 +22,8 @@ describe('ChatController', () => {
     createConversation: jest.fn(),
     listConversations: jest.fn(),
     getConversation: jest.fn(),
+    getConversationHostServices: jest.fn(),
+    updateConversationHostServices: jest.fn(),
     deleteConversation: jest.fn(),
   };
 
@@ -133,6 +135,53 @@ describe('ChatController', () => {
     );
     expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
     expect(response.end).toHaveBeenCalled();
+  });
+
+  it('reads conversation host service settings through the chat service', async () => {
+    chatService.getConversationHostServices.mockResolvedValue({
+      sessionEnabled: true,
+      llmEnabled: false,
+      ttsEnabled: true,
+    });
+
+    await expect(
+      controller.getConversationHostServices('user-1', 'conversation-1'),
+    ).resolves.toEqual({
+      sessionEnabled: true,
+      llmEnabled: false,
+      ttsEnabled: true,
+    });
+
+    expect(chatService.getConversationHostServices).toHaveBeenCalledWith(
+      'user-1',
+      'conversation-1',
+    );
+  });
+
+  it('updates conversation host service settings through the chat service', async () => {
+    chatService.updateConversationHostServices.mockResolvedValue({
+      sessionEnabled: true,
+      llmEnabled: true,
+      ttsEnabled: false,
+    });
+
+    await expect(
+      controller.updateConversationHostServices('user-1', 'conversation-1', {
+        ttsEnabled: false,
+      } as never),
+    ).resolves.toEqual({
+      sessionEnabled: true,
+      llmEnabled: true,
+      ttsEnabled: false,
+    });
+
+    expect(chatService.updateConversationHostServices).toHaveBeenCalledWith(
+      'user-1',
+      'conversation-1',
+      {
+        ttsEnabled: false,
+      },
+    );
   });
 });
 

@@ -6,6 +6,7 @@ describe('ChatService', () => {
       create: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      update: jest.fn(),
       delete: jest.fn(),
     },
   };
@@ -63,6 +64,62 @@ describe('ChatService', () => {
           createdAt: '2026-03-28T10:00:00.000Z',
           updatedAt: '2026-03-28T10:00:00.000Z',
         },
+      },
+    });
+  });
+
+  it('returns normalized host service defaults when a conversation has no persisted settings', async () => {
+    prisma.conversation.findUnique.mockResolvedValue({
+      id: 'conversation-1',
+      userId: 'user-1',
+      hostServicesJson: null,
+    });
+
+    await expect(
+      service.getConversationHostServices('user-1', 'conversation-1'),
+    ).resolves.toEqual({
+      sessionEnabled: true,
+      llmEnabled: true,
+      ttsEnabled: true,
+    });
+  });
+
+  it('merges and persists updated host service settings for the owned conversation', async () => {
+    prisma.conversation.findUnique.mockResolvedValue({
+      id: 'conversation-1',
+      userId: 'user-1',
+      hostServicesJson: JSON.stringify({
+        sessionEnabled: true,
+        llmEnabled: true,
+        ttsEnabled: true,
+      }),
+    });
+    prisma.conversation.update.mockResolvedValue({
+      hostServicesJson: JSON.stringify({
+        sessionEnabled: true,
+        llmEnabled: false,
+        ttsEnabled: true,
+      }),
+    });
+
+    await expect(
+      service.updateConversationHostServices('user-1', 'conversation-1', {
+        llmEnabled: false,
+      }),
+    ).resolves.toEqual({
+      sessionEnabled: true,
+      llmEnabled: false,
+      ttsEnabled: true,
+    });
+
+    expect(prisma.conversation.update).toHaveBeenCalledWith({
+      where: { id: 'conversation-1' },
+      data: {
+        hostServicesJson: JSON.stringify({
+          sessionEnabled: true,
+          llmEnabled: false,
+          ttsEnabled: true,
+        }),
       },
     });
   });

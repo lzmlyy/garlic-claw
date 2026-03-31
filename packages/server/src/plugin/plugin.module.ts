@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from '../auth/auth.module';
 import { KbModule } from '../kb/kb.module';
 import { PersonaModule } from '../persona/persona.module';
 import { ToolModule } from '../tool/tool.module';
@@ -19,7 +20,13 @@ import { PluginSubagentTaskService } from './plugin-subagent-task.service';
 import { PluginService } from './plugin.service';
 
 @Module({
-  imports: [JwtModule.register({}), KbModule, PersonaModule, forwardRef(() => ToolModule)],
+  imports: [
+    JwtModule.register({}),
+    AuthModule,
+    KbModule,
+    PersonaModule,
+    forwardRef(() => ToolModule),
+  ],
   providers: [
     PluginService,
     PluginGateway,

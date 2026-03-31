@@ -33,6 +33,8 @@ describe('AiManagementService', () => {
     removeProvider: jest.fn(),
     getVisionFallbackConfig: jest.fn(),
     updateVisionFallbackConfig: jest.fn(),
+    getHostModelRoutingConfig: jest.fn(),
+    updateHostModelRoutingConfig: jest.fn(),
   };
 
   let service: AiManagementService;
@@ -165,6 +167,58 @@ describe('AiManagementService', () => {
       maxDescriptionLength: 300,
     });
     expect(updated.enabled).toBe(true);
+  });
+
+  it('reads and writes host model routing config through the config manager', () => {
+    configManager.getHostModelRoutingConfig.mockReturnValue({
+      fallbackChatModels: [],
+      utilityModelRoles: {},
+    });
+    configManager.updateHostModelRoutingConfig.mockImplementation((value) => value);
+
+    expect(service.getHostModelRoutingConfig()).toEqual({
+      fallbackChatModels: [],
+      utilityModelRoles: {},
+    });
+
+    const updated = service.updateHostModelRoutingConfig({
+      fallbackChatModels: [
+        {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        },
+      ],
+      compressionModel: {
+        providerId: 'openai',
+        modelId: 'gpt-4.1-mini',
+      },
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'openai',
+          modelId: 'gpt-4.1-mini',
+        },
+      },
+    });
+
+    expect(configManager.updateHostModelRoutingConfig).toHaveBeenCalledWith({
+      fallbackChatModels: [
+        {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        },
+      ],
+      compressionModel: {
+        providerId: 'openai',
+        modelId: 'gpt-4.1-mini',
+      },
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'openai',
+          modelId: 'gpt-4.1-mini',
+        },
+      },
+    });
+    expect(updated.compressionModel?.modelId).toBe('gpt-4.1-mini');
   });
 
   it('marks providers as unavailable when credentials are missing', () => {

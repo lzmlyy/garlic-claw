@@ -146,6 +146,60 @@ export class UpdateVisionFallbackDto {
 }
 
 /**
+ * 模型路由目标 DTO。
+ */
+export class AiModelRouteTargetDto {
+  /** provider ID。 */
+  @IsString()
+  providerId!: string;
+
+  /** model ID。 */
+  @IsString()
+  modelId!: string;
+}
+
+/**
+ * utility model role 配置 DTO。
+ */
+export class UpdateUtilityModelRolesDto {
+  /** 会话标题生成模型。 */
+  @ValidateNested()
+  @Type(() => AiModelRouteTargetDto)
+  @IsOptional()
+  conversationTitle?: AiModelRouteTargetDto;
+
+  /** 插件文本生成默认模型。 */
+  @ValidateNested()
+  @Type(() => AiModelRouteTargetDto)
+  @IsOptional()
+  pluginGenerateText?: AiModelRouteTargetDto;
+}
+
+/**
+ * 宿主模型路由配置 DTO。
+ */
+export class UpdateHostModelRoutingDto {
+  /** 聊天回退模型链。 */
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AiModelRouteTargetDto)
+  @IsOptional()
+  fallbackChatModels?: AiModelRouteTargetDto[];
+
+  /** 上下文压缩模型。 */
+  @ValidateNested()
+  @Type(() => AiModelRouteTargetDto)
+  @IsOptional()
+  compressionModel?: AiModelRouteTargetDto;
+
+  /** utility model role 配置。 */
+  @ValidateNested()
+  @Type(() => UpdateUtilityModelRolesDto)
+  @IsOptional()
+  utilityModelRoles?: UpdateUtilityModelRolesDto;
+}
+
+/**
  * provider 测试连接 DTO。
  */
 export class TestAiProviderConnectionDto {

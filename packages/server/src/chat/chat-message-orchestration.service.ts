@@ -95,7 +95,7 @@ export class ChatMessageOrchestrationService {
         },
       });
 
-      return this.modelInvocation.streamPrepared({
+      const streamed = this.modelInvocation.streamPrepared({
         prepared: input.preparedInvocation,
         system: input.request.systemPrompt,
         tools: input.tools,
@@ -105,7 +105,13 @@ export class ChatMessageOrchestrationService {
         maxOutputTokens: input.request.maxOutputTokens,
         stopWhen: createStepLimit(5),
         abortSignal,
-      }).result;
+      });
+
+      return {
+        providerId: String(streamed.modelConfig.providerId),
+        modelId: String(streamed.modelConfig.id),
+        stream: streamed.result,
+      };
     };
   }
 

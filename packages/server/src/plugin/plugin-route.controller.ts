@@ -10,7 +10,9 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AuthScopes } from '../auth/decorators/auth-scopes.decorator';
+import { AnyAuthGuard } from '../auth/guards/any-auth.guard';
+import { AuthScopeGuard } from '../auth/guards/auth-scope.guard';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import type { PluginCallContext, PluginRouteRequest } from '@garlic-claw/shared';
@@ -31,7 +33,7 @@ const BLOCKED_PLUGIN_RESPONSE_HEADERS = new Set([
 @ApiTags('Plugin Routes')
 @ApiBearerAuth()
 @Controller('plugin-routes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(AnyAuthGuard, AuthScopeGuard)
 export class PluginRouteController {
   constructor(private readonly pluginRuntime: PluginRuntimeService) {}
 
@@ -45,6 +47,7 @@ export class PluginRouteController {
    * @returns 插件返回的 JSON body
    */
   @All(':pluginId/*path')
+  @AuthScopes('plugin.route.invoke')
   async handleRoute(
     @CurrentUser('id') userId: string,
     @Param('pluginId') pluginId: string,

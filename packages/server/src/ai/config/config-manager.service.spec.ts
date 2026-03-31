@@ -45,4 +45,55 @@ describe('ConfigManagerService', () => {
       }),
     ]);
   });
+
+  it('persists host model routing config into the same settings file', () => {
+    process.env[envKey] = tempSettingsPath;
+
+    const service = new ConfigManagerService();
+    service.updateHostModelRoutingConfig({
+      fallbackChatModels: [
+        {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        },
+      ],
+      compressionModel: {
+        providerId: 'openai',
+        modelId: 'gpt-4.1-mini',
+      },
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'openai',
+          modelId: 'gpt-4.1-mini',
+        },
+      },
+    });
+
+    const persisted = JSON.parse(fs.readFileSync(tempSettingsPath, 'utf-8')) as {
+      hostModelRouting?: {
+        fallbackChatModels?: Array<{ providerId: string; modelId: string }>;
+        compressionModel?: { providerId: string; modelId: string };
+        utilityModelRoles?: Record<string, { providerId: string; modelId: string }>;
+      };
+    };
+
+    expect(persisted.hostModelRouting).toEqual({
+      fallbackChatModels: [
+        {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        },
+      ],
+      compressionModel: {
+        providerId: 'openai',
+        modelId: 'gpt-4.1-mini',
+      },
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'openai',
+          modelId: 'gpt-4.1-mini',
+        },
+      },
+    });
+  });
 });

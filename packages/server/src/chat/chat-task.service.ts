@@ -31,9 +31,9 @@ export interface StartChatTaskInput {
    * 输入:
    * - abortSignal: 主动停止时会触发的信号
    * 输出:
-   * - 可迭代消费的流源
+   * - 实际使用的 provider/model 与可迭代消费的流源
    */
-  createStream: (abortSignal: AbortSignal) => ChatTaskStreamSource;
+  createStream: (abortSignal: AbortSignal) => ResolvedChatTaskStreamSource;
   /**
    * 在 assistant 成功完成后执行的回调。
    * 输入:
@@ -94,6 +94,15 @@ interface MutableTaskState {
   toolCalls: PersistedToolCall[];
   /** 累计工具结果。 */
   toolResults: PersistedToolResult[];
+}
+
+interface ResolvedChatTaskStreamSource {
+  /** 实际使用的 provider ID。 */
+  providerId: string;
+  /** 实际使用的模型 ID。 */
+  modelId: string;
+  /** 可消费的流源。 */
+  stream: ChatTaskStreamSource;
 }
 
 @Injectable()
@@ -193,21 +202,27 @@ export class ChatTaskService implements OnModuleInit {
       toolCalls: [],
       toolResults: [],
     };
-
-    await this.persistMessageState(input, state, 'streaming', null);
-    this.emit(task, {
-      type: 'status',
-      messageId: input.assistantMessageId,
-      status: 'streaming',
-    });
+    let resolvedInput = input;
 
     try {
-      const stream = input.createStream(task.abortController.signal);
+      const streamSource = input.createStream(task.abortController.signal);
+      resolvedInput = {
+        ...input,
+        providerId: streamSource.providerId,
+        modelId: streamSource.modelId,
+      };
 
-      for await (const part of stream.fullStream) {
+      await this.persistMessageState(resolvedInput, state, 'streaming', null);
+      this.emit(task, {
+        type: 'status',
+        messageId: input.assistantMessageId,
+        status: 'streaming',
+      });
+
+      for await (const part of streamSource.stream.fullStream) {
         if (isTextDeltaPart(part)) {
           state.content += part.text;
-          await this.persistMessageState(input, state, 'streaming', null);
+          await this.persistMessageState(resolvedInput, state, 'streaming', null);
           this.emit(task, {
             type: 'text-delta',
             messageId: input.assistantMessageId,
@@ -222,7 +237,7 @@ export class ChatTaskService implements OnModuleInit {
             toolName: part.toolName,
             input: part.input,
           });
-          await this.persistMessageState(input, state, 'streaming', null);
+          await this.persistMessageState(resolvedInput, state, 'streaming', null);
           this.emit(task, {
             type: 'tool-call',
             messageId: input.assistantMessageId,
@@ -238,7 +253,7 @@ export class ChatTaskService implements OnModuleInit {
             toolName: part.toolName,
             output: part.output,
           });
-          await this.persistMessageState(input, state, 'streaming', null);
+          await this.persistMessageState(resolvedInput, state, 'streaming', null);
           this.emit(task, {
             type: 'tool-result',
             messageId: input.assistantMessageId,
@@ -250,7 +265,7 @@ export class ChatTaskService implements OnModuleInit {
       }
 
       if (task.abortController.signal.aborted) {
-        await this.persistMessageState(input, state, 'stopped', null);
+        await this.persistMessageState(resolvedInput, state, 'stopped', null);
         this.emit(task, {
           type: 'status',
           messageId: input.assistantMessageId,
@@ -264,8 +279,8 @@ export class ChatTaskService implements OnModuleInit {
         return;
       }
 
-      await this.persistMessageState(input, state, 'completed', null);
-      const completedResult = this.buildCompletedTaskResult(input, state);
+      await this.persistMessageState(resolvedInput, state, 'completed', null);
+      const completedResult = this.buildCompletedTaskResult(resolvedInput, state);
       let finalResult = completedResult;
       if (input.onComplete) {
         try {
@@ -309,7 +324,7 @@ export class ChatTaskService implements OnModuleInit {
       }
     } catch (error) {
       if (task.abortController.signal.aborted) {
-        await this.persistMessageState(input, state, 'stopped', null);
+        await this.persistMessageState(resolvedInput, state, 'stopped', null);
         this.emit(task, {
           type: 'status',
           messageId: input.assistantMessageId,
@@ -328,7 +343,7 @@ export class ChatTaskService implements OnModuleInit {
       this.logger.error(
         `聊天任务执行失败: ${input.assistantMessageId} - ${errorMessage}`,
       );
-      await this.persistMessageState(input, state, 'error', errorMessage);
+      await this.persistMessageState(resolvedInput, state, 'error', errorMessage);
       this.emit(task, {
         type: 'status',
         messageId: input.assistantMessageId,

@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Res,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -22,6 +23,7 @@ import {
   CreateConversationDto,
   RetryMessageDto,
   SendMessageDto,
+  UpdateConversationHostServicesDto,
   UpdateMessageDto,
 } from './dto/chat.dto';
 
@@ -63,6 +65,23 @@ export class ChatController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.chatService.deleteConversation(userId, id);
+  }
+
+  @Get('conversations/:id/services')
+  getConversationHostServices(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.chatService.getConversationHostServices(userId, id);
+  }
+
+  @Put('conversations/:id/services')
+  updateConversationHostServices(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateConversationHostServicesDto,
+  ) {
+    return this.chatService.updateConversationHostServices(userId, id, dto);
   }
 
   /**

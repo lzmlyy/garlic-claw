@@ -48,10 +48,12 @@ describe('JwtStrategy', () => {
         role: 'user',
       }),
     ).resolves.toEqual({
+      authType: 'jwt',
       id: 'user-1',
       username: 'owner',
       email: 'owner@example.com',
       role: 'super_admin',
+      scopes: [],
     });
   });
 

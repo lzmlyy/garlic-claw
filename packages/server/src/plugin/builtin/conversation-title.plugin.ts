@@ -1,6 +1,5 @@
 import type { JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
-import { asChatAfterModelPayload } from './builtin-plugin.transport';
 
 /**
  * 会话标题插件使用的最小会话摘要。
@@ -80,8 +79,7 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
        * @param context 插件执行上下文
        * @returns 当前不需要返回结果，始终返回 null
        */
-      'chat:after-model': async (payload: JsonValue, context) => {
-        const hookPayload = asChatAfterModelPayload(payload);
+      'chat:after-model': async (_payload: JsonValue, context) => {
         const config = (await context.host.getConfig()) as ConversationTitlePluginConfig;
         const conversation = (await context.host.getConversation()) as ConversationSummary;
         const defaultTitle = (config.defaultTitle ?? 'New Chat').trim() || 'New Chat';
@@ -102,8 +100,6 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
         }
 
         const generated = (await context.host.generateText({
-          providerId: hookPayload.providerId,
-          modelId: hookPayload.modelId,
           system:
             '你是一个对话标题生成器。请基于给定对话生成一个简短、准确、自然的中文标题。',
           prompt,

@@ -16,6 +16,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   ConfigManagerService,
+  type StoredAiHostModelRoutingConfig,
   type StoredAiProviderConfig,
   type StoredVisionFallbackConfig,
 } from './config/config-manager.service';
@@ -257,6 +258,25 @@ export class AiManagementService {
     config: StoredVisionFallbackConfig,
   ): StoredVisionFallbackConfig {
     return this.configManager.updateVisionFallbackConfig(config);
+  }
+
+  /**
+   * 获取宿主模型路由配置。
+   * @returns 当前宿主模型路由配置
+   */
+  getHostModelRoutingConfig(): StoredAiHostModelRoutingConfig {
+    return this.configManager.getHostModelRoutingConfig();
+  }
+
+  /**
+   * 更新宿主模型路由配置。
+   * @param config 新配置
+   * @returns 写入后的配置
+   */
+  updateHostModelRoutingConfig(
+    config: StoredAiHostModelRoutingConfig,
+  ): StoredAiHostModelRoutingConfig {
+    return this.configManager.updateHostModelRoutingConfig(config);
   }
 
   /**

@@ -351,6 +351,7 @@ describe('ChatMessageService', () => {
       create_automation: createAutomationTool as never,
     });
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig: routedModelConfig,
       result: {
         fullStream: (async function* () {
           yield { type: 'finish' } as const;
@@ -583,6 +584,59 @@ describe('ChatMessageService', () => {
     });
     expect((result.userMessage as { metadataJson?: string | null }).metadataJson).toContain('图片里是一只趴着的橘猫。');
     expect((result.assistantMessage as { metadataJson?: string | null }).metadataJson).toContain('图片里是一只趴着的橘猫。');
+  });
+
+  it('rejects new generation before creating any assistant placeholder when llm is disabled for the conversation', async () => {
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      hostServicesJson: JSON.stringify({
+        sessionEnabled: true,
+        llmEnabled: false,
+        ttsEnabled: true,
+      }),
+      messages: [],
+    });
+
+    await expect(
+      service.startMessageGeneration('user-1', 'conversation-1', {
+        content: '你好',
+      } as never),
+    ).rejects.toThrow('当前会话已关闭 LLM 自动回复');
+
+    expect(prisma.message.create).not.toHaveBeenCalled();
+    expect(chatTaskService.startTask).not.toHaveBeenCalled();
+  });
+
+  it('rejects retry before resetting the assistant message when the conversation session is disabled', async () => {
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      hostServicesJson: JSON.stringify({
+        sessionEnabled: false,
+        llmEnabled: true,
+        ttsEnabled: true,
+      }),
+      messages: [
+        {
+          id: 'assistant-message-1',
+          role: 'assistant',
+          provider: 'openai',
+          model: 'gpt-5.2',
+          status: 'error',
+        },
+      ],
+    });
+
+    await expect(
+      service.retryMessageGeneration(
+        'user-1',
+        'conversation-1',
+        'assistant-message-1',
+        {} as never,
+      ),
+    ).rejects.toThrow('当前会话宿主服务已停用');
+
+    expect(prisma.message.update).not.toHaveBeenCalled();
+    expect(chatTaskService.startTask).not.toHaveBeenCalled();
   });
 
   it('applies message:created mutations before persisting the user message draft', async () => {
@@ -1402,6 +1456,7 @@ describe('ChatMessageService', () => {
     });
     toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig,
       result: {
         fullStream: (async function* () {
           yield { type: 'finish' } as const;
@@ -1549,6 +1604,7 @@ describe('ChatMessageService', () => {
     });
     toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig,
       result: {
         fullStream: (async function* () {
           yield { type: 'finish' } as const;

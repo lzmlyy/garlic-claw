@@ -56,6 +56,11 @@ const router = createRouter({
           component: () => import('../views/SubagentTasksView.vue'),
         },
         {
+          path: 'api-keys',
+          name: 'api-keys',
+          component: () => import('../views/ApiKeysView.vue'),
+        },
+        {
           path: 'automations',
           name: 'automations',
           component: () => import('../views/AutomationsView.vue'),

@@ -33,6 +33,7 @@ import type { ChatRuntimeMessage } from './chat-message-session';
 import { prepareSendMessagePayload } from './chat-message-session';
 import { ChatService } from './chat.service';
 import { type RetryMessageDto, type SendMessageDto, type UpdateMessageDto } from './dto/chat.dto';
+import { normalizeConversationHostServices } from './chat-host-services';
 import {
   deserializeMessageParts,
   normalizeAssistantMessageOutput,
@@ -96,6 +97,7 @@ export class ChatMessageService {
   /** 创建一轮新的用户消息与 assistant 生成任务，输出已落库的用户消息与 assistant 占位消息。 */
   async startMessageGeneration(userId: string, conversationId: string, dto: SendMessageDto) {
     const conversation = await this.chatService.getConversation(userId, conversationId);
+    this.assertConversationLlmEnabled(conversation);
     if (hasActiveAssistantMessage(conversation.messages)) {
       throw new BadRequestException('当前仍有回复在生成中，请先停止或等待完成');
     }
@@ -325,6 +327,7 @@ export class ChatMessageService {
   /** 原地重试最后一条 assistant 回复，可选覆盖 provider/model。 */
   async retryMessageGeneration(userId: string, conversationId: string, messageId: string, dto: RetryMessageDto) {
     const { conversation, message } = await this.getOwnedMessage(userId, conversationId, messageId);
+    this.assertConversationLlmEnabled(conversation);
     const lastMessage = conversation.messages[conversation.messages.length - 1];
     if (!lastMessage || lastMessage.id !== messageId || message.role !== 'assistant') {
       throw new BadRequestException('只能重试最后一条 AI 回复');
@@ -855,6 +858,26 @@ export class ChatMessageService {
       ...(input.activeModelId ? { activeModelId: input.activeModelId } : {}),
       ...(input.activePersonaId ? { activePersonaId: input.activePersonaId } : {}),
     };
+  }
+
+  /**
+   * 校验当前会话是否允许启动新的 LLM 生成任务。
+   * @param conversation 当前会话记录
+   */
+  private assertConversationLlmEnabled(conversation: {
+    hostServicesJson?: string | null;
+  }) {
+    const hostServices = normalizeConversationHostServices(
+      conversation.hostServicesJson,
+    );
+
+    if (!hostServices.sessionEnabled) {
+      throw new BadRequestException('当前会话宿主服务已停用');
+    }
+
+    if (!hostServices.llmEnabled) {
+      throw new BadRequestException('当前会话已关闭 LLM 自动回复');
+    }
   }
 
   /**

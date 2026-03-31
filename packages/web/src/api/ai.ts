@@ -1,5 +1,6 @@
 import { request } from './base'
 import type {
+  AiHostModelRoutingConfig,
   AiModelCapabilities,
   AiModelConfig,
   AiProviderConfig,
@@ -111,6 +112,17 @@ export function getVisionFallbackConfig() {
 
 export function updateVisionFallbackConfig(payload: VisionFallbackConfig) {
   return request<VisionFallbackConfig>('/ai/vision-fallback', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getHostModelRoutingConfig() {
+  return request<AiHostModelRoutingConfig>('/ai/host-model-routing')
+}
+
+export function updateHostModelRoutingConfig(payload: AiHostModelRoutingConfig) {
+  return request<AiHostModelRoutingConfig>('/ai/host-model-routing', {
     method: 'PUT',
     body: JSON.stringify(payload),
   })

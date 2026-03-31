@@ -15,9 +15,12 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'node:fs';
+import type { AiUtilityModelRole } from '@garlic-claw/shared';
 import type {
   AiSettingsFile,
+  RawStoredAiModelRouteTarget,
   RawStoredAiProviderConfig,
+  StoredAiHostModelRoutingConfig,
   StoredAiProviderConfig,
   StoredVisionFallbackConfig,
 } from './config-manager.types';
@@ -25,6 +28,7 @@ import { resolveConfigFilePath } from './config-path.util';
 
 export type {
   AiSettingsFile,
+  StoredAiHostModelRoutingConfig,
   RawStoredAiProviderConfig,
   StoredAiProviderConfig,
   StoredVisionFallbackConfig,
@@ -32,7 +36,7 @@ export type {
 
 @Injectable()
 export class ConfigManagerService {
-  private static readonly CURRENT_VERSION = 1;
+  private static readonly CURRENT_VERSION = 2;
 
   private readonly logger = new Logger(ConfigManagerService.name);
   private readonly settingsPath: string;
@@ -142,6 +146,27 @@ export class ConfigManagerService {
   }
 
   /**
+   * 获取宿主模型路由配置。
+   * @returns 当前宿主模型路由配置
+   */
+  getHostModelRoutingConfig(): StoredAiHostModelRoutingConfig {
+    return cloneHostModelRoutingConfig(this.settings.hostModelRouting);
+  }
+
+  /**
+   * 更新宿主模型路由配置。
+   * @param config 新配置
+   * @returns 写入后的配置
+   */
+  updateHostModelRoutingConfig(
+    config: StoredAiHostModelRoutingConfig,
+  ): StoredAiHostModelRoutingConfig {
+    this.settings.hostModelRouting = cloneHostModelRoutingConfig(config);
+    this.saveSettings();
+    return cloneHostModelRoutingConfig(this.settings.hostModelRouting);
+  }
+
+  /**
    * 加载设置文件。
    * @returns 已加载的设置
    */
@@ -206,6 +231,9 @@ export class ConfigManagerService {
               ? parsed.visionFallback.maxDescriptionLength
               : undefined,
         },
+        hostModelRouting: normalizeHostModelRoutingConfig(
+          parsed.hostModelRouting,
+        ),
       };
     } catch (error) {
       this.logger.warn(`AI 设置文件损坏，已重置为空配置: ${String(error)}`);
@@ -239,7 +267,87 @@ export class ConfigManagerService {
       visionFallback: {
         enabled: false,
       },
+      hostModelRouting: {
+        fallbackChatModels: [],
+        utilityModelRoles: {},
+      },
     };
   }
 
+}
+
+function normalizeHostModelRoutingConfig(
+  raw: unknown,
+): StoredAiHostModelRoutingConfig {
+  const hostModelRouting = raw as {
+    fallbackChatModels?: RawStoredAiModelRouteTarget[];
+    compressionModel?: RawStoredAiModelRouteTarget;
+    utilityModelRoles?: Partial<Record<AiUtilityModelRole, RawStoredAiModelRouteTarget>>;
+  } | undefined;
+
+  return {
+    fallbackChatModels: Array.isArray(hostModelRouting?.fallbackChatModels)
+      ? hostModelRouting.fallbackChatModels
+          .map(normalizeModelRouteTarget)
+          .filter(
+            (
+              target,
+            ): target is NonNullable<ReturnType<typeof normalizeModelRouteTarget>> =>
+              Boolean(target),
+          )
+      : [],
+    compressionModel: normalizeModelRouteTarget(hostModelRouting?.compressionModel),
+    utilityModelRoles: {
+      ...normalizeUtilityModelRole(hostModelRouting?.utilityModelRoles?.conversationTitle),
+      ...normalizeUtilityModelRole(
+        hostModelRouting?.utilityModelRoles?.pluginGenerateText,
+        'pluginGenerateText',
+      ),
+    },
+  };
+}
+
+function normalizeUtilityModelRole(
+  raw: RawStoredAiModelRouteTarget | undefined,
+  role: AiUtilityModelRole = 'conversationTitle',
+) {
+  const target = normalizeModelRouteTarget(raw);
+  return target ? { [role]: target } : {};
+}
+
+function normalizeModelRouteTarget(
+  raw?: RawStoredAiModelRouteTarget,
+): { providerId: string; modelId: string } | undefined {
+  if (
+    typeof raw?.providerId !== 'string'
+    || !raw.providerId
+    || typeof raw?.modelId !== 'string'
+    || !raw.modelId
+  ) {
+    return undefined;
+  }
+
+  return {
+    providerId: raw.providerId,
+    modelId: raw.modelId,
+  };
+}
+
+function cloneHostModelRoutingConfig(
+  config: StoredAiHostModelRoutingConfig,
+): StoredAiHostModelRoutingConfig {
+  return {
+    fallbackChatModels: config.fallbackChatModels.map((target) => ({
+      ...target,
+    })),
+    ...(config.compressionModel
+      ? { compressionModel: { ...config.compressionModel } }
+      : {}),
+    utilityModelRoles: Object.fromEntries(
+      Object.entries(config.utilityModelRoles).map(([role, target]) => [
+        role,
+        target ? { ...target } : target,
+      ]),
+    ) as StoredAiHostModelRoutingConfig['utilityModelRoles'],
+  };
 }

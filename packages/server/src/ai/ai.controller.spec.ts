@@ -28,6 +28,8 @@ describe('AiController', () => {
     updateModelCapabilities: jest.fn(),
     getVisionFallbackConfig: jest.fn(),
     updateVisionFallbackConfig: jest.fn(),
+    getHostModelRoutingConfig: jest.fn(),
+    updateHostModelRoutingConfig: jest.fn(),
   };
   const diagnosticsService = {
     discoverModels: jest.fn(),
@@ -89,6 +91,27 @@ describe('AiController', () => {
     controller.updateVisionFallbackConfig(dto);
 
     expect(managementService.updateVisionFallbackConfig).toHaveBeenCalledWith(dto);
+  });
+
+  it('forwards host model routing updates to the management service', () => {
+    const dto = {
+      fallbackChatModels: [
+        {
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        },
+      ],
+      utilityModelRoles: {
+        conversationTitle: {
+          providerId: 'openai',
+          modelId: 'gpt-4.1-mini',
+        },
+      },
+    };
+
+    controller.updateHostModelRoutingConfig(dto as never);
+
+    expect(managementService.updateHostModelRoutingConfig).toHaveBeenCalledWith(dto);
   });
 
   it('forwards model discovery requests to the diagnostics service', async () => {
