@@ -572,10 +572,20 @@ async function startBackend(env) {
 
 async function waitForServerReady(url, backend) {
   const startedAt = Date.now();
+  const readyUrl = new URL(url);
 
   while (Date.now() - startedAt < 20000) {
     if (backend.child.exitCode !== null) {
       throw new Error(`Backend exited before becoming ready: ${backend.child.exitCode}`);
+    }
+
+    const portOpen = await isTcpPortOpen({
+      host: readyUrl.hostname,
+      port: backend.port,
+      timeoutMs: 1000,
+    });
+    if (portOpen) {
+      return;
     }
 
     try {
@@ -591,6 +601,30 @@ async function waitForServerReady(url, backend) {
   }
 
   throw new Error('Timed out waiting for backend to become ready');
+}
+
+async function isTcpPortOpen({
+  host,
+  port,
+  timeoutMs,
+}) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({
+      host,
+      port,
+    });
+
+    const finish = (open) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(open);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
 }
 
 async function apiRequest(context, method, routePath, options = {}) {

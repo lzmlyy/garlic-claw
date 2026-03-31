@@ -76,7 +76,7 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
 
         return {
           saved: true,
-          id: (saved as { id?: string }).id ?? null,
+          id: readSavedMemoryId(saved),
         };
       },
 
@@ -90,14 +90,10 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
         params: JsonObject,
         context,
       ): Promise<JsonValue> => {
-        const memories = (await context.host.searchMemories(
+        const memories = readMemorySearchResults(await context.host.searchMemories(
           readRequiredString(params, 'query'),
           10,
-        )) as Array<{
-          content?: string;
-          category?: string;
-          createdAt?: string;
-        }>;
+        ));
 
         return {
           count: memories.length,
@@ -143,4 +139,44 @@ function readOptionalString(params: JsonObject, key: string): string | null {
   }
 
   return value;
+}
+
+function readSavedMemoryId(value: JsonValue): string | null {
+  const object = readJsonObjectValue(value);
+  return object && typeof object.id === 'string' ? object.id : null;
+}
+
+function readMemorySearchResults(
+  value: JsonValue,
+): Array<{
+  content?: string;
+  category?: string;
+  createdAt?: string;
+}> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    const object = readJsonObjectValue(entry);
+    if (!object) {
+      return [];
+    }
+
+    return [{
+      ...(typeof object.content === 'string' ? { content: object.content } : {}),
+      ...(typeof object.category === 'string' ? { category: object.category } : {}),
+      ...(typeof object.createdAt === 'string' ? { createdAt: object.createdAt } : {}),
+    }];
+  });
+}
+
+function readJsonObjectValue(
+  value: JsonValue,
+): Record<string, JsonValue> | null {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : null;
 }

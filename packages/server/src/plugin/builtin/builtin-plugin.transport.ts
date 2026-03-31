@@ -40,7 +40,9 @@ import type {
 } from '@garlic-claw/shared';
 import { BadRequestException } from '@nestjs/common';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
+import { toJsonValue } from '../../common/utils/json-value';
 import type { PluginTransport } from '../plugin-runtime.service';
+import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 内建插件可用的 Host API 调用器。
@@ -625,6 +627,41 @@ export class BuiltinPluginTransport implements PluginTransport {
   }
 
   /**
+   * 执行一次原始 Host API 调用。
+   * @param context 调用上下文
+   * @param method Host 方法名
+   * @param params JSON 参数
+   * @returns 原始 JSON 返回值
+   */
+  private invokeHost(
+    context: PluginCallContext,
+    method: HostCallPayload['method'],
+    params: JsonObject,
+  ): Promise<JsonValue> {
+    return this.hostService.call({
+      pluginId: this.definition.manifest.id,
+      context,
+      method,
+      params,
+    });
+  }
+
+  /**
+   * 执行一次带类型收口的 Host API 调用。
+   * @param context 调用上下文
+   * @param method Host 方法名
+   * @param params JSON 参数
+   * @returns 收口后的结构化结果
+   */
+  private callHost<T>(
+    context: PluginCallContext,
+    method: HostCallPayload['method'],
+    params: JsonObject = {},
+  ): Promise<T> {
+    return this.invokeHost(context, method, params) as Promise<T>;
+  }
+
+  /**
    * 创建一个绑定到当前插件与调用上下文的 Host API 门面。
    * @param context 调用上下文
    * @returns 带便捷方法的 Host API 门面
@@ -632,71 +669,35 @@ export class BuiltinPluginTransport implements PluginTransport {
   private createHostFacade(
     context: PluginCallContext,
   ): BuiltinPluginHostFacade {
+    const call: BuiltinPluginHostFacade['call'] = (method, params) =>
+      this.invokeHost(context, method, params);
+    const callHost = <T>(
+      method: HostCallPayload['method'],
+      params: JsonObject = {},
+    ): Promise<T> => this.callHost<T>(context, method, params);
+
     return {
-      call: (method, params) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method,
-          params,
-        }),
+      call,
       getCurrentProvider: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'provider.current.get',
-          params: {},
-        }) as unknown as Promise<PluginProviderCurrentInfo>,
-      listProviders: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'provider.list',
-          params: {},
-        }) as unknown as Promise<PluginProviderSummary[]>,
+        callHost<PluginProviderCurrentInfo>('provider.current.get'),
+      listProviders: () => callHost<PluginProviderSummary[]>('provider.list'),
       getProvider: (providerId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'provider.get',
-          params: {
-            providerId,
-          },
-        }) as unknown as Promise<PluginProviderSummary>,
+        callHost<PluginProviderSummary>('provider.get', {
+          providerId,
+        }),
       getProviderModel: (providerId, modelId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'provider.model.get',
-          params: {
-            providerId,
-            modelId,
-          },
-        }) as unknown as Promise<PluginProviderModelSummary>,
+        callHost<PluginProviderModelSummary>('provider.model.get', {
+          providerId,
+          modelId,
+        }),
       searchMemories: (query, limit = 10) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'memory.search',
-          params: {
-            query,
-            limit,
-          },
+        call('memory.search', {
+          query,
+          limit,
         }),
-      getConversation: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'conversation.get',
-          params: {},
-        }),
+      getConversation: () => call('conversation.get', {}),
       getCurrentMessageTarget: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'message.target.current.get',
-          params: {},
-        }) as unknown as Promise<PluginMessageTargetInfo | null>,
+        callHost<PluginMessageTargetInfo | null>('message.target.current.get'),
       sendMessage: ({
         target,
         content,
@@ -704,288 +705,130 @@ export class BuiltinPluginTransport implements PluginTransport {
         provider,
         model,
       }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'message.send',
-          params: {
-            ...(target ? { target: target as unknown as JsonValue } : {}),
-            ...(typeof content === 'string' ? { content } : {}),
-            ...(parts ? { parts: parts as unknown as JsonValue } : {}),
-            ...(typeof provider === 'string' ? { provider } : {}),
-            ...(typeof model === 'string' ? { model } : {}),
-          },
-        }) as unknown as Promise<PluginMessageSendInfo>,
+        callHost<PluginMessageSendInfo>('message.send', {
+          ...(target ? { target: toHostJsonValue(target) } : {}),
+          ...(typeof content === 'string' ? { content } : {}),
+          ...(parts ? { parts: toHostJsonValue(parts) } : {}),
+          ...(typeof provider === 'string' ? { provider } : {}),
+          ...(typeof model === 'string' ? { model } : {}),
+        }),
       startConversationSession: ({
         timeoutMs,
         captureHistory,
         metadata,
       }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'conversation.session.start',
-          params: {
-            timeoutMs,
-            ...(typeof captureHistory === 'boolean' ? { captureHistory } : {}),
-            ...(typeof metadata !== 'undefined' ? { metadata } : {}),
-          },
-        }) as unknown as Promise<PluginConversationSessionInfo>,
+        callHost<PluginConversationSessionInfo>('conversation.session.start', {
+          timeoutMs,
+          ...(typeof captureHistory === 'boolean' ? { captureHistory } : {}),
+          ...(typeof metadata !== 'undefined' ? { metadata } : {}),
+        }),
       getConversationSession: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'conversation.session.get',
-          params: {},
-        }) as unknown as Promise<PluginConversationSessionInfo | null>,
+        callHost<PluginConversationSessionInfo | null>('conversation.session.get'),
       keepConversationSession: ({
         timeoutMs,
         resetTimeout,
       }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'conversation.session.keep',
-          params: {
-            timeoutMs,
-            ...(typeof resetTimeout === 'boolean' ? { resetTimeout } : {}),
-          },
-        }) as unknown as Promise<PluginConversationSessionInfo | null>,
-      finishConversationSession: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'conversation.session.finish',
-          params: {},
-        }) as unknown as Promise<boolean>,
-      listKnowledgeBaseEntries: (limit) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'kb.list',
-          params: typeof limit === 'number' ? { limit } : {},
-        }) as unknown as Promise<PluginKbEntrySummary[]>,
-      searchKnowledgeBase: (query, limit = 5) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'kb.search',
-          params: {
-            query,
-            limit,
-          },
-        }) as unknown as Promise<PluginKbEntryDetail[]>,
-      getKnowledgeBaseEntry: (entryId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'kb.get',
-          params: {
-            entryId,
-          },
-        }) as unknown as Promise<PluginKbEntryDetail>,
-      getCurrentPersona: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'persona.current.get',
-          params: {},
-        }) as unknown as Promise<PluginPersonaCurrentInfo>,
-      listPersonas: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'persona.list',
-          params: {},
-        }) as unknown as Promise<PluginPersonaSummary[]>,
-      getPersona: (personaId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'persona.get',
-          params: {
-            personaId,
-          },
-        }) as unknown as Promise<PluginPersonaSummary>,
-      activatePersona: (personaId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'persona.activate',
-          params: {
-            personaId,
-          },
-        }) as unknown as Promise<PluginPersonaCurrentInfo>,
-      registerCron: (descriptor) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'cron.register',
-          params: {
-            name: descriptor.name,
-            cron: descriptor.cron,
-            ...(descriptor.description ? { description: descriptor.description } : {}),
-            ...(typeof descriptor.enabled === 'boolean' ? { enabled: descriptor.enabled } : {}),
-            ...(Object.prototype.hasOwnProperty.call(descriptor, 'data')
-              ? { data: descriptor.data as JsonValue }
-              : {}),
-          },
-        }) as unknown as Promise<PluginCronJobSummary>,
-      listCrons: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'cron.list',
-          params: {},
-        }) as unknown as Promise<PluginCronJobSummary[]>,
-      deleteCron: (jobId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'cron.delete',
-          params: {
-            jobId,
-          },
-        }) as unknown as Promise<boolean>,
-      createAutomation: ({ name, trigger, actions }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'automation.create',
-          params: {
-            name,
-            trigger: trigger as unknown as JsonValue,
-            actions: actions as unknown as JsonValue,
-          },
-        }) as unknown as Promise<AutomationInfo>,
-      listAutomations: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'automation.list',
-          params: {},
-        }) as unknown as Promise<AutomationInfo[]>,
-      toggleAutomation: (automationId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'automation.toggle',
-          params: {
-            automationId,
-          },
-        }) as unknown as Promise<{ id: string; enabled: boolean } | null>,
-      runAutomation: (automationId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'automation.run',
-          params: {
-            automationId,
-          },
-        }) as unknown as Promise<{ status: string; results: JsonValue[] } | null>,
-      emitAutomationEvent: (event) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'automation.event.emit',
-          params: {
-            event,
-          },
-        }) as unknown as Promise<AutomationEventDispatchInfo>,
-      getPluginSelf: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'plugin.self.get',
-          params: {},
-        }) as unknown as Promise<PluginSelfInfo>,
-      writeLog: ({ level, message, type, metadata }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'log.write',
-          params: {
-            level,
-            message,
-            ...(type ? { type } : {}),
-            ...(metadata ? { metadata } : {}),
-          },
-        }) as unknown as Promise<boolean>,
-      listConversationMessages: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'conversation.messages.list',
-          params: {},
+        callHost<PluginConversationSessionInfo | null>('conversation.session.keep', {
+          timeoutMs,
+          ...(typeof resetTimeout === 'boolean' ? { resetTimeout } : {}),
         }),
+      finishConversationSession: () =>
+        callHost<boolean>('conversation.session.finish'),
+      listKnowledgeBaseEntries: (limit) =>
+        callHost<PluginKbEntrySummary[]>(
+          'kb.list',
+          typeof limit === 'number' ? { limit } : {},
+        ),
+      searchKnowledgeBase: (query, limit = 5) =>
+        callHost<PluginKbEntryDetail[]>('kb.search', {
+          query,
+          limit,
+        }),
+      getKnowledgeBaseEntry: (entryId) =>
+        callHost<PluginKbEntryDetail>('kb.get', {
+          entryId,
+        }),
+      getCurrentPersona: () =>
+        callHost<PluginPersonaCurrentInfo>('persona.current.get'),
+      listPersonas: () => callHost<PluginPersonaSummary[]>('persona.list'),
+      getPersona: (personaId) =>
+        callHost<PluginPersonaSummary>('persona.get', {
+          personaId,
+        }),
+      activatePersona: (personaId) =>
+        callHost<PluginPersonaCurrentInfo>('persona.activate', {
+          personaId,
+        }),
+      registerCron: (descriptor) =>
+        callHost<PluginCronJobSummary>('cron.register', {
+          name: descriptor.name,
+          cron: descriptor.cron,
+          ...(descriptor.description ? { description: descriptor.description } : {}),
+          ...(typeof descriptor.enabled === 'boolean' ? { enabled: descriptor.enabled } : {}),
+          ...(typeof descriptor.data !== 'undefined' ? { data: descriptor.data } : {}),
+        }),
+      listCrons: () => callHost<PluginCronJobSummary[]>('cron.list'),
+      deleteCron: (jobId) =>
+        callHost<boolean>('cron.delete', {
+          jobId,
+        }),
+      createAutomation: ({ name, trigger, actions }) =>
+        callHost<AutomationInfo>('automation.create', {
+          name,
+          trigger: toHostJsonValue(trigger),
+          actions: toHostJsonValue(actions),
+        }),
+      listAutomations: () => callHost<AutomationInfo[]>('automation.list'),
+      toggleAutomation: (automationId) =>
+        callHost<{ id: string; enabled: boolean } | null>('automation.toggle', {
+          automationId,
+        }),
+      runAutomation: (automationId) =>
+        callHost<{ status: string; results: JsonValue[] } | null>('automation.run', {
+          automationId,
+        }),
+      emitAutomationEvent: (event) =>
+        callHost<AutomationEventDispatchInfo>('automation.event.emit', {
+          event,
+        }),
+      getPluginSelf: () =>
+        callHost<PluginSelfInfo>('plugin.self.get'),
+      writeLog: ({ level, message, type, metadata }) =>
+        callHost<boolean>('log.write', {
+          level,
+          message,
+          ...(type ? { type } : {}),
+          ...(metadata ? { metadata } : {}),
+        }),
+      listConversationMessages: () =>
+        call('conversation.messages.list', {}),
       getStorage: (key) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'storage.get',
-          params: {
-            key,
-          },
+        call('storage.get', {
+          key,
         }),
       setStorage: (key, value) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'storage.set',
-          params: {
-            key,
-            value,
-          },
+        call('storage.set', {
+          key,
+          value,
         }),
       deleteStorage: (key) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'storage.delete',
-          params: {
-            key,
-          },
+        call('storage.delete', {
+          key,
         }),
       listStorage: (prefix) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'storage.list',
-          params: prefix ? { prefix } : {},
-        }),
+        call('storage.list', prefix ? { prefix } : {}),
       saveMemory: ({ content, category, keywords }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'memory.save',
-          params: {
-            content,
-            ...(category ? { category } : {}),
-            ...(keywords ? { keywords } : {}),
-          },
+        call('memory.save', {
+          content,
+          ...(category ? { category } : {}),
+          ...(keywords ? { keywords } : {}),
         }),
       getConfig: (key) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'config.get',
-          params: key ? { key } : {},
-        }),
-      getUser: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'user.get',
-          params: {},
-        }),
+        call('config.get', key ? { key } : {}),
+      getUser: () => call('user.get', {}),
       setConversationTitle: (title) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'conversation.title.set',
-          params: {
-            title,
-          },
+        call('conversation.title.set', {
+          title,
         }),
       generate: ({
         providerId,
@@ -997,21 +840,16 @@ export class BuiltinPluginTransport implements PluginTransport {
         headers,
         maxOutputTokens,
       }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'llm.generate',
-          params: {
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-            ...(system ? { system } : {}),
-            messages: messages as never,
-            ...(variant ? { variant } : {}),
-            ...(providerOptions ? { providerOptions } : {}),
-            ...(headers ? { headers } : {}),
-            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-          },
-        }) as unknown as Promise<PluginLlmGenerateResult>,
+        callHost<PluginLlmGenerateResult>('llm.generate', {
+          ...(providerId ? { providerId } : {}),
+          ...(modelId ? { modelId } : {}),
+          ...(system ? { system } : {}),
+          messages: toHostJsonValue(messages),
+          ...(variant ? { variant } : {}),
+          ...(providerOptions ? { providerOptions } : {}),
+          ...(headers ? { headers } : {}),
+          ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+        }),
       runSubagent: ({
         providerId,
         modelId,
@@ -1024,23 +862,18 @@ export class BuiltinPluginTransport implements PluginTransport {
         maxOutputTokens,
         maxSteps,
       }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'subagent.run',
-          params: {
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-            ...(system ? { system } : {}),
-            messages: messages as never,
-            ...(toolNames ? { toolNames } : {}),
-            ...(variant ? { variant } : {}),
-            ...(providerOptions ? { providerOptions } : {}),
-            ...(headers ? { headers } : {}),
-            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-            ...(typeof maxSteps === 'number' ? { maxSteps } : {}),
-          },
-        }) as unknown as Promise<PluginSubagentRunResult>,
+        callHost<PluginSubagentRunResult>('subagent.run', {
+          ...(providerId ? { providerId } : {}),
+          ...(modelId ? { modelId } : {}),
+          ...(system ? { system } : {}),
+          messages: toHostJsonValue(messages),
+          ...(toolNames ? { toolNames: toHostJsonValue(toolNames) } : {}),
+          ...(variant ? { variant } : {}),
+          ...(providerOptions ? { providerOptions } : {}),
+          ...(headers ? { headers: toHostJsonValue(headers) } : {}),
+          ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+          ...(typeof maxSteps === 'number' ? { maxSteps } : {}),
+        }),
       startSubagentTask: ({
         providerId,
         modelId,
@@ -1055,7 +888,7 @@ export class BuiltinPluginTransport implements PluginTransport {
         writeBack,
       }) => {
         const startTaskParams: JsonObject = {
-          messages: messages as never,
+          messages: toHostJsonValue(messages),
         };
         if (providerId) {
           startTaskParams.providerId = providerId;
@@ -1067,7 +900,7 @@ export class BuiltinPluginTransport implements PluginTransport {
           startTaskParams.system = system;
         }
         if (toolNames) {
-          startTaskParams.toolNames = toolNames as never;
+          startTaskParams.toolNames = toHostJsonValue(toolNames);
         }
         if (variant) {
           startTaskParams.variant = variant;
@@ -1076,7 +909,7 @@ export class BuiltinPluginTransport implements PluginTransport {
           startTaskParams.providerOptions = providerOptions;
         }
         if (headers) {
-          startTaskParams.headers = headers as never;
+          startTaskParams.headers = toHostJsonValue(headers);
         }
         if (typeof maxOutputTokens === 'number') {
           startTaskParams.maxOutputTokens = maxOutputTokens;
@@ -1085,32 +918,20 @@ export class BuiltinPluginTransport implements PluginTransport {
           startTaskParams.maxSteps = maxSteps;
         }
         if (writeBack) {
-          startTaskParams.writeBack = writeBack as never;
+          startTaskParams.writeBack = toHostJsonValue(writeBack);
         }
 
-        return this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'subagent.task.start',
-          params: startTaskParams,
-        }) as unknown as Promise<PluginSubagentTaskSummary>;
+        return callHost<PluginSubagentTaskSummary>(
+          'subagent.task.start',
+          startTaskParams,
+        );
       },
       listSubagentTasks: () =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'subagent.task.list',
-          params: {},
-        }) as unknown as Promise<PluginSubagentTaskSummary[]>,
+        callHost<PluginSubagentTaskSummary[]>('subagent.task.list'),
       getSubagentTask: (taskId) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'subagent.task.get',
-          params: {
-            taskId,
-          },
-        }) as unknown as Promise<PluginSubagentTaskDetail>,
+        callHost<PluginSubagentTaskDetail>('subagent.task.get', {
+          taskId,
+        }),
       generateText: ({
         prompt,
         system,
@@ -1121,20 +942,15 @@ export class BuiltinPluginTransport implements PluginTransport {
         providerOptions,
         headers,
       }) =>
-        this.hostService.call({
-          pluginId: this.definition.manifest.id,
-          context,
-          method: 'llm.generate-text',
-          params: {
-            prompt,
-            ...(system ? { system } : {}),
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-            ...(variant ? { variant } : {}),
-            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-            ...(providerOptions ? { providerOptions } : {}),
-            ...(headers ? { headers } : {}),
-          },
+        call('llm.generate-text', {
+          prompt,
+          ...(system ? { system } : {}),
+          ...(providerId ? { providerId } : {}),
+          ...(modelId ? { modelId } : {}),
+          ...(variant ? { variant } : {}),
+          ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+          ...(providerOptions ? { providerOptions } : {}),
+          ...(headers ? { headers } : {}),
         }),
     };
   }
@@ -1148,7 +964,7 @@ export class BuiltinPluginTransport implements PluginTransport {
 export function asChatBeforeModelPayload(
   payload: JsonValue,
 ): ChatBeforeModelHookPayload {
-  return payload as unknown as ChatBeforeModelHookPayload;
+  return readBuiltinHookPayload<ChatBeforeModelHookPayload>(payload);
 }
 
 /**
@@ -1159,19 +975,24 @@ export function asChatBeforeModelPayload(
 export function asChatAfterModelPayload(
   payload: JsonValue,
 ): ChatAfterModelHookPayload {
-  return payload as unknown as ChatAfterModelHookPayload;
+  return readBuiltinHookPayload<ChatAfterModelHookPayload>(payload);
 }
 
 /**
  * 构造聊天模型前 Hook 返回值。
- * @param appendSystemPrompt 要追加的系统提示词
+ * @param currentSystemPrompt 当前系统提示词
+ * @param appendedSystemPrompt 要追加的系统提示词
  * @returns Hook 返回值对象
  */
 export function createChatBeforeModelHookResult(
-  appendSystemPrompt: string,
+  currentSystemPrompt: string,
+  appendedSystemPrompt: string,
 ): ChatBeforeModelHookResult {
   return {
-    appendSystemPrompt,
+    action: 'mutate',
+    systemPrompt: currentSystemPrompt
+      ? [currentSystemPrompt, appendedSystemPrompt].join('\n\n')
+      : appendedSystemPrompt,
   };
 }
 
@@ -1182,4 +1003,62 @@ export function createChatBeforeModelHookResult(
  */
 function normalizeBuiltinRoutePath(path: string): string {
   return path.trim().replace(/^\/+|\/+$/g, '');
+}
+
+/**
+ * 将宿主调用参数归一化为 JSON，并跳过显式 undefined 字段。
+ * @param value 原始值
+ * @returns 适合 Host API 的 JSON 值
+ */
+function toHostJsonValue(value: unknown): JsonValue {
+  if (
+    value === null
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const result: JsonValue[] = [];
+    for (const item of value) {
+      if (typeof item === 'undefined') {
+        continue;
+      }
+      result.push(toHostJsonValue(item));
+    }
+    return result;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (isPlainObject(value)) {
+    const result: JsonObject = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (typeof entry === 'undefined') {
+        continue;
+      }
+      result[key] = toHostJsonValue(entry);
+    }
+    return result;
+  }
+
+  return toJsonValue(value);
+}
+
+/**
+ * 判断值是否为普通对象。
+ * @param value 待判断值
+ * @returns 是否为普通对象
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }

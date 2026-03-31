@@ -1,4 +1,5 @@
 import type {
+  AiUtilityModelRole,
   ChatMessagePart,
   HostCallPayload,
   PluginEventLevel,
@@ -26,6 +27,7 @@ import { AiProviderService } from '../ai/ai-provider.service';
 import { ModelRegistryService } from '../ai/registry/model-registry.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { deserializeMessageParts } from '../chat/message-parts';
+import { toAiSdkMessages } from '../chat/sdk-message-converter';
 import { toJsonValue } from '../common/utils/json-value';
 import { KbService } from '../kb/kb.service';
 import { MemoryService } from '../memory/memory.service';
@@ -112,9 +114,9 @@ export class PluginHostService {
       case 'conversation.title.set':
         return this.setConversationTitle(input.context, input.params);
       case 'llm.generate':
-        return this.generate(input.params);
+        return this.generate(input.pluginId, input.context, input.params);
       case 'llm.generate-text':
-        return this.generateText(input.params);
+        return this.generateText(input.pluginId, input.context, input.params);
       case 'plugin.self.get':
         return this.getPluginSelf(input.pluginId);
       case 'storage.delete':
@@ -154,7 +156,7 @@ export class PluginHostService {
       return config;
     }
 
-    return (config[key] as JsonValue | undefined) ?? null;
+    return Object.prototype.hasOwnProperty.call(config, key) ? config[key] : null;
   }
 
   /**
@@ -436,12 +438,18 @@ export class PluginHostService {
 
   /**
    * 通过宿主统一入口执行一次文本生成。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
    * @param params 模型选择与提示词参数
    * @returns 生成结果摘要
    */
-  private async generateText(params: JsonObject): Promise<JsonValue> {
+  private async generateText(
+    pluginId: string,
+    context: PluginCallContext,
+    params: JsonObject,
+  ): Promise<JsonValue> {
     const prompt = this.requireString(params, 'prompt');
-    const result = await this.generateCore({
+    const result = await this.generateCore(pluginId, context, {
       providerId: this.readString(params, 'providerId') ?? undefined,
       modelId: this.readString(params, 'modelId') ?? undefined,
       system: this.readString(params, 'system') ?? undefined,
@@ -471,11 +479,17 @@ export class PluginHostService {
 
   /**
    * 通过宿主统一入口执行一次结构化生成。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
    * @param params 模型选择与消息参数
    * @returns 生成结果摘要
    */
-  private async generate(params: JsonObject): Promise<JsonValue> {
-    return toJsonValue(await this.generateCore({
+  private async generate(
+    pluginId: string,
+    context: PluginCallContext,
+    params: JsonObject,
+  ): Promise<JsonValue> {
+    return toJsonValue(await this.generateCore(pluginId, context, {
       providerId: this.readString(params, 'providerId') ?? undefined,
       modelId: this.readString(params, 'modelId') ?? undefined,
       system: this.readString(params, 'system') ?? undefined,
@@ -521,14 +535,10 @@ export class PluginHostService {
     params: JsonObject,
   ): Promise<JsonValue> {
     const key = this.requireString(params, 'key');
-    if (!Object.prototype.hasOwnProperty.call(params, 'value')) {
-      throw new BadRequestException('storage.set 缺少 value');
-    }
-
     return this.pluginService.setPluginStorage(
       pluginId,
       key,
-      params.value as JsonValue,
+      this.requireJsonValue(params, 'value', 'storage.set'),
     );
   }
 
@@ -604,11 +614,11 @@ export class PluginHostService {
    */
   private setState(pluginId: string, params: JsonObject): JsonValue {
     const key = this.requireString(params, 'key');
-    if (!Object.prototype.hasOwnProperty.call(params, 'value')) {
-      throw new BadRequestException('state.set 缺少 value');
-    }
-
-    return this.stateService.set(pluginId, key, params.value as JsonValue);
+    return this.stateService.set(
+      pluginId,
+      key,
+      this.requireJsonValue(params, 'value', 'state.set'),
+    );
   }
 
   /**
@@ -690,15 +700,25 @@ export class PluginHostService {
 
   /**
    * 执行一次统一的结构化 LLM 生成。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
    * @param params 已解析的生成参数
    * @returns 统一的生成结果
    */
   private async generateCore(
+    pluginId: string,
+    context: PluginCallContext,
     params: PluginLlmGenerateParams,
   ): Promise<PluginLlmGenerateResult> {
+    const utilityRole = this.resolveUtilityRoleForGeneration(
+      pluginId,
+      context,
+      params,
+    );
     const executed = await this.aiModelExecution.generateText({
       ...(params.providerId ? { providerId: params.providerId } : {}),
       ...(params.modelId ? { modelId: params.modelId } : {}),
+      ...(utilityRole ? { utilityRole } : {}),
       ...(params.system ? { system: params.system } : {}),
       ...(params.variant ? { variant: params.variant } : {}),
       ...(params.providerOptions ? { providerOptions: params.providerOptions } : {}),
@@ -706,10 +726,7 @@ export class PluginHostService {
       ...(typeof params.maxOutputTokens === 'number'
         ? { maxOutputTokens: params.maxOutputTokens }
         : {}),
-      sdkMessages: params.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })) as never,
+      sdkMessages: toAiSdkMessages(params.messages),
     });
 
     return {
@@ -724,9 +741,38 @@ export class PluginHostService {
         ? { finishReason: String(executed.result.finishReason) }
         : {}),
       ...(executed.result.usage !== undefined
-        ? { usage: toJsonValue(executed.result.usage as never) }
+        ? { usage: toJsonValue(executed.result.usage) }
         : {}),
     };
+  }
+
+  /**
+   * 为未显式指定 provider/model 的插件生成请求选择 utility role。
+   * @param pluginId 调用插件 ID
+   * @param context 插件调用上下文
+   * @param params 已解析的生成参数
+   * @returns 可选 utility role
+   */
+  private resolveUtilityRoleForGeneration(
+    pluginId: string,
+    context: PluginCallContext,
+    params: Pick<PluginLlmGenerateParams, 'providerId' | 'modelId'>,
+  ): AiUtilityModelRole | undefined {
+    if (params.providerId || params.modelId) {
+      return undefined;
+    }
+
+    if (
+      pluginId === 'builtin.conversation-title'
+      && context.activeProviderId
+      && context.activeModelId
+    ) {
+      params.providerId = context.activeProviderId;
+      params.modelId = context.activeModelId;
+      return 'conversationTitle';
+    }
+
+    return 'pluginGenerateText';
   }
 
   /**
@@ -885,11 +931,7 @@ export class PluginHostService {
    * @returns 已校验的消息
    */
   private readLlmMessage(value: JsonValue, index: number): PluginLlmMessage {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`messages[${index}] 必须是对象`);
-    }
-
-    const message = value as JsonObject;
+    const message = readJsonObjectValue(value, `messages[${index}]`);
     if (
       message.role !== 'user'
       && message.role !== 'assistant'
@@ -904,7 +946,7 @@ export class PluginHostService {
     return {
       role: message.role,
       content: this.readLlmMessageContent(
-        message.content as JsonValue,
+        message.content,
         `messages[${index}].content`,
       ),
     };
@@ -939,11 +981,7 @@ export class PluginHostService {
    * @returns 已校验的消息 part
    */
   private readChatMessagePart(value: JsonValue, label: string): ChatMessagePart {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`${label} 必须是对象`);
-    }
-
-    const part = value as JsonObject;
+    const part = readJsonObjectValue(value, label);
     if (part.type === 'text' && typeof part.text === 'string') {
       return {
         type: 'text',
@@ -1023,11 +1061,27 @@ export class PluginHostService {
     if (value === undefined || value === null) {
       return null;
     }
-    if (typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`${key} 必须是对象`);
+
+    return readJsonObjectValue(value, key);
+  }
+
+  /**
+   * 从参数对象读取必填 JSON 值字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns JSON 值
+   */
+  private requireJsonValue(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): JsonValue {
+    if (!Object.prototype.hasOwnProperty.call(params, key)) {
+      throw new BadRequestException(`${method} 缺少 ${key}`);
     }
 
-    return value as JsonObject;
+    return params[key];
   }
 
   /**
@@ -1073,4 +1127,16 @@ export class PluginHostService {
 
     return value;
   }
+}
+
+function readJsonObjectValue(value: JsonValue, label: string): JsonObject {
+  if (!isJsonObjectValue(value)) {
+    throw new BadRequestException(`${label} 必须是对象`);
+  }
+
+  return value;
+}
+
+function isJsonObjectValue(value: JsonValue): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

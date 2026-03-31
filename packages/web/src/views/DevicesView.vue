@@ -33,9 +33,9 @@
             · 最后活跃 {{ formatTime(plugin.lastSeenAt) }}
           </span>
         </div>
-        <div v-if="plugin.capabilities.length" class="capabilities">
-          <h4>能力 ({{ plugin.capabilities.length }})</h4>
-          <div v-for="cap in plugin.capabilities" :key="cap.name" class="capability-item">
+        <div v-if="plugin.manifest.tools.length" class="capabilities">
+          <h4>能力 ({{ plugin.manifest.tools.length }})</h4>
+          <div v-for="cap in plugin.manifest.tools" :key="cap.name" class="capability-item">
             <span class="cap-name">{{ cap.name }}</span>
             <span class="cap-desc">{{ cap.description }}</span>
           </div>

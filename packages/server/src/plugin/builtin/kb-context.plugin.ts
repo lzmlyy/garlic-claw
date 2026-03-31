@@ -83,6 +83,7 @@ export function createKbContextPlugin(): BuiltinPluginDefinition {
         );
         return toJsonValue(
           createChatBeforeModelHookResult(
+            hookPayload.request.systemPrompt,
             `${config.promptPrefix ?? '与当前问题相关的系统知识'}：\n${knowledgeLines.join('\n')}`,
           ),
         );

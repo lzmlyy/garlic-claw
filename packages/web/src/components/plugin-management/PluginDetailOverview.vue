@@ -73,12 +73,12 @@
       </article>
       <article class="summary-card">
         <span class="summary-label">能力概览</span>
-        <strong>{{ plugin.capabilities.length }} 个能力</strong>
+        <strong>{{ plugin.manifest.tools.length }} 个能力</strong>
         <p>
-          {{ plugin.hooks?.length ?? 0 }} 个 Hook，
+          {{ plugin.manifest.hooks?.length ?? 0 }} 个 Hook，
           {{ cronCount }} 个 Cron，
-          {{ plugin.routes?.length ?? 0 }} 个 Route，
-          {{ plugin.permissions?.length ?? 0 }} 个权限
+          {{ plugin.manifest.routes?.length ?? 0 }} 个 Route，
+          {{ plugin.manifest.permissions.length }} 个权限
         </p>
         <span class="summary-foot">当前详情只展示统一协议下的宿主扩展面</span>
       </article>
@@ -88,25 +88,25 @@
       <article class="tag-group">
         <div class="tag-group-head">
           <span class="tag-label">权限</span>
-          <span class="tag-count">{{ plugin.permissions?.length ?? 0 }}</span>
+          <span class="tag-count">{{ plugin.manifest.permissions.length }}</span>
         </div>
         <div class="token-list">
-          <span v-for="permission in plugin.permissions ?? []" :key="permission" class="token">
+          <span v-for="permission in plugin.manifest.permissions" :key="permission" class="token">
             {{ permission }}
           </span>
-          <span v-if="!(plugin.permissions?.length)" class="token muted-token">无</span>
+          <span v-if="plugin.manifest.permissions.length === 0" class="token muted-token">无</span>
         </div>
       </article>
       <article class="tag-group">
         <div class="tag-group-head">
           <span class="tag-label">Hook</span>
-          <span class="tag-count">{{ plugin.hooks?.length ?? 0 }}</span>
+          <span class="tag-count">{{ plugin.manifest.hooks?.length ?? 0 }}</span>
         </div>
         <div class="token-list">
-          <span v-for="hook in plugin.hooks ?? []" :key="hook.name" class="token">
+          <span v-for="hook in plugin.manifest.hooks ?? []" :key="hook.name" class="token">
             {{ hook.name }}
           </span>
-          <span v-if="!(plugin.hooks?.length)" class="token muted-token">无</span>
+          <span v-if="!(plugin.manifest.hooks?.length)" class="token muted-token">无</span>
         </div>
       </article>
       <article class="tag-group">
@@ -124,13 +124,13 @@
       <article class="tag-group">
         <div class="tag-group-head">
           <span class="tag-label">工具</span>
-          <span class="tag-count">{{ plugin.capabilities.length }}</span>
+          <span class="tag-count">{{ plugin.manifest.tools.length }}</span>
         </div>
         <div class="token-list">
-          <span v-for="tool in plugin.capabilities" :key="tool.name" class="token">
+          <span v-for="tool in plugin.manifest.tools" :key="tool.name" class="token">
             {{ tool.name }}
           </span>
-          <span v-if="plugin.capabilities.length === 0" class="token muted-token">无</span>
+          <span v-if="plugin.manifest.tools.length === 0" class="token muted-token">无</span>
         </div>
       </article>
     </div>

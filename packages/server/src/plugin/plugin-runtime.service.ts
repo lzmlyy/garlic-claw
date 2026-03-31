@@ -93,7 +93,6 @@ import { ModuleRef } from '@nestjs/core';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import { createStepLimit } from '../ai/sdk-adapter';
 import { AutomationService } from '../automation/automation.service';
-import type { ChatRuntimeMessage } from '../chat/chat-message-session';
 import { toAiSdkMessages } from '../chat/sdk-message-converter';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
@@ -525,7 +524,7 @@ export class PluginRuntimeService {
       context: PluginCallContext;
       allowedToolNames?: string[];
       excludedSources?: Array<{
-        kind: 'plugin' | 'mcp';
+        kind: 'plugin' | 'mcp' | 'skill';
         id: string;
       }>;
     }) => Promise<Record<string, Tool> | undefined>;
@@ -1089,9 +1088,7 @@ export class PluginRuntimeService {
         name: this.requireString(input.params, 'name', 'cron.register'),
         cron: this.requireString(input.params, 'cron', 'cron.register'),
         description: this.readOptionalString(input.params, 'description', 'cron.register'),
-        data: Object.prototype.hasOwnProperty.call(input.params, 'data')
-          ? input.params.data as JsonValue
-          : undefined,
+        data: this.readOptionalJsonValue(input.params, 'data'),
         enabled: this.readOptionalBoolean(input.params, 'enabled', 'cron.register'),
       }));
     }
@@ -1155,9 +1152,7 @@ export class PluginRuntimeService {
           'captureHistory',
           'conversation.session.start',
         ) ?? false,
-        metadata: Object.prototype.hasOwnProperty.call(input.params, 'metadata')
-          ? input.params.metadata as JsonValue
-          : undefined,
+        metadata: this.readOptionalJsonValue(input.params, 'metadata'),
       }));
     }
     if (input.method === 'conversation.session.get') {
@@ -2348,6 +2343,15 @@ export class PluginRuntimeService {
   }
 
   /**
+   * 将已通过结构校验的 Hook 结果收口为目标类型。
+   * @param result 已校验的对象结果
+   * @returns 目标 Hook 结果类型
+   */
+  private castValidatedHookResult<T>(result: JsonObject): T {
+    return result as T;
+  }
+
+  /**
    * 将插件返回的聊天前 Hook 结果归一为统一结构。
    * @param result 插件原始返回值
    * @param currentRequest 当前请求快照
@@ -2355,29 +2359,13 @@ export class PluginRuntimeService {
    */
   private normalizeChatBeforeModelHookResult(
     result: JsonValue | null | undefined,
-    currentRequest: ChatBeforeModelRequest,
+    _currentRequest: ChatBeforeModelRequest,
   ): NormalizedChatBeforeModelHookResult | null {
     if (result === null || typeof result === 'undefined') {
       return null;
     }
     if (!isJsonObjectValue(result)) {
       throw new Error('chat:before-model Hook 返回值必须是对象');
-    }
-
-    if ('appendSystemPrompt' in result) {
-      const appendSystemPrompt = result.appendSystemPrompt;
-      if (appendSystemPrompt === null || typeof appendSystemPrompt === 'undefined') {
-        return null;
-      }
-      if (typeof appendSystemPrompt !== 'string') {
-        throw new Error('chat:before-model Hook 的 appendSystemPrompt 必须是字符串');
-      }
-      return {
-        action: 'mutate',
-        systemPrompt: currentRequest.systemPrompt
-          ? [currentRequest.systemPrompt, appendSystemPrompt].join('\n\n')
-          : appendSystemPrompt,
-      };
     }
 
     if (result.action === 'pass') {
@@ -2425,7 +2413,7 @@ export class PluginRuntimeService {
         throw new Error('chat:before-model Hook 的 maxOutputTokens 必须是数字或 null');
       }
 
-      return result as unknown as ChatBeforeModelHookMutateResult;
+      return this.castValidatedHookResult<ChatBeforeModelHookMutateResult>(result);
     }
 
     if (result.action === 'short-circuit') {
@@ -2449,7 +2437,7 @@ export class PluginRuntimeService {
         throw new Error('chat:before-model Hook 的 reason 必须是字符串');
       }
 
-      return result as unknown as ChatBeforeModelHookShortCircuitResult;
+      return this.castValidatedHookResult<ChatBeforeModelHookShortCircuitResult>(result);
     }
 
     throw new Error('chat:before-model Hook 返回了未知 action');
@@ -2496,7 +2484,7 @@ export class PluginRuntimeService {
         throw new Error('message:received Hook 的 modelMessages 必须是统一消息数组');
       }
 
-      return result as unknown as MessageReceivedHookMutateResult;
+      return this.castValidatedHookResult<MessageReceivedHookMutateResult>(result);
     }
     if (result.action === 'short-circuit') {
       if (typeof result.assistantContent !== 'string') {
@@ -2519,7 +2507,7 @@ export class PluginRuntimeService {
         throw new Error('message:received Hook 的 reason 必须是字符串');
       }
 
-      return result as unknown as MessageReceivedHookShortCircuitResult;
+      return this.castValidatedHookResult<MessageReceivedHookShortCircuitResult>(result);
     }
 
     throw new Error('message:received Hook 返回了未知 action');
@@ -2558,7 +2546,7 @@ export class PluginRuntimeService {
         throw new Error('chat:after-model Hook 的 assistantParts 必须是消息 part 数组或 null');
       }
 
-      return result as unknown as ChatAfterModelHookMutateResult;
+      return this.castValidatedHookResult<ChatAfterModelHookMutateResult>(result);
     }
 
     throw new Error('chat:after-model Hook 返回了未知 action');
@@ -2726,7 +2714,7 @@ export class PluginRuntimeService {
         throw new Error('message:created Hook 的 status 必须是合法消息状态或 null');
       }
 
-      return result as unknown as MessageCreatedHookMutateResult;
+      return this.castValidatedHookResult<MessageCreatedHookMutateResult>(result);
     }
 
     throw new Error('message:created Hook 返回了未知 action');
@@ -2774,7 +2762,7 @@ export class PluginRuntimeService {
         throw new Error('message:updated Hook 的 status 必须是合法消息状态或 null');
       }
 
-      return result as unknown as MessageUpdatedHookMutateResult;
+      return this.castValidatedHookResult<MessageUpdatedHookMutateResult>(result);
     }
 
     throw new Error('message:updated Hook 返回了未知 action');
@@ -2802,7 +2790,7 @@ export class PluginRuntimeService {
         throw new Error('automation:before-run Hook 的 actions 必须是动作数组');
       }
 
-      return result as unknown as AutomationBeforeRunHookMutateResult;
+      return this.castValidatedHookResult<AutomationBeforeRunHookMutateResult>(result);
     }
     if (result.action === 'short-circuit') {
       if (typeof result.status !== 'string') {
@@ -2812,7 +2800,7 @@ export class PluginRuntimeService {
         throw new Error('automation:before-run Hook 的 results 必须是数组');
       }
 
-      return result as unknown as AutomationBeforeRunHookShortCircuitResult;
+      return this.castValidatedHookResult<AutomationBeforeRunHookShortCircuitResult>(result);
     }
 
     throw new Error('automation:before-run Hook 返回了未知 action');
@@ -2843,7 +2831,7 @@ export class PluginRuntimeService {
         throw new Error('automation:after-run Hook 的 results 必须是数组');
       }
 
-      return result as unknown as AutomationAfterRunHookMutateResult;
+      return this.castValidatedHookResult<AutomationAfterRunHookMutateResult>(result);
     }
 
     throw new Error('automation:after-run Hook 返回了未知 action');
@@ -2898,7 +2886,7 @@ export class PluginRuntimeService {
         throw new Error('subagent:before-run Hook 的 maxSteps 必须是数字或 null');
       }
 
-      return result as unknown as SubagentBeforeRunHookMutateResult;
+      return this.castValidatedHookResult<SubagentBeforeRunHookMutateResult>(result);
     }
     if (result.action === 'short-circuit') {
       if (typeof result.text !== 'string') {
@@ -2920,7 +2908,7 @@ export class PluginRuntimeService {
         throw new Error('subagent:before-run Hook 的 toolResults 必须是工具结果数组');
       }
 
-      return result as unknown as SubagentBeforeRunHookShortCircuitResult;
+      return this.castValidatedHookResult<SubagentBeforeRunHookShortCircuitResult>(result);
     }
 
     throw new Error('subagent:before-run Hook 返回了未知 action');
@@ -2963,7 +2951,7 @@ export class PluginRuntimeService {
         throw new Error('subagent:after-run Hook 的 toolResults 必须是工具结果数组');
       }
 
-      return result as unknown as SubagentAfterRunHookMutateResult;
+      return this.castValidatedHookResult<SubagentAfterRunHookMutateResult>(result);
     }
 
     throw new Error('subagent:after-run Hook 返回了未知 action');
@@ -2991,14 +2979,14 @@ export class PluginRuntimeService {
         throw new Error('tool:before-call Hook 的 params 必须是对象');
       }
 
-      return result as unknown as ToolBeforeCallHookMutateResult;
+      return this.castValidatedHookResult<ToolBeforeCallHookMutateResult>(result);
     }
     if (result.action === 'short-circuit') {
       if (!('output' in result) || typeof result.output === 'undefined') {
         throw new Error('tool:before-call Hook 的 output 不能为空');
       }
 
-      return result as unknown as ToolBeforeCallHookShortCircuitResult;
+      return this.castValidatedHookResult<ToolBeforeCallHookShortCircuitResult>(result);
     }
 
     throw new Error('tool:before-call Hook 返回了未知 action');
@@ -3026,7 +3014,7 @@ export class PluginRuntimeService {
         throw new Error('tool:after-call Hook 的 output 不能为空');
       }
 
-      return result as unknown as ToolAfterCallHookMutateResult;
+      return this.castValidatedHookResult<ToolAfterCallHookMutateResult>(result);
     }
 
     throw new Error('tool:after-call Hook 返回了未知 action');
@@ -3076,7 +3064,7 @@ export class PluginRuntimeService {
         throw new Error('response:before-send Hook 的 toolResults 必须是数组');
       }
 
-      return result as unknown as ResponseBeforeSendHookMutateResult;
+      return this.castValidatedHookResult<ResponseBeforeSendHookMutateResult>(result);
     }
 
     throw new Error('response:before-send Hook 返回了未知 action');
@@ -3991,8 +3979,8 @@ export class PluginRuntimeService {
     if (value === undefined || value === null) {
       return undefined;
     }
-    if (typeof value === 'object' && !Array.isArray(value)) {
-      return value as JsonObject;
+    if (isJsonObjectValue(value)) {
+      return value;
     }
 
     throw new BadRequestException(`${method} 的 ${key} 必须是对象`);
@@ -4079,11 +4067,10 @@ export class PluginRuntimeService {
     index: number,
     method: string,
   ): PluginLlmMessage {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`${method} 的 messages[${index}] 必须是对象`);
-    }
-
-    const message = value as JsonObject;
+    const message = this.requireJsonObjectValue(
+      value,
+      `${method} 的 messages[${index}]`,
+    );
     if (
       message.role !== 'user'
       && message.role !== 'assistant'
@@ -4098,7 +4085,7 @@ export class PluginRuntimeService {
     return {
       role: message.role,
       content: this.readLlmMessageContent(
-        message.content as JsonValue,
+        message.content,
         `${method} 的 messages[${index}].content`,
       ),
     };
@@ -4140,11 +4127,7 @@ export class PluginRuntimeService {
     value: JsonValue,
     label: string,
   ): { type: 'text'; text: string } | { type: 'image'; image: string; mimeType?: string } {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`${label} 必须是对象`);
-    }
-
-    const part = value as JsonObject;
+    const part = this.requireJsonObjectValue(value, label);
     if (part.type === 'text' && typeof part.text === 'string') {
       return {
         type: 'text',
@@ -4185,6 +4168,35 @@ export class PluginRuntimeService {
     return value.map((part, index) =>
       this.readChatMessagePart(part, `${method}.${key}[${index}]`),
     );
+  }
+
+  /**
+   * 从参数对象读取可选 JSON 值字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @returns JSON 值；缺失时返回 undefined
+   */
+  private readOptionalJsonValue(
+    params: JsonObject,
+    key: string,
+  ): JsonValue | undefined {
+    return Object.prototype.hasOwnProperty.call(params, key)
+      ? params[key]
+      : undefined;
+  }
+
+  /**
+   * 校验并读取 JSON 对象。
+   * @param value 原始 JSON 值
+   * @param label 当前字段标签
+   * @returns JSON 对象
+   */
+  private requireJsonObjectValue(value: JsonValue, label: string): JsonObject {
+    if (!isJsonObjectValue(value)) {
+      throw new BadRequestException(`${label} 必须是对象`);
+    }
+
+    return value;
   }
 
   /**
@@ -4366,7 +4378,7 @@ export class PluginRuntimeService {
 
     const prepared = this.aiModelExecution.prepareResolved({
       modelConfig,
-      sdkMessages: toAiSdkMessages(request.messages as unknown as ChatRuntimeMessage[]),
+      sdkMessages: toAiSdkMessages(request.messages),
     });
     const tools = await this.buildSubagentToolSet({
       pluginId: input.pluginId,
@@ -4399,7 +4411,7 @@ export class PluginRuntimeService {
         toolCalls.push({
           toolCallId: part.toolCallId,
           toolName: part.toolName,
-          input: toJsonValue(part.input as never),
+          input: toJsonValue(part.input),
         });
         continue;
       }
@@ -4407,7 +4419,7 @@ export class PluginRuntimeService {
         toolResults.push({
           toolCallId: part.toolCallId,
           toolName: part.toolName,
-          output: toJsonValue(part.output as never),
+          output: toJsonValue(part.output),
         });
       }
     }
@@ -5132,7 +5144,7 @@ function normalizeAssistantOutput(input: {
  * @returns 深拷贝后的数组
  */
 function cloneJsonValueArray(values: JsonValue[]): JsonValue[] {
-  return toJsonValue(values) as JsonValue[];
+  return values.map((value) => toJsonValue(value));
 }
 
 /**

@@ -158,6 +158,42 @@ export interface VisionFallbackConfig {
 }
 
 /**
+ * 一个宿主级模型路由目标。
+ */
+export interface AiModelRouteTarget {
+  /** provider ID。 */
+  providerId: string;
+  /** model ID。 */
+  modelId: string;
+}
+
+/**
+ * 宿主级 utility model role。
+ */
+export type AiUtilityModelRole =
+  | 'conversationTitle'
+  | 'pluginGenerateText';
+
+/**
+ * 宿主级 utility model role 配置。
+ */
+export type AiUtilityModelRolesConfig = Partial<
+  Record<AiUtilityModelRole, AiModelRouteTarget>
+>;
+
+/**
+ * 宿主 AI 模型路由配置。
+ */
+export interface AiHostModelRoutingConfig {
+  /** 主聊天模型失败后的回退链。 */
+  fallbackChatModels: AiModelRouteTarget[];
+  /** 专用上下文压缩模型。 */
+  compressionModel?: AiModelRouteTarget;
+  /** 其他 utility role 的模型分配。 */
+  utilityModelRoles: AiUtilityModelRolesConfig;
+}
+
+/**
  * 远程发现到的模型。
  */
 export interface DiscoveredAiModel {

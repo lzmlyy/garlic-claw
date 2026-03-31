@@ -6,6 +6,7 @@ import type {
 } from '@garlic-claw/shared';
 import type { JsonObject } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 会话创建摘要。
@@ -86,7 +87,7 @@ export function createMessageLifecycleRecorderPlugin(): BuiltinPluginDefinition 
     },
     hooks: {
       'conversation:created': async (payload, { host }) => {
-        const created = payload as unknown as ConversationCreatedHookPayload;
+        const created = readBuiltinHookPayload<ConversationCreatedHookPayload>(payload);
         const summary = buildConversationCreatedSummary(created);
 
         await host.setStorage(
@@ -103,7 +104,7 @@ export function createMessageLifecycleRecorderPlugin(): BuiltinPluginDefinition 
         return undefined;
       },
       'message:created': async (payload, { host }) => {
-        const created = payload as unknown as MessageCreatedHookPayload;
+        const created = readBuiltinHookPayload<MessageCreatedHookPayload>(payload);
         const summary = buildMessageLifecycleSummary(
           'message:created',
           created.conversationId,
@@ -127,7 +128,7 @@ export function createMessageLifecycleRecorderPlugin(): BuiltinPluginDefinition 
         };
       },
       'message:updated': async (payload, { host }) => {
-        const updated = payload as unknown as MessageUpdatedHookPayload;
+        const updated = readBuiltinHookPayload<MessageUpdatedHookPayload>(payload);
         const summary = buildMessageLifecycleSummary(
           'message:updated',
           updated.conversationId,
@@ -154,7 +155,7 @@ export function createMessageLifecycleRecorderPlugin(): BuiltinPluginDefinition 
         };
       },
       'message:deleted': async (payload, { host }) => {
-        const deleted = payload as unknown as MessageDeletedHookPayload;
+        const deleted = readBuiltinHookPayload<MessageDeletedHookPayload>(payload);
         const summary = buildMessageLifecycleSummary(
           'message:deleted',
           deleted.conversationId,

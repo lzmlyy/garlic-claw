@@ -4039,7 +4039,7 @@ describe('PluginRuntimeService', () => {
     );
   });
 
-  it('builds subagent-visible tools through ToolRegistryService instead of the legacy plugin helper path', async () => {
+  it('builds subagent-visible tools through ToolRegistryService instead of the previous plugin helper path', async () => {
     const recallMemoryTool = {
       description: '读取记忆',
       inputSchema: undefined,

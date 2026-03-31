@@ -31,7 +31,7 @@ describe('ModelCapabilitiesStorage', () => {
     }
   });
 
-  it('normalizes legacy capability fields when loading persisted config', () => {
+  it('normalizes persisted capability entries to the current schema', () => {
     fs.mkdirSync(path.dirname(tempConfigPath), { recursive: true });
     fs.writeFileSync(
       tempConfigPath,
@@ -44,23 +44,15 @@ describe('ModelCapabilitiesStorage', () => {
               providerId: 'nvidia',
               modelId: 'qwen/qwen3.5-122b-a10b',
               capabilities: {
-                temperature: true,
                 reasoning: false,
-                attachment: false,
                 toolCall: true,
                 input: {
                   text: true,
                   image: true,
-                  audio: false,
-                  video: false,
-                  pdf: false,
                 },
                 output: {
                   text: true,
                   image: false,
-                  audio: false,
-                  video: false,
-                  pdf: false,
                 },
               },
               updatedAt: '2026-03-26T10:00:00.000Z',

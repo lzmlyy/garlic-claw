@@ -12,6 +12,7 @@ import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { McpToolProvider } from './mcp-tool.provider';
 import { PluginToolProvider } from './plugin-tool.provider';
+import { SkillToolProvider } from './skill-tool.provider';
 import { ToolSettingsService } from './tool-settings.service';
 import type {
   ResolvedToolRecord,
@@ -50,6 +51,8 @@ export class ToolRegistryService {
     private readonly pluginToolProvider: PluginToolProvider,
     @Inject(forwardRef(() => McpToolProvider))
     private readonly mcpToolProvider: McpToolProvider,
+    @Inject(forwardRef(() => SkillToolProvider))
+    private readonly skillToolProvider?: SkillToolProvider,
   ) {}
 
   async listTools(input: ToolFilterInput): Promise<ToolRecord[]> {
@@ -62,10 +65,6 @@ export class ToolRegistryService {
 
   async listSources(context?: PluginCallContext): Promise<ToolSourceInfo[]> {
     return (await this.listOverview(context)).sources;
-  }
-
-  async listToolInfos(context?: PluginCallContext): Promise<ToolInfo[]> {
-    return (await this.listOverview(context)).tools;
   }
 
   async listOverview(context?: PluginCallContext): Promise<ToolOverview> {
@@ -252,6 +251,7 @@ export class ToolRegistryService {
     return [
       this.pluginToolProvider,
       this.mcpToolProvider,
+      ...(this.skillToolProvider ? [this.skillToolProvider] : []),
     ];
   }
 
@@ -503,6 +503,9 @@ export class ToolRegistryService {
         ? input.name
         : `${input.source.id}__${input.name}`;
     }
+    if (input.source.kind === 'skill') {
+      return `skill__${input.name.replace(/\./g, '__')}`;
+    }
 
     return `mcp__${input.source.id}__${input.name}`;
   }
@@ -512,6 +515,9 @@ export class ToolRegistryService {
       return input.runtimeKind === 'builtin'
         ? input.description
         : `[插件：${input.source.id}] ${input.description}`;
+    }
+    if (input.source.kind === 'skill') {
+      return `[Skill] ${input.description}`;
     }
 
     return `[MCP：${input.source.id}] ${input.description}`;

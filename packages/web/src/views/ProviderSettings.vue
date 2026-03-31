@@ -45,6 +45,14 @@
         :saving="savingVision"
         @save="saveVisionConfig"
       />
+
+      <HostModelRoutingPanel
+        class="settings-routing-panel"
+        :config="hostModelRoutingConfig"
+        :options="hostModelRoutingOptions"
+        :saving="false"
+        @save="saveHostModelRoutingConfig"
+      />
     </div>
 
     <AiProviderEditorDialog
@@ -71,6 +79,7 @@
 import AiModelDiscoveryDialog from '../components/ai-settings/AiModelDiscoveryDialog.vue'
 import AiPluginQuickAccessPanel from '../components/ai-settings/AiPluginQuickAccessPanel.vue'
 import AiProviderEditorDialog from '../components/ai-settings/AiProviderEditorDialog.vue'
+import HostModelRoutingPanel from '../components/ai-settings/HostModelRoutingPanel.vue'
 import AiProviderModelsPanel from '../components/ai-settings/AiProviderModelsPanel.vue'
 import AiProviderSidebar from '../components/ai-settings/AiProviderSidebar.vue'
 import VisionFallbackPanel from '../components/ai-settings/VisionFallbackPanel.vue'
@@ -88,7 +97,9 @@ const {
   selectedProvider,
   selectedModels,
   visionConfig,
+  hostModelRoutingConfig,
   visionOptions,
+  hostModelRoutingOptions,
   showProviderDialog,
   showDiscoveryDialog,
   editingProvider,
@@ -108,6 +119,7 @@ const {
   updateCapabilities,
   testProviderConnection,
   saveVisionConfig,
+  saveHostModelRoutingConfig,
 } = useProviderSettings()
 </script>
 
@@ -136,7 +148,8 @@ const {
   grid-template-columns: 320px 1fr;
   grid-template-areas:
     'sidebar provider'
-    'vision vision';
+    'vision vision'
+    'routing routing';
   gap: 18px;
   min-width: 0;
 }
@@ -160,13 +173,18 @@ const {
   grid-area: vision;
 }
 
+.settings-routing-panel {
+  grid-area: routing;
+}
+
 @media (max-width: 960px) {
   .settings-grid {
     grid-template-columns: 1fr;
     grid-template-areas:
       'sidebar'
       'provider'
-      'vision';
+      'vision'
+      'routing';
   }
 }
 

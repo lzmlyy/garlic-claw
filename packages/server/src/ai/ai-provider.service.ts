@@ -30,10 +30,8 @@ import {
   type StoredAiProviderConfig,
 } from './config/config-manager.service';
 import {
-  COMPATIBLE_PROVIDER_DRIVERS,
   getOfficialProviderCatalogItem,
-  type CompatibleProviderDriver,
-  type OfficialProviderDriver,
+  isCompatibleProviderDriver,
 } from './official-provider-catalog';
 import { ModelRegistryService } from './registry/model-registry.service';
 import type { ModelConfig } from './types/provider.types';
@@ -110,7 +108,7 @@ export class AiProviderService {
     );
     for (const providerId of this.configuredProviderIds) {
       if (!nextConfiguredProviderIds.has(providerId)) {
-        this.modelRegistry.clearProviderModels(providerId as never);
+        this.modelRegistry.clearProviderModels(providerId);
       }
     }
 
@@ -151,7 +149,7 @@ export class AiProviderService {
       return;
     }
 
-    if (!COMPATIBLE_PROVIDER_DRIVERS.includes(provider.driver as CompatibleProviderDriver)) {
+    if (!isCompatibleProviderDriver(provider.driver)) {
       this.logger.warn(`忽略不支持的兼容 provider 格式: ${provider.driver}`);
       return;
     }
@@ -162,34 +160,26 @@ export class AiProviderService {
     }
 
     const baseCatalog = getOfficialProviderCatalogItem(provider.driver);
-    this.registerRuntimeProvider({
-      id: provider.id,
-      driver: provider.driver as CompatibleProviderDriver,
-      apiKey: provider.apiKey,
-      baseUrl: provider.baseUrl ?? baseCatalog?.defaultBaseUrl ?? '',
-      modelFactoryPreference: provider.driver === 'openai' ? 'chat' : 'default',
-      defaultModel:
-        provider.defaultModel ?? provider.models[0] ?? baseCatalog?.defaultModel ?? '',
-      npm: baseCatalog?.npm ?? getCompatibleProviderNpm(provider.driver),
-    });
+      this.registerRuntimeProvider({
+        id: provider.id,
+        driver: provider.driver,
+        apiKey: provider.apiKey,
+        baseUrl: provider.baseUrl ?? baseCatalog?.defaultBaseUrl ?? '',
+        modelFactoryPreference: provider.driver === 'openai' ? 'chat' : 'default',
+        defaultModel:
+          provider.defaultModel ?? provider.models[0] ?? baseCatalog?.defaultModel ?? '',
+        npm: baseCatalog?.npm ?? getCompatibleProviderNpm(provider.driver),
+      });
   }
 
   /**
    * 向运行时注册 provider。
    * @param input provider 注册输入
    */
-  private registerRuntimeProvider(input: {
-    id: string;
-    driver: OfficialProviderDriver | CompatibleProviderDriver;
-    apiKey: string;
-    baseUrl: string;
-    modelFactoryPreference: 'default' | 'chat';
-    defaultModel: string;
-    npm: string;
-  }): void {
+  private registerRuntimeProvider(input: RuntimeProviderInput): void {
     this.providers.set(
       input.id,
-      buildRuntimeProviderRegistration(input as RuntimeProviderInput),
+      buildRuntimeProviderRegistration(input),
     );
   }
 
@@ -199,7 +189,8 @@ export class AiProviderService {
    * @returns 运行时 provider 注册信息
    */
   private getRegistration(provider?: string): RuntimeProviderRegistration {
-    const fallbackProvider = this.providers.keys().next().value as string | undefined;
+    const firstProvider = this.providers.keys().next();
+    const fallbackProvider = firstProvider.done ? undefined : firstProvider.value;
     const providerId = provider ?? fallbackProvider;
     const registration = providerId ? this.providers.get(providerId) : undefined;
 

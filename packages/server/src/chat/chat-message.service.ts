@@ -18,6 +18,7 @@ import { AiProviderService } from '../ai/ai-provider.service';
 import { PersonaService } from '../persona/persona.service';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SkillCommandService } from '../skill/skill-command.service';
 import {
   CHAT_SYSTEM_PROMPT,
   hasActiveAssistantMessage,
@@ -33,6 +34,7 @@ import type { ChatRuntimeMessage } from './chat-message-session';
 import { prepareSendMessagePayload } from './chat-message-session';
 import { ChatService } from './chat.service';
 import { type RetryMessageDto, type SendMessageDto, type UpdateMessageDto } from './dto/chat.dto';
+import { normalizeConversationHostServices } from './chat-host-services';
 import {
   deserializeMessageParts,
   normalizeAssistantMessageOutput,
@@ -91,11 +93,13 @@ export class ChatMessageService {
     private readonly modelInvocation: ChatModelInvocationService,
     private readonly orchestration: ChatMessageOrchestrationService,
     private readonly chatTaskService: ChatTaskService,
+    private readonly skillCommands: SkillCommandService,
   ) {}
 
   /** 创建一轮新的用户消息与 assistant 生成任务，输出已落库的用户消息与 assistant 占位消息。 */
   async startMessageGeneration(userId: string, conversationId: string, dto: SendMessageDto) {
     const conversation = await this.chatService.getConversation(userId, conversationId);
+    this.assertConversationLlmEnabled(conversation);
     if (hasActiveAssistantMessage(conversation.messages)) {
       throw new BadRequestException('当前仍有回复在生成中，请先停止或等待完成');
     }
@@ -113,21 +117,36 @@ export class ChatMessageService {
       activeModelId: initialModelConfig.id,
       activePersonaId: resolvedPersona.activePersonaId,
     });
-    const receivedMessageResult = await this.pluginRuntime.runMessageReceivedHooks({
+    const baseReceivedPayload = {
       context: messageReceivedContext,
-      payload: {
-        context: messageReceivedContext,
-        conversationId,
-        providerId: initialModelConfig.providerId,
-        modelId: initialModelConfig.id,
-        message: {
-          role: 'user',
-          content: payload.persistedMessage.content,
-          parts: deserializeMessageParts(payload.persistedMessage.partsJson),
-        },
-        modelMessages: payload.modelMessages,
+      conversationId,
+      providerId: initialModelConfig.providerId,
+      modelId: initialModelConfig.id,
+      message: {
+        role: 'user' as const,
+        content: payload.persistedMessage.content,
+        parts: deserializeMessageParts(payload.persistedMessage.partsJson),
       },
+      modelMessages: payload.modelMessages,
+    };
+    const skillCommandResult = await this.skillCommands.tryHandleMessage({
+      userId,
+      conversationId,
+      messageText: baseReceivedPayload.message.content ?? '',
     });
+    const receivedMessageResult = skillCommandResult
+      ? {
+          action: 'short-circuit' as const,
+          payload: baseReceivedPayload,
+          assistantContent: skillCommandResult.assistantContent,
+          assistantParts: skillCommandResult.assistantParts,
+          providerId: skillCommandResult.providerId,
+          modelId: skillCommandResult.modelId,
+        }
+      : await this.pluginRuntime.runMessageReceivedHooks({
+          context: messageReceivedContext,
+          payload: baseReceivedPayload,
+        });
     const receivedMessagePayload = receivedMessageResult.payload;
     const modelConfig = this.aiProvider.getModelConfig(
       receivedMessagePayload.providerId,
@@ -325,6 +344,7 @@ export class ChatMessageService {
   /** 原地重试最后一条 assistant 回复，可选覆盖 provider/model。 */
   async retryMessageGeneration(userId: string, conversationId: string, messageId: string, dto: RetryMessageDto) {
     const { conversation, message } = await this.getOwnedMessage(userId, conversationId, messageId);
+    this.assertConversationLlmEnabled(conversation);
     const lastMessage = conversation.messages[conversation.messages.length - 1];
     if (!lastMessage || lastMessage.id !== messageId || message.role !== 'assistant') {
       throw new BadRequestException('只能重试最后一条 AI 回复');
@@ -855,6 +875,26 @@ export class ChatMessageService {
       ...(input.activeModelId ? { activeModelId: input.activeModelId } : {}),
       ...(input.activePersonaId ? { activePersonaId: input.activePersonaId } : {}),
     };
+  }
+
+  /**
+   * 校验当前会话是否允许启动新的 LLM 生成任务。
+   * @param conversation 当前会话记录
+   */
+  private assertConversationLlmEnabled(conversation: {
+    hostServicesJson?: string | null;
+  }) {
+    const hostServices = normalizeConversationHostServices(
+      conversation.hostServicesJson,
+    );
+
+    if (!hostServices.sessionEnabled) {
+      throw new BadRequestException('当前会话宿主服务已停用');
+    }
+
+    if (!hostServices.llmEnabled) {
+      throw new BadRequestException('当前会话已关闭 LLM 自动回复');
+    }
   }
 
   /**

@@ -56,6 +56,14 @@ describe('ChatMessageService', () => {
     stopTask: jest.fn(),
   };
 
+  const skillSession = {
+    getConversationSkillContext: jest.fn(),
+  };
+
+  const skillCommands = {
+    tryHandleMessage: jest.fn(),
+  };
+
   let service: ChatMessageService;
 
   beforeEach(() => {
@@ -94,6 +102,13 @@ describe('ChatMessageService', () => {
       async ({ payload }: { payload: unknown }) => payload,
     );
     pluginRuntime.runResponseAfterSendHooks.mockResolvedValue(undefined);
+    skillSession.getConversationSkillContext.mockResolvedValue({
+      activeSkills: [],
+      systemPrompt: '',
+      allowedToolNames: null,
+      deniedToolNames: [],
+    });
+    skillCommands.tryHandleMessage.mockResolvedValue(null);
     toolRegistry.buildToolSet.mockReturnValue(undefined);
     toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     toolRegistry.prepareToolSelection.mockImplementation(
@@ -133,6 +148,7 @@ describe('ChatMessageService', () => {
       pluginRuntime as never,
       toolRegistry as never,
       modelInvocation as never,
+      skillSession as never,
     );
     service = new ChatMessageService(
       prisma as never,
@@ -143,6 +159,7 @@ describe('ChatMessageService', () => {
       modelInvocation as never,
       orchestration as never,
       chatTaskService as never,
+      skillCommands as never,
     );
   });
 
@@ -351,6 +368,7 @@ describe('ChatMessageService', () => {
       create_automation: createAutomationTool as never,
     });
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig: routedModelConfig,
       result: {
         fullStream: (async function* () {
           yield { type: 'finish' } as const;
@@ -583,6 +601,59 @@ describe('ChatMessageService', () => {
     });
     expect((result.userMessage as { metadataJson?: string | null }).metadataJson).toContain('图片里是一只趴着的橘猫。');
     expect((result.assistantMessage as { metadataJson?: string | null }).metadataJson).toContain('图片里是一只趴着的橘猫。');
+  });
+
+  it('rejects new generation before creating any assistant placeholder when llm is disabled for the conversation', async () => {
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      hostServicesJson: JSON.stringify({
+        sessionEnabled: true,
+        llmEnabled: false,
+        ttsEnabled: true,
+      }),
+      messages: [],
+    });
+
+    await expect(
+      service.startMessageGeneration('user-1', 'conversation-1', {
+        content: '你好',
+      } as never),
+    ).rejects.toThrow('当前会话已关闭 LLM 自动回复');
+
+    expect(prisma.message.create).not.toHaveBeenCalled();
+    expect(chatTaskService.startTask).not.toHaveBeenCalled();
+  });
+
+  it('rejects retry before resetting the assistant message when the conversation session is disabled', async () => {
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      hostServicesJson: JSON.stringify({
+        sessionEnabled: false,
+        llmEnabled: true,
+        ttsEnabled: true,
+      }),
+      messages: [
+        {
+          id: 'assistant-message-1',
+          role: 'assistant',
+          provider: 'openai',
+          model: 'gpt-5.2',
+          status: 'error',
+        },
+      ],
+    });
+
+    await expect(
+      service.retryMessageGeneration(
+        'user-1',
+        'conversation-1',
+        'assistant-message-1',
+        {} as never,
+      ),
+    ).rejects.toThrow('当前会话宿主服务已停用');
+
+    expect(prisma.message.update).not.toHaveBeenCalled();
+    expect(chatTaskService.startTask).not.toHaveBeenCalled();
   });
 
   it('applies message:created mutations before persisting the user message draft', async () => {
@@ -1144,6 +1215,104 @@ describe('ChatMessageService', () => {
     );
   });
 
+  it('short-circuits /skill commands before plugin message:received hooks run', async () => {
+    const userMessage = {
+      id: 'user-message-1',
+      role: 'user',
+      content: '/skill use project/planner',
+      partsJson: JSON.stringify([
+        {
+          type: 'text',
+          text: '/skill use project/planner',
+        },
+      ]),
+      status: 'completed',
+    };
+    const assistantMessage = {
+      id: 'assistant-message-1',
+      role: 'assistant',
+      content: '',
+      status: 'pending',
+      provider: 'system',
+      model: 'skill-command',
+    };
+    const completedAssistantMessage = {
+      ...assistantMessage,
+      content: '已激活 1 个 skill：project/planner',
+      partsJson: JSON.stringify([
+        {
+          type: 'text',
+          text: '已激活 1 个 skill：project/planner',
+        },
+      ]),
+      status: 'completed',
+      error: null,
+      toolCalls: null,
+      toolResults: null,
+    };
+
+    chatService.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      messages: [],
+    });
+    aiProvider.getModelConfig.mockReturnValue({
+      id: 'gpt-5.2',
+      providerId: 'openai',
+      name: 'GPT 5.2',
+      capabilities: {
+        input: { text: true, image: false },
+        output: { text: true, image: false },
+        reasoning: true,
+        toolCall: true,
+      },
+      api: {
+        id: 'gpt-5.2',
+        url: 'https://example.com/v1',
+        npm: '@ai-sdk/openai',
+      },
+    });
+    skillCommands.tryHandleMessage.mockResolvedValue({
+      assistantContent: '已激活 1 个 skill：project/planner',
+      assistantParts: [
+        {
+          type: 'text',
+          text: '已激活 1 个 skill：project/planner',
+        },
+      ],
+      providerId: 'system',
+      modelId: 'skill-command',
+    });
+    prisma.message.create
+      .mockResolvedValueOnce(userMessage)
+      .mockResolvedValueOnce(assistantMessage);
+    prisma.message.update.mockResolvedValueOnce(completedAssistantMessage);
+    prisma.conversation.update.mockResolvedValue(null);
+
+    await expect(
+      service.startMessageGeneration('user-1', 'conversation-1', {
+        content: '/skill use project/planner',
+        parts: [
+          {
+            type: 'text',
+            text: '/skill use project/planner',
+          },
+        ],
+        provider: 'openai',
+        model: 'gpt-5.2',
+      } as never),
+    ).resolves.toEqual({
+      userMessage,
+      assistantMessage: completedAssistantMessage,
+    });
+
+    expect(skillCommands.tryHandleMessage).toHaveBeenCalledWith({
+      userId: 'user-1',
+      conversationId: 'conversation-1',
+      messageText: '/skill use project/planner',
+    });
+    expect(pluginRuntime.runMessageReceivedHooks).not.toHaveBeenCalled();
+  });
+
   it('short-circuits through message:received before scheduling a model task', async () => {
     const userMessage = {
       id: 'user-message-1',
@@ -1402,6 +1571,7 @@ describe('ChatMessageService', () => {
     });
     toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig,
       result: {
         fullStream: (async function* () {
           yield { type: 'finish' } as const;
@@ -1549,6 +1719,7 @@ describe('ChatMessageService', () => {
     });
     toolRegistry.listAvailableToolSummaries.mockResolvedValue([]);
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig,
       result: {
         fullStream: (async function* () {
           yield { type: 'finish' } as const;

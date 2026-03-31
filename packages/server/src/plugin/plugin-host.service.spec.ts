@@ -650,6 +650,52 @@ describe('PluginHostService', () => {
     });
   });
 
+  it('uses the conversationTitle utility role when the conversation title plugin omits provider/model', async () => {
+    aiModelExecution.generateText.mockResolvedValue({
+      modelConfig: {
+        providerId: 'openai',
+        id: 'gpt-4.1-mini',
+      },
+      result: {
+        text: '咖啡偏好总结',
+      },
+    });
+
+    await service.call({
+      pluginId: 'builtin.conversation-title',
+      context: {
+        source: 'chat-hook',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'anthropic',
+        activeModelId: 'claude-3-7-sonnet',
+      },
+      method: 'llm.generate-text',
+      params: {
+        system: '你是标题生成器',
+        prompt: '请为这段对话生成标题',
+      },
+    });
+
+    expect(aiModelExecution.generateText).toHaveBeenCalledWith({
+      utilityRole: 'conversationTitle',
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      system: '你是标题生成器',
+      sdkMessages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '请为这段对话生成标题',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it('returns the active provider context through provider.current.get', async () => {
     aiProviderService.getModelConfig.mockReturnValue({
       providerId: 'openai',
@@ -738,6 +784,57 @@ describe('PluginHostService', () => {
       modelId: 'claude-3-7-sonnet',
       system: '你是一个总结助手',
       maxOutputTokens: 64,
+      sdkMessages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '请总结这段对话',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('uses the pluginGenerateText utility role for generic plugin generation when provider/model are omitted', async () => {
+    aiModelExecution.generateText.mockResolvedValue({
+      modelConfig: {
+        providerId: 'openai',
+        id: 'gpt-4.1-mini',
+      },
+      result: {
+        text: '当然可以，我来帮你总结。',
+      },
+    });
+
+    await service.call({
+      pluginId: 'builtin.memory-context',
+      context: {
+        source: 'plugin',
+        userId: 'user-1',
+      },
+      method: 'llm.generate',
+      params: {
+        system: '你是一个总结助手',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: '请总结这段对话',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(aiModelExecution.generateText).toHaveBeenCalledWith({
+      utilityRole: 'pluginGenerateText',
+      system: '你是一个总结助手',
       sdkMessages: [
         {
           role: 'user',

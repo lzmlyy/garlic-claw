@@ -1,6 +1,5 @@
 import type { JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
-import { asChatAfterModelPayload } from './builtin-plugin.transport';
 
 /**
  * 会话标题插件使用的最小会话摘要。
@@ -80,19 +79,15 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
        * @param context 插件执行上下文
        * @returns 当前不需要返回结果，始终返回 null
        */
-      'chat:after-model': async (payload: JsonValue, context) => {
-        const hookPayload = asChatAfterModelPayload(payload);
-        const config = (await context.host.getConfig()) as ConversationTitlePluginConfig;
-        const conversation = (await context.host.getConversation()) as ConversationSummary;
+      'chat:after-model': async (_payload: JsonValue, context) => {
+        const config = readConversationTitleConfig(await context.host.getConfig());
+        const conversation = readConversationSummary(await context.host.getConversation());
         const defaultTitle = (config.defaultTitle ?? 'New Chat').trim() || 'New Chat';
         if (!shouldGenerateConversationTitle(conversation.title, defaultTitle)) {
           return null;
         }
 
-        const messages = (await context.host.listConversationMessages()) as Array<{
-          role?: string;
-          content?: string;
-        }>;
+        const messages = readConversationMessages(await context.host.listConversationMessages());
         const prompt = buildConversationTitlePrompt(
           messages,
           config.maxMessages ?? 4,
@@ -101,16 +96,12 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const generated = (await context.host.generateText({
-          providerId: hookPayload.providerId,
-          modelId: hookPayload.modelId,
+        const generated = readGeneratedTitleResult(await context.host.generateText({
           system:
             '你是一个对话标题生成器。请基于给定对话生成一个简短、准确、自然的中文标题。',
           prompt,
           maxOutputTokens: 32,
-        })) as {
-          text?: string;
-        };
+        }));
         const title = sanitizeConversationTitle(generated.text);
         if (!title || title === conversation.title) {
           return null;
@@ -205,4 +196,76 @@ function sanitizeConversationTitle(raw?: string): string {
     .replace(/["'`」』]+$/, '')
     .split('\n')[0]
     .trim();
+}
+
+function readConversationTitleConfig(value: JsonValue): ConversationTitlePluginConfig {
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    return {};
+  }
+
+  return {
+    ...(typeof object.defaultTitle === 'string'
+      ? { defaultTitle: object.defaultTitle }
+      : {}),
+    ...(typeof object.maxMessages === 'number'
+      ? { maxMessages: object.maxMessages }
+      : {}),
+  };
+}
+
+function readConversationSummary(value: JsonValue): ConversationSummary {
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    return {};
+  }
+
+  return {
+    ...(typeof object.id === 'string' ? { id: object.id } : {}),
+    ...(typeof object.title === 'string' ? { title: object.title } : {}),
+  };
+}
+
+function readConversationMessages(
+  value: JsonValue,
+): Array<{
+  role?: string;
+  content?: string;
+}> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    const object = readJsonObjectValue(entry);
+    if (!object) {
+      return [];
+    }
+
+    return [{
+      ...(typeof object.role === 'string' ? { role: object.role } : {}),
+      ...(typeof object.content === 'string' ? { content: object.content } : {}),
+    }];
+  });
+}
+
+function readGeneratedTitleResult(value: JsonValue): { text?: string } {
+  const object = readJsonObjectValue(value);
+  if (!object || typeof object.text !== 'string') {
+    return {};
+  }
+
+  return {
+    text: object.text,
+  };
+}
+
+function readJsonObjectValue(
+  value: JsonValue,
+): Record<string, JsonValue> | null {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : null;
 }

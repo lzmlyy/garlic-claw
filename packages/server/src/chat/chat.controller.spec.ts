@@ -22,6 +22,10 @@ describe('ChatController', () => {
     createConversation: jest.fn(),
     listConversations: jest.fn(),
     getConversation: jest.fn(),
+    getConversationHostServices: jest.fn(),
+    getConversationSkillState: jest.fn(),
+    updateConversationHostServices: jest.fn(),
+    updateConversationSkills: jest.fn(),
     deleteConversation: jest.fn(),
   };
 
@@ -133,6 +137,109 @@ describe('ChatController', () => {
     );
     expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
     expect(response.end).toHaveBeenCalled();
+  });
+
+  it('reads conversation host service settings through the chat service', async () => {
+    chatService.getConversationHostServices.mockResolvedValue({
+      sessionEnabled: true,
+      llmEnabled: false,
+      ttsEnabled: true,
+    });
+
+    await expect(
+      controller.getConversationHostServices('user-1', 'conversation-1'),
+    ).resolves.toEqual({
+      sessionEnabled: true,
+      llmEnabled: false,
+      ttsEnabled: true,
+    });
+
+    expect(chatService.getConversationHostServices).toHaveBeenCalledWith(
+      'user-1',
+      'conversation-1',
+    );
+  });
+
+  it('updates conversation host service settings through the chat service', async () => {
+    chatService.updateConversationHostServices.mockResolvedValue({
+      sessionEnabled: true,
+      llmEnabled: true,
+      ttsEnabled: false,
+    });
+
+    await expect(
+      controller.updateConversationHostServices('user-1', 'conversation-1', {
+        ttsEnabled: false,
+      } as never),
+    ).resolves.toEqual({
+      sessionEnabled: true,
+      llmEnabled: true,
+      ttsEnabled: false,
+    });
+
+    expect(chatService.updateConversationHostServices).toHaveBeenCalledWith(
+      'user-1',
+      'conversation-1',
+      {
+        ttsEnabled: false,
+      },
+    );
+  });
+
+  it('reads conversation skills through the chat service', async () => {
+    chatService.getConversationSkillState.mockResolvedValue({
+      activeSkillIds: ['project/planner'],
+      activeSkills: [
+        {
+          id: 'project/planner',
+          name: '规划执行',
+        },
+      ],
+    });
+
+    await expect(
+      controller.getConversationSkillState('user-1', 'conversation-1'),
+    ).resolves.toEqual({
+      activeSkillIds: ['project/planner'],
+      activeSkills: [
+        {
+          id: 'project/planner',
+          name: '规划执行',
+        },
+      ],
+    });
+  });
+
+  it('updates conversation skills through the chat service', async () => {
+    chatService.updateConversationSkills.mockResolvedValue({
+      activeSkillIds: ['project/plugin-operator'],
+      activeSkills: [
+        {
+          id: 'project/plugin-operator',
+          name: '插件运维',
+        },
+      ],
+    });
+
+    await expect(
+      controller.updateConversationSkills('user-1', 'conversation-1', {
+        activeSkillIds: ['project/plugin-operator'],
+      } as never),
+    ).resolves.toEqual({
+      activeSkillIds: ['project/plugin-operator'],
+      activeSkills: [
+        {
+          id: 'project/plugin-operator',
+          name: '插件运维',
+        },
+      ],
+    });
+
+    expect(chatService.updateConversationSkills).toHaveBeenCalledWith(
+      'user-1',
+      'conversation-1',
+      ['project/plugin-operator'],
+    );
   });
 });
 

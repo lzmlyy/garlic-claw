@@ -7,14 +7,20 @@ const {
 } = require('../dist/index.js');
 
 const WS_TYPE = {
+  COMMAND: 'command',
   PLUGIN: 'plugin',
 };
 
 const WS_ACTION = {
+  EXECUTE: 'execute',
+  EXECUTE_ERROR: 'execute_error',
   HOST_CALL: 'host_call',
   HOST_RESULT: 'host_result',
   HOOK_INVOKE: 'hook_invoke',
   HOOK_RESULT: 'hook_result',
+  HOOK_ERROR: 'hook_error',
+  ROUTE_INVOKE: 'route_invoke',
+  ROUTE_ERROR: 'route_error',
 };
 
 function createClient(manifest = {}) {
@@ -319,6 +325,223 @@ test('aggregates onMessage mutations into a single mutate result', async () => {
     action: 'mutate',
     content: 'rewritten by sdk',
   });
+});
+
+test('returns hook_error for malformed message hook payloads', async () => {
+  const client = createClient();
+  client.onMessage(() => ({
+    action: 'pass',
+  }));
+  const responses = [];
+  const previousSend = client.send;
+  client.send = (type, action, responsePayload, requestId) => {
+    if (action === WS_ACTION.HOOK_ERROR) {
+      responses.push({
+        type,
+        action,
+        payload: responsePayload,
+        requestId,
+      });
+      return;
+    }
+
+    if (typeof previousSend === 'function') {
+      previousSend(type, action, responsePayload, requestId);
+    }
+  };
+
+  try {
+    await client.handleHookInvoke({
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.HOOK_INVOKE,
+      requestId: 'req-invalid-hook',
+      payload: {
+        hookName: 'message:received',
+        context: {
+          source: 'chat-hook',
+          conversationId: 'conv-1',
+        },
+        payload: {
+          context: {
+            source: 'chat-hook',
+            conversationId: 'conv-1',
+          },
+          conversationId: 'conv-1',
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          message: {
+            role: 'user',
+            content: 'hello',
+            parts: [
+              {
+                type: 'text',
+                text: 'hello',
+              },
+            ],
+          },
+          modelMessages: 'not-an-array',
+        },
+      },
+    });
+  } finally {
+    client.send = previousSend;
+  }
+
+  assert.equal(responses.length, 1);
+  assert.match(responses[0].payload.error, /Invalid message:received payload: modelMessages/);
+});
+
+test('returns route_error for malformed route invoke payloads', async () => {
+  const client = createClient();
+  const responses = [];
+  const previousSend = client.send;
+  client.send = (type, action, responsePayload, requestId) => {
+    if (action === WS_ACTION.ROUTE_ERROR) {
+      responses.push({
+        type,
+        action,
+        payload: responsePayload,
+        requestId,
+      });
+      return;
+    }
+
+    if (typeof previousSend === 'function') {
+      previousSend(type, action, responsePayload, requestId);
+    }
+  };
+
+  try {
+    await client.handleRouteInvoke({
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.ROUTE_INVOKE,
+      requestId: 'req-invalid-route',
+      payload: {
+        request: {
+          path: '/echo',
+          method: 'TRACE',
+          headers: {},
+          query: {},
+          body: null,
+        },
+        context: {
+          source: 'http-route',
+        },
+      },
+    });
+  } finally {
+    client.send = previousSend;
+  }
+
+  assert.equal(responses.length, 1);
+  assert.match(responses[0].payload.error, /Invalid route invoke payload: request/);
+});
+
+test('returns execute_error for malformed execute payloads', async () => {
+  const client = createClient();
+  const responses = [];
+  client.onCommand('echo', async () => 'ok');
+  client.send = (type, action, responsePayload, requestId) => {
+    if (action === WS_ACTION.EXECUTE_ERROR) {
+      responses.push({
+        type,
+        action,
+        payload: responsePayload,
+        requestId,
+      });
+    }
+  };
+
+  await client.handleExecute({
+    type: WS_TYPE.COMMAND,
+    action: WS_ACTION.EXECUTE,
+    requestId: 'req-invalid-execute',
+    payload: {
+      toolName: 'echo',
+      params: 'not-an-object',
+    },
+  });
+
+  assert.equal(responses.length, 1);
+  assert.match(responses[0].payload.error, /Invalid execute payload: params/);
+});
+
+test('rejects host calls when host_result payload is malformed', async () => {
+  const client = createClient();
+  client.ws = {
+    readyState: 1,
+  };
+  client.send = (type, action, payload, requestId) => {
+    if (action !== WS_ACTION.HOST_CALL) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      void client.handleMessage({
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_RESULT,
+        requestId,
+        payload: {
+          invalid: true,
+        },
+      });
+    });
+  };
+
+  const executionContext = client.createExecutionContext({
+    source: 'plugin',
+    conversationId: 'conv-1',
+  });
+
+  await assert.rejects(
+    executionContext.host.getCurrentMessageTarget(),
+    /Invalid host result payload/,
+  );
+});
+
+test('returns hook_error when a message handler returns an invalid hook action', async () => {
+  const client = createClient();
+  client.onMessage(() => ({
+    action: 'bogus',
+  }));
+  const responses = [];
+  const previousSend = client.send;
+  client.send = (type, action, responsePayload, requestId) => {
+    if (action === WS_ACTION.HOOK_ERROR) {
+      responses.push({
+        type,
+        action,
+        payload: responsePayload,
+        requestId,
+      });
+      return;
+    }
+
+    if (typeof previousSend === 'function') {
+      previousSend(type, action, responsePayload, requestId);
+    }
+  };
+
+  try {
+    await client.handleHookInvoke({
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.HOOK_INVOKE,
+      requestId: 'req-invalid-handler-result',
+      payload: {
+        hookName: 'message:received',
+        context: {
+          source: 'chat-hook',
+          conversationId: 'conv-1',
+        },
+        payload: createMessagePayload('hello'),
+      },
+    });
+  } finally {
+    client.send = previousSend;
+  }
+
+  assert.equal(responses.length, 1);
+  assert.match(responses[0].payload.error, /invalid hook action/i);
 });
 
 test('falls back to a broad hook descriptor when filters cannot be merged safely', () => {

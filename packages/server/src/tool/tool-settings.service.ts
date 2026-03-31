@@ -57,13 +57,15 @@ export class ToolSettingsService {
     }
 
     try {
-      const parsed = JSON.parse(fs.readFileSync(this.settingsPath, 'utf-8')) as Partial<ToolSettingsFile>;
+      const parsed = readUnknownObject(
+        JSON.parse(fs.readFileSync(this.settingsPath, 'utf-8')),
+      );
       return {
-        version: typeof parsed.version === 'number'
+        version: typeof parsed?.version === 'number'
           ? parsed.version
           : ToolSettingsService.CURRENT_VERSION,
-        sources: isSettingsRecord(parsed.sources) ? parsed.sources : {},
-        tools: isSettingsRecord(parsed.tools) ? parsed.tools : {},
+        sources: readSettingsRecord(parsed?.sources),
+        tools: readSettingsRecord(parsed?.tools),
       };
     } catch (error) {
       this.logger.warn(`工具治理配置文件损坏，已重置为空配置: ${String(error)}`);
@@ -86,15 +88,38 @@ export class ToolSettingsService {
   }
 }
 
-function isSettingsRecord(
+function readSettingsRecord(
   value: unknown,
-): value is Record<string, { enabled: boolean }> {
+): Record<string, { enabled: boolean }> {
+  const object = readUnknownObject(value);
+  if (!object) {
+    return {};
+  }
+
+  const entries = Object.entries(object)
+    .flatMap(([id, entry]) => {
+      const setting = readEnabledSetting(entry);
+      return setting ? [[id, setting] satisfies [string, { enabled: boolean }]] : [];
+    });
+
+  return Object.fromEntries(entries);
+}
+
+function readEnabledSetting(value: unknown): { enabled: boolean } | null {
+  const object = readUnknownObject(value);
+  if (!object || typeof object.enabled !== 'boolean') {
+    return null;
+  }
+
+  return {
+    enabled: object.enabled,
+  };
+}
+
+function readUnknownObject(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object'
     && value !== null
     && !Array.isArray(value)
-    && Object.values(value).every((entry) =>
-      typeof entry === 'object'
-      && entry !== null
-      && !Array.isArray(entry)
-      && typeof (entry as { enabled?: unknown }).enabled === 'boolean');
+    ? Object.fromEntries(Object.entries(value))
+    : null;
 }

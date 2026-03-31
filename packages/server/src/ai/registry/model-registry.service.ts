@@ -11,6 +11,8 @@ import {
 } from './model-registry.helpers';
 import {
   createDefaultCapabilities,
+  createModelId,
+  createProviderId,
   type ModelCapabilities,
   type ModelConfig,
   type ModelId,
@@ -139,7 +141,11 @@ export class ModelRegistryService implements OnModuleInit {
    * @returns 模型配置列表
    */
   listModels(providerId: ProviderId | string): ModelConfig[] {
-    const modelIds = this.providerModels.get(providerId as ProviderId);
+    const normalizedProviderId =
+      typeof providerId === 'string'
+        ? createProviderId(providerId)
+        : providerId;
+    const modelIds = this.providerModels.get(normalizedProviderId);
     if (!modelIds) {
       return [];
     }
@@ -232,16 +238,27 @@ export class ModelRegistryService implements OnModuleInit {
    * @param modelId 模型 ID
    * @returns 是否删除成功
    */
-  unregisterModel(providerId: ProviderId, modelId: ModelId): boolean {
-    const key = makeModelRegistryKey(providerId, modelId);
+  unregisterModel(
+    providerId: ProviderId | string,
+    modelId: ModelId | string,
+  ): boolean {
+    const normalizedProviderId =
+      typeof providerId === 'string'
+        ? createProviderId(providerId)
+        : providerId;
+    const normalizedModelId =
+      typeof modelId === 'string'
+        ? createModelId(modelId)
+        : modelId;
+    const key = makeModelRegistryKey(normalizedProviderId, normalizedModelId);
     const deleted = this.models.delete(key);
 
     if (deleted) {
-      const modelSet = this.providerModels.get(providerId);
+      const modelSet = this.providerModels.get(normalizedProviderId);
       if (modelSet) {
-        modelSet.delete(modelId);
+        modelSet.delete(normalizedModelId);
         if (modelSet.size === 0) {
-          this.providerModels.delete(providerId);
+          this.providerModels.delete(normalizedProviderId);
         }
       }
       this.logger.log(`Unregistered model: ${key}`);
@@ -255,24 +272,30 @@ export class ModelRegistryService implements OnModuleInit {
    * @param providerId provider ID
    * @returns 删除数量
    */
-  unregisterProviderModels(providerId: ProviderId): number {
-    const modelIds = this.providerModels.get(providerId);
+  unregisterProviderModels(providerId: ProviderId | string): number {
+    const normalizedProviderId =
+      typeof providerId === 'string'
+        ? createProviderId(providerId)
+        : providerId;
+    const modelIds = this.providerModels.get(normalizedProviderId);
     if (!modelIds) {
       return 0;
     }
 
     const count = modelIds.size;
     for (const modelId of modelIds) {
-      const key = makeModelRegistryKey(providerId, modelId);
+      const key = makeModelRegistryKey(normalizedProviderId, modelId);
       this.models.delete(key);
     }
-    this.providerModels.delete(providerId);
+    this.providerModels.delete(normalizedProviderId);
 
-    this.logger.log(`Unregistered ${count} models for provider: ${providerId}`);
+    this.logger.log(
+      `Unregistered ${count} models for provider: ${normalizedProviderId}`,
+    );
     return count;
   }
 
-  clearProviderModels(providerId: ProviderId): number {
+  clearProviderModels(providerId: ProviderId | string): number {
     return this.unregisterProviderModels(providerId);
   }
 

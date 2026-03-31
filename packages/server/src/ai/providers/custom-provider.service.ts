@@ -11,7 +11,7 @@
  *
  * 预期行为:
  * - 只支持 openai / anthropic / gemini 三种兼容请求格式
- * - 为自定义供应商注册统一的 provider factory 和模型配置
+ * - 为自定义供应商注册统一的 provider 配置和模型配置
  * - 为未显式提供能力的模型做基础能力推断
  */
 
@@ -23,8 +23,6 @@ import type {
   ModelConfig,
   ProviderConfig,
   ProviderId,
-  ProviderInstance,
-  ProviderOptions,
 } from '../types';
 import { createProviderId } from '../types';
 import {
@@ -35,10 +33,8 @@ import {
   createCustomModelConfig,
   createCustomProviderConfig,
   createDiscoveredModelConfig,
-  inferCustomProviderCapabilities,
 } from './custom-provider-model.helpers';
 import type {
-  CompatibleProviderFormat,
   CustomModelDto,
   RegisterCustomProviderDto,
 } from './custom-provider.types';
@@ -71,12 +67,9 @@ export class CustomProviderService {
       this.logger.warn(`供应商 ${providerId} 已存在，将覆盖注册`);
     }
 
-    const config = createCustomProviderConfig(providerId, dto, metadata.npm, format);
+    const config = createCustomProviderConfig(providerId, dto, metadata.npm);
 
-    this.providerRegistry.registerProvider(
-      config,
-      this.createProviderFactory(dto, format),
-    );
+    this.providerRegistry.registerProvider(config);
     this.customProviderIds.add(providerId);
 
     const models = dto.models?.length
@@ -159,45 +152,6 @@ export class CustomProviderService {
     );
     this.modelRegistry.register(modelConfig);
     return modelConfig;
-  }
-
-  /**
-   * 创建 provider factory。
-   * @param dto 注册请求
-   * @param format 兼容请求格式
-   * @returns provider factory
-   */
-  private createProviderFactory(
-    dto: RegisterCustomProviderDto,
-    format: CompatibleProviderFormat,
-  ): (options: ProviderOptions) => ProviderInstance {
-    return (options: ProviderOptions): ProviderInstance => {
-      const metadata = getCompatibleProviderFormatMetadata(format);
-      const provider = metadata.createInstance(
-        dto,
-        options,
-        (item) => this.resolveApiKey(item),
-      );
-
-      return {
-        createModel: (modelId: string) => provider.chat(modelId),
-        getModelCapabilities: (modelId: string) =>
-          inferCustomProviderCapabilities(modelId, dto.models),
-        getConfig: () => ({
-          id: createProviderId(dto.id),
-          name: dto.name,
-          api: dto.baseUrl,
-          npm: metadata.npm,
-          env: dto.apiKeyEnv ? [dto.apiKeyEnv] : [],
-          type: format,
-          options: dto.options,
-        }),
-        getModelConfig: (modelId: string) =>
-          this.modelRegistry.getModel(createProviderId(dto.id), modelId),
-        listModels: () => this.modelRegistry.listModels(createProviderId(dto.id)),
-        getReasoningVariants: () => ({}),
-      };
-    };
   }
 
   /**

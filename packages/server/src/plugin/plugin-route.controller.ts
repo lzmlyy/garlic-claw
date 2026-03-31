@@ -1,5 +1,6 @@
 import {
   All,
+  BadRequestException,
   Controller,
   Param,
   Query,
@@ -10,7 +11,9 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AuthScopes } from '../auth/decorators/auth-scopes.decorator';
+import { AnyAuthGuard } from '../auth/guards/any-auth.guard';
+import { AuthScopeGuard } from '../auth/guards/auth-scope.guard';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import type { PluginCallContext, PluginRouteRequest } from '@garlic-claw/shared';
@@ -28,10 +31,18 @@ const BLOCKED_PLUGIN_RESPONSE_HEADERS = new Set([
   'transfer-encoding',
 ]);
 
+const PLUGIN_ROUTE_METHODS: PluginRouteRequest['method'][] = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+];
+
 @ApiTags('Plugin Routes')
 @ApiBearerAuth()
 @Controller('plugin-routes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(AnyAuthGuard, AuthScopeGuard)
 export class PluginRouteController {
   constructor(private readonly pluginRuntime: PluginRuntimeService) {}
 
@@ -45,6 +56,7 @@ export class PluginRouteController {
    * @returns 插件返回的 JSON body
    */
   @All(':pluginId/*path')
+  @AuthScopes('plugin.route.invoke')
   async handleRoute(
     @CurrentUser('id') userId: string,
     @Param('pluginId') pluginId: string,
@@ -83,11 +95,6 @@ export class PluginRouteController {
  * @returns 去掉首尾斜杠后的 Route 路径
  */
 function readWildcardPath(req: Request): string {
-  const legacyPath = req.params?.[0];
-  if (typeof legacyPath === 'string' && legacyPath.trim()) {
-    return normalizeRoutePath(legacyPath);
-  }
-
   const namedPath = req.params?.path;
   if (typeof namedPath === 'string' && namedPath.trim()) {
     return normalizeRoutePath(namedPath);
@@ -117,9 +124,9 @@ function buildRouteRequest(
 ): PluginRouteRequest {
   return {
     path: routePath,
-    method: req.method as PluginRouteRequest['method'],
+    method: normalizeRouteMethod(req.method),
     headers: normalizeHeaders(req.headers),
-    query: toJsonValue(query) as JsonObject,
+    query: normalizeQueryParams(query),
     body: normalizeRequestBody(req.body),
   };
 }
@@ -137,18 +144,34 @@ function readConversationId(
   if (typeof query.conversationId === 'string' && query.conversationId.trim()) {
     return query.conversationId.trim();
   }
-  if (
-    body &&
-    typeof body === 'object' &&
-    !Array.isArray(body) &&
-    'conversationId' in body &&
-    typeof (body as Record<string, unknown>).conversationId === 'string'
-  ) {
-    const conversationId = (body as Record<string, unknown>).conversationId as string;
+  const bodyObject = readUnknownObject(body);
+  if (bodyObject && typeof bodyObject.conversationId === 'string') {
+    const conversationId = bodyObject.conversationId;
     return conversationId.trim() || undefined;
   }
 
   return undefined;
+}
+
+function normalizeRouteMethod(method: string): PluginRouteRequest['method'] {
+  const matchedMethod = PLUGIN_ROUTE_METHODS.find((candidate) => candidate === method);
+  if (matchedMethod) {
+    return matchedMethod;
+  }
+
+  throw new BadRequestException(`插件 Route 暂不支持 HTTP 方法 ${method}`);
+}
+
+function normalizeQueryParams(query: Record<string, unknown>): JsonObject {
+  const normalized: JsonObject = {};
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === 'undefined') {
+      continue;
+    }
+    normalized[key] = toJsonValue(value);
+  }
+
+  return normalized;
 }
 
 /**
@@ -185,6 +208,19 @@ function normalizeRequestBody(body: unknown): JsonValue | null {
   }
 
   return toJsonValue(body);
+}
+
+function readUnknownObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const record: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    record[key] = entry;
+  }
+
+  return record;
 }
 
 /**

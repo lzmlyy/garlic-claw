@@ -14,6 +14,7 @@ import { createStepLimit } from '../ai/sdk-adapter';
 import type { ModelConfig } from '../ai/types/provider.types';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { ToolRegistryService } from '../tool/tool-registry.service';
+import { SkillSessionService } from '../skill/skill-session.service';
 import {
   ChatModelInvocationService,
   type PreparedChatModelInvocation,
@@ -61,6 +62,7 @@ export class ChatMessageOrchestrationService {
     private readonly pluginRuntime: PluginRuntimeService,
     private readonly toolRegistry: ToolRegistryService,
     private readonly modelInvocation: ChatModelInvocationService,
+    private readonly skillSession: SkillSessionService,
   ) {}
 
   buildStreamFactory(input: {
@@ -95,7 +97,7 @@ export class ChatMessageOrchestrationService {
         },
       });
 
-      return this.modelInvocation.streamPrepared({
+      const streamed = this.modelInvocation.streamPrepared({
         prepared: input.preparedInvocation,
         system: input.request.systemPrompt,
         tools: input.tools,
@@ -105,7 +107,13 @@ export class ChatMessageOrchestrationService {
         maxOutputTokens: input.request.maxOutputTokens,
         stopWhen: createStepLimit(5),
         abortSignal,
-      }).result;
+      });
+
+      return {
+        providerId: String(streamed.modelConfig.providerId),
+        modelId: String(streamed.modelConfig.id),
+        stream: streamed.result,
+      };
     };
   }
 
@@ -117,6 +125,9 @@ export class ChatMessageOrchestrationService {
     modelConfig: { providerId: string; id: string };
     messages: ChatRuntimeMessage[];
   }): Promise<AppliedChatBeforeModelResult> {
+    const skillContext = await this.skillSession.getConversationSkillContext(
+      input.conversationId,
+    );
     const hookContext = this.createChatLifecycleContext({
       userId: input.userId,
       conversationId: input.conversationId,
@@ -134,6 +145,11 @@ export class ChatMessageOrchestrationService {
         activePersonaId: input.activePersonaId,
       },
     });
+    const availableTools = filterAvailableTools(
+      toolSelection.availableTools,
+      skillContext.allowedToolNames,
+      skillContext.deniedToolNames,
+    );
     const hookResult = await this.pluginRuntime.runChatBeforeModelHooks({
       context: hookContext,
       payload: {
@@ -141,9 +157,9 @@ export class ChatMessageOrchestrationService {
         request: {
           providerId: input.modelConfig.providerId,
           modelId: input.modelConfig.id,
-          systemPrompt: input.systemPrompt,
+          systemPrompt: mergeSystemPrompts(input.systemPrompt, skillContext.systemPrompt),
           messages: input.messages,
-          availableTools: toolSelection.availableTools,
+          availableTools,
         },
       },
     });
@@ -172,7 +188,14 @@ export class ChatMessageOrchestrationService {
         hookResult.request.providerId,
         hookResult.request.modelId,
       ),
-      buildToolSet: toolSelection.buildToolSet,
+      buildToolSet: ({ context, allowedToolNames }) =>
+        toolSelection.buildToolSet({
+          context,
+          allowedToolNames: filterAllowedToolNames(
+            availableTools.map((tool) => tool.name),
+            allowedToolNames,
+          ),
+        }),
     };
   }
 
@@ -341,4 +364,45 @@ export class ChatMessageOrchestrationService {
       ...(input.activePersonaId ? { activePersonaId: input.activePersonaId } : {}),
     };
   }
+}
+
+function mergeSystemPrompts(basePrompt: string, appendedPrompt: string): string {
+  if (!appendedPrompt.trim()) {
+    return basePrompt;
+  }
+
+  return basePrompt.trim()
+    ? `${basePrompt}\n\n${appendedPrompt}`
+    : appendedPrompt;
+}
+
+function filterAvailableTools(
+  availableTools: ChatBeforeModelRequest['availableTools'],
+  allowedToolNames: string[] | null,
+  deniedToolNames: string[],
+): ChatBeforeModelRequest['availableTools'] {
+  const allowedSet = allowedToolNames ? new Set(allowedToolNames) : null;
+  const deniedSet = new Set(deniedToolNames);
+
+  return availableTools.filter((tool) => {
+    if (deniedSet.has(tool.name)) {
+      return false;
+    }
+    if (allowedSet && !allowedSet.has(tool.name)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function filterAllowedToolNames(
+  availableToolNames: string[],
+  requestedToolNames?: string[],
+): string[] | undefined {
+  if (!requestedToolNames) {
+    return availableToolNames;
+  }
+
+  const availableSet = new Set(availableToolNames);
+  return requestedToolNames.filter((toolName) => availableSet.has(toolName));
 }

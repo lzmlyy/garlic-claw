@@ -71,6 +71,18 @@ export interface ChatMessageMetadata {
 }
 
 /**
+ * 会话级宿主服务开关。
+ */
+export interface ConversationHostServices {
+  /** 当前会话宿主服务总开关。 */
+  sessionEnabled: boolean;
+  /** 当前会话是否允许 LLM 自动回复。 */
+  llmEnabled: boolean;
+  /** 为未来 TTS 预留的会话级开关。 */
+  ttsEnabled: boolean;
+}
+
+/**
  * 对话中的消息数量统计。
  */
 export interface ConversationCount {
@@ -215,3 +227,9 @@ export interface RetryMessagePayload {
   /** model 覆盖。 */
   model?: string;
 }
+
+/**
+ * 更新会话级宿主服务开关时的请求载荷。
+ */
+export type UpdateConversationHostServicesPayload =
+  Partial<ConversationHostServices>;

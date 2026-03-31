@@ -66,17 +66,11 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const config = (await context.host.getConfig()) as {
-          limit?: number;
-          promptPrefix?: string;
-        };
-        const memories = (await context.host.searchMemories(
+        const config = readMemoryContextConfig(await context.host.getConfig());
+        const memories = readMemorySearchResults(await context.host.searchMemories(
           latestUserText,
           config.limit ?? 5,
-        )) as Array<{
-          content?: string;
-          category?: string;
-        }>;
+        ));
         if (memories.length === 0) {
           return null;
         }
@@ -86,6 +80,7 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
         );
         return toJsonValue(
           createChatBeforeModelHookResult(
+            hookPayload.request.systemPrompt,
             `${config.promptPrefix ?? '与此用户相关的记忆'}：\n${memoryLines.join('\n')}`,
           ),
         );
@@ -125,4 +120,52 @@ function findLatestUserText(
   }
 
   return '';
+}
+
+function readMemoryContextConfig(value: JsonValue): {
+  limit?: number;
+  promptPrefix?: string;
+} {
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    return {};
+  }
+
+  return {
+    ...(typeof object.limit === 'number' ? { limit: object.limit } : {}),
+    ...(typeof object.promptPrefix === 'string' ? { promptPrefix: object.promptPrefix } : {}),
+  };
+}
+
+function readMemorySearchResults(
+  value: JsonValue,
+): Array<{
+  content?: string;
+  category?: string;
+}> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    const object = readJsonObjectValue(entry);
+    if (!object) {
+      return [];
+    }
+
+    return [{
+      ...(typeof object.content === 'string' ? { content: object.content } : {}),
+      ...(typeof object.category === 'string' ? { category: object.category } : {}),
+    }];
+  });
+}
+
+function readJsonObjectValue(
+  value: JsonValue,
+): Record<string, JsonValue> | null {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : null;
 }

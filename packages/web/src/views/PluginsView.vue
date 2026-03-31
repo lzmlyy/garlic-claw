@@ -89,7 +89,7 @@
           <PluginRouteList
             class="detail-span"
             :plugin-name="selectedPlugin.name"
-            :routes="selectedPlugin.routes ?? selectedPlugin.manifest?.routes ?? []"
+            :routes="selectedPlugin.manifest.routes ?? []"
           />
         </div>
       </section>
@@ -332,8 +332,8 @@ function needsAttention(plugin: PluginInfo): boolean {
  * @returns 可展示的能力标签
  */
 function pluginHighlights(plugin: PluginInfo): string[] {
-  const permissions = new Set(plugin.permissions ?? plugin.manifest?.permissions ?? [])
-  const hooks = new Set((plugin.hooks ?? plugin.manifest?.hooks ?? []).map((hook) => hook.name))
+  const permissions = new Set(plugin.manifest.permissions)
+  const hooks = new Set((plugin.manifest.hooks ?? []).map((hook) => hook.name))
   const highlights = new Set<string>()
   const pushHighlight = (label: string) => {
     highlights.add(label)
@@ -442,7 +442,7 @@ function pluginHighlights(plugin: PluginInfo): string[] {
   if ((plugin.crons?.length ?? 0) > 0) {
     pushHighlight('可定时执行任务')
   }
-  if ((plugin.routes?.length ?? 0) > 0) {
+  if ((plugin.manifest.routes?.length ?? 0) > 0) {
     pushHighlight('可暴露宿主内 JSON Route')
   }
 

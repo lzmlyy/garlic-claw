@@ -1,10 +1,11 @@
 import type { JsonObject } from '../../common/types/json-value';
+import type { CompatibleProviderDriver } from '../official-provider-catalog';
 import type { ModelCapabilities } from '../types';
 
 /**
  * 兼容供应商请求格式。
  */
-export type CompatibleProviderFormat = 'openai' | 'anthropic' | 'gemini';
+export type CompatibleProviderFormat = CompatibleProviderDriver;
 
 /**
  * 自定义供应商注册请求。

@@ -34,19 +34,9 @@ export class ToolController {
     private readonly toolAdmin: ToolAdminService,
   ) {}
 
-  @Get('sources')
-  listSources(): Promise<ToolSourceInfo[]> {
-    return this.toolRegistry.listSources();
-  }
-
   @Get('overview')
   listOverview(): Promise<ToolOverview> {
     return this.toolRegistry.listOverview();
-  }
-
-  @Get()
-  listTools(): Promise<ToolInfo[]> {
-    return this.toolRegistry.listToolInfos();
   }
 
   @Put('sources/:kind/:sourceId/enabled')

@@ -8,8 +8,10 @@
           <router-link to="/plugins" class="nav-link" :class="{ active: $route.name === 'plugins' }">🧩 插件</router-link>
           <router-link to="/personas" class="nav-link" :class="{ active: $route.name === 'persona-settings' }">🎭 Persona</router-link>
           <router-link to="/tools" class="nav-link" :class="{ active: $route.name === 'tools' }">🛠️ 工具</router-link>
+          <router-link to="/skills" class="nav-link" :class="{ active: $route.name === 'skills' }">✨ Skills</router-link>
           <router-link to="/commands" class="nav-link" :class="{ active: $route.name === 'commands' }">⌨️ 命令</router-link>
           <router-link to="/subagents" class="nav-link" :class="{ active: $route.name === 'subagent-tasks' }">🤖 后台代理</router-link>
+          <router-link to="/api-keys" class="nav-link" :class="{ active: $route.name === 'api-keys' }">🔑 API Keys</router-link>
           <router-link to="/automations" class="nav-link" :class="{ active: $route.name === 'automations' }">⚡ 自动化</router-link>
           <router-link to="/ai" class="nav-link" :class="{ active: $route.name === 'ai-settings' }">🧠 AI 设置</router-link>
         </div>

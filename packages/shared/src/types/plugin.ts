@@ -336,8 +336,7 @@ export interface PluginManifest {
 }
 
 export interface RegisterPayload {
-  capabilities?: PluginCapability[];
-  manifest?: PluginManifest;
+  manifest: PluginManifest;
 }
 
 export interface ExecutePayload {
@@ -654,7 +653,7 @@ export interface PluginAvailableToolSummary {
   parameters: Record<string, PluginParamSchema>;
   pluginId?: string;
   runtimeKind?: PluginRuntimeKind;
-  sourceKind?: 'plugin' | 'mcp';
+  sourceKind?: 'plugin' | 'mcp' | 'skill';
   sourceId?: string;
 }
 
@@ -719,11 +718,6 @@ export type MessageReceivedHookResult =
   | MessageReceivedHookMutateResult
   | MessageReceivedHookShortCircuitResult;
 
-/** 兼容旧版“只追加系统提示词”的 Hook 返回。 */
-export interface LegacyChatBeforeModelHookResult {
-  appendSystemPrompt?: string;
-}
-
 /** 聊天模型前 Hook 不修改请求。 */
 export interface ChatBeforeModelHookPassResult {
   action: 'pass';
@@ -755,7 +749,6 @@ export interface ChatBeforeModelHookShortCircuitResult {
 
 /** 聊天模型前 Hook 的返回。 */
 export type ChatBeforeModelHookResult =
-  | LegacyChatBeforeModelHookResult
   | ChatBeforeModelHookPassResult
   | ChatBeforeModelHookMutateResult
   | ChatBeforeModelHookShortCircuitResult;
@@ -1049,7 +1042,7 @@ export type AutomationAfterRunHookResult =
 export type PluginResponseSource = 'model' | 'short-circuit';
 
 /** 工具 Hook 看到的来源类型。 */
-export type ToolHookSourceKind = 'plugin' | 'mcp';
+export type ToolHookSourceKind = 'plugin' | 'mcp' | 'skill';
 
 /** 工具 Hook 看到的工具来源信息。 */
 export interface ToolHookSourceInfo {
@@ -1357,16 +1350,12 @@ export interface PluginInfo {
   description?: string;
   deviceType: string;
   status: string;
-  capabilities: PluginCapability[];
   connected: boolean;
   runtimeKind?: PluginRuntimeKind;
   version?: string;
-  permissions?: PluginPermission[];
   supportedActions?: PluginActionName[];
   crons?: PluginCronJobSummary[];
-  hooks?: PluginHookDescriptor[];
-  routes?: PluginRouteDescriptor[];
-  manifest?: PluginManifest;
+  manifest: PluginManifest;
   health?: PluginHealthSnapshot;
   governance?: PluginGovernanceInfo;
   lastSeenAt: string | null;

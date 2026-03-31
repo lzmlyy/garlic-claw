@@ -1,6 +1,7 @@
 import type { ResponseAfterSendHookPayload } from '@garlic-claw/shared';
 import type { JsonObject } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 回复发送摘要。
@@ -61,7 +62,7 @@ export function createResponseRecorderPlugin(): BuiltinPluginDefinition {
     },
     hooks: {
       'response:after-send': async (payload, { host }) => {
-        const afterSend = payload as unknown as ResponseAfterSendHookPayload;
+        const afterSend = readBuiltinHookPayload<ResponseAfterSendHookPayload>(payload);
         const summary = buildResponseSendSummary(afterSend);
 
         await host.setStorage(

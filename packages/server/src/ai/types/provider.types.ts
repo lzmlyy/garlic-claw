@@ -1,20 +1,4 @@
-import type { LanguageModel } from 'ai';
-import type { JsonObject, JsonValue } from '../../common/types/json-value';
-
-/**
- * AI SDK 语言模型实例。
- *
- * 输入:
- * - 由官方 provider SDK 创建的聊天模型
- *
- * 输出:
- * - 可直接用于 `streamText` / `generateText` 的 `LanguageModel`
- *
- * 预期行为:
- * - 不再把模型实例暴露为宽松顶层类型
- * - 保持外部 SDK 边界的明确类型
- */
-export type AnyLanguageModel = LanguageModel;
+import type { JsonObject } from '../../common/types/json-value';
 
 /**
  * 供应商 ID。
@@ -52,16 +36,6 @@ export interface ModalityCapabilities {
   text: boolean;
   /** 是否支持图片。 */
   image: boolean;
-}
-
-/**
- * 推理配置。
- */
-export interface ReasoningConfig {
-  /** 是否启用推理。 */
-  type: 'enabled' | 'disabled';
-  /** 推理预算 token。 */
-  budgetTokens?: number;
 }
 
 /**
@@ -193,106 +167,4 @@ export interface ProviderConfig {
   capabilities?: Partial<ModelCapabilities>;
   /** provider 级附加配置。 */
   options?: JsonObject;
-  /** 兼容请求格式，仅允许三种。 */
-  type?: 'openai' | 'anthropic' | 'gemini';
 }
-
-/**
- * provider 选项允许的值类型。
- */
-export type ProviderOptionValue = JsonValue | typeof fetch | undefined;
-
-/**
- * provider 工厂输入。
- */
-export interface ProviderOptions {
-  /** provider 名称。 */
-  name?: string;
-  /** API Key。 */
-  apiKey?: string;
-  /** Base URL。 */
-  baseURL?: string;
-  /** 自定义 fetch 实现。 */
-  fetch?: typeof fetch;
-  /** 超时时间。 */
-  timeout?: number;
-  /** 其他透传选项。 */
-  [key: string]: ProviderOptionValue;
-}
-
-/**
- * provider 运行时实例。
- */
-export interface ProviderInstance {
-  /** 可选的底层 SDK 实例。 */
-  instance?: object;
-  /** 创建语言模型实例。 */
-  createModel(modelId: string): AnyLanguageModel;
-  /** 获取模型能力。 */
-  getModelCapabilities?(modelId: string): ModelCapabilities;
-  /** 获取 provider 配置。 */
-  getConfig?(): ProviderConfig;
-  /** 获取单个模型配置。 */
-  getModelConfig?(modelId: string): ModelConfig | undefined;
-  /** 列出所有模型。 */
-  listModels?(): ModelConfig[];
-  /** 获取推理变体配置。 */
-  getReasoningVariants?(): Record<string, JsonObject>;
-  /** 动态发现模型。 */
-  discoverModels?(): Promise<ModelConfig[]>;
-}
-
-/**
- * provider 工厂函数。
- */
-export type ProviderFactory = (options: ProviderOptions) => ProviderInstance;
-
-/**
- * 自定义模型加载器。
- */
-export type CustomModelLoader = (
-  sdk: ProviderInstance,
-  modelId: string,
-  options?: JsonObject,
-) => AnyLanguageModel | Promise<AnyLanguageModel>;
-
-/**
- * provider 加载器配置。
- */
-export interface ProviderLoader {
-  /** 是否自动加载。 */
-  autoload?: boolean;
-  /** 自定义模型加载器。 */
-  getModel?: CustomModelLoader;
-  /** 额外环境变量生成器。 */
-  vars?: (options: JsonObject) => Record<string, string>;
-  /** 额外配置。 */
-  options?: JsonObject;
-  /** 动态发现模型。 */
-  discoverModels?: () => Promise<ModelConfig[]>;
-}
-
-/**
- * 内置 provider ID 常量。
- */
-export const BUILTIN_PROVIDER_IDS = {
-  OPENAI: createProviderId('openai'),
-  ANTHROPIC: createProviderId('anthropic'),
-  OLLAMA: createProviderId('ollama'),
-  GOOGLE: createProviderId('google'),
-  OPENAI_COMPATIBLE: createProviderId('openai-compatible'),
-  AZURE: createProviderId('azure'),
-  OPENROUTER: createProviderId('openrouter'),
-} as const;
-
-/**
- * 内置 SDK 包名常量。
- */
-export const BUILTIN_SDK_PACKAGES = {
-  OPENAI: '@ai-sdk/openai',
-  ANTHROPIC: '@ai-sdk/anthropic',
-  GOOGLE: '@ai-sdk/google',
-  AZURE: '@ai-sdk/azure',
-  OPENROUTER: '@openrouter/ai-sdk-provider',
-  OPENAI_COMPATIBLE: '@ai-sdk/openai-compatible',
-} as const;

@@ -21,6 +21,10 @@ describe('ChatMessageOrchestrationService', () => {
     streamPrepared: jest.fn(),
   };
 
+  const skillSession = {
+    getConversationSkillContext: jest.fn(),
+  };
+
   let service: ChatMessageOrchestrationService;
 
   beforeEach(() => {
@@ -55,15 +59,26 @@ describe('ChatMessageOrchestrationService', () => {
     pluginRuntime.runResponseBeforeSendHooks.mockImplementation(async ({ payload }) => payload);
     pluginRuntime.runResponseAfterSendHooks.mockResolvedValue(undefined);
     modelInvocation.streamPrepared.mockReturnValue({
+      modelConfig: {
+        id: 'claude-3-7-sonnet',
+        providerId: 'anthropic',
+      },
       result: {
         fullStream: {},
       },
+    });
+    skillSession.getConversationSkillContext.mockResolvedValue({
+      activeSkills: [],
+      systemPrompt: '',
+      allowedToolNames: null,
+      deniedToolNames: [],
     });
     service = new ChatMessageOrchestrationService(
       aiProvider as never,
       pluginRuntime as never,
       toolRegistry as never,
       modelInvocation as never,
+      skillSession as never,
     );
   });
 
@@ -139,6 +154,108 @@ describe('ChatMessageOrchestrationService', () => {
     });
   });
 
+  it('injects active skill prompts and narrows available tools before chat:before-model hooks', async () => {
+    aiProvider.getModelConfig.mockReturnValue({
+      id: 'gpt-5.2',
+      providerId: 'openai',
+      capabilities: {
+        toolCall: true,
+      },
+    });
+    const buildToolSet = jest.fn();
+    toolRegistry.prepareToolSelection.mockResolvedValue({
+      availableTools: [
+        {
+          name: 'kb.search',
+          description: '搜索知识库',
+          parameters: {},
+          pluginId: 'builtin.kb-context',
+          runtimeKind: 'builtin',
+        },
+        {
+          name: 'automation.run',
+          description: '运行自动化',
+          parameters: {},
+          pluginId: 'builtin.automation-tools',
+          runtimeKind: 'builtin',
+        },
+      ],
+      buildToolSet,
+    });
+    skillSession.getConversationSkillContext.mockResolvedValue({
+      activeSkills: [
+        {
+          id: 'project/planner',
+          name: '规划执行',
+        },
+      ],
+      systemPrompt: '请先拆解任务，再决定是否需要工具。',
+      allowedToolNames: ['kb.search'],
+      deniedToolNames: ['automation.run'],
+    });
+    pluginRuntime.runChatBeforeModelHooks.mockImplementation(async ({ payload }) => ({
+      action: 'continue',
+      request: payload.request,
+    }));
+
+    const result = await service.applyChatBeforeModelHooks({
+      userId: 'user-1',
+      conversationId: 'conversation-1',
+      activePersonaId: 'builtin.default-assistant',
+      systemPrompt: '你是 Garlic Claw',
+      modelConfig: {
+        providerId: 'openai',
+        id: 'gpt-5.2',
+      },
+      messages: [],
+    });
+
+    expect(skillSession.getConversationSkillContext).toHaveBeenCalledWith('conversation-1');
+    expect(pluginRuntime.runChatBeforeModelHooks).toHaveBeenCalledWith({
+      context: expect.any(Object),
+      payload: {
+        context: expect.any(Object),
+        request: expect.objectContaining({
+          systemPrompt: expect.stringContaining('请先拆解任务'),
+          availableTools: [
+            expect.objectContaining({
+              name: 'kb.search',
+            }),
+          ],
+        }),
+      },
+    });
+
+    expect(result.action).toBe('continue');
+    if (result.action !== 'continue') {
+      throw new Error('Expected continue result');
+    }
+
+    result.buildToolSet({
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'builtin.default-assistant',
+      },
+      allowedToolNames: ['kb.search', 'automation.run'],
+    });
+
+    expect(buildToolSet).toHaveBeenCalledWith({
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-5.2',
+        activePersonaId: 'builtin.default-assistant',
+      },
+      allowedToolNames: ['kb.search'],
+    });
+  });
+
   it('builds a stream factory that dispatches waiting-model hooks before streaming', () => {
     const createStream = service.buildStreamFactory({
       assistantMessageId: 'assistant-message-1',
@@ -158,6 +275,7 @@ describe('ChatMessageOrchestrationService', () => {
         },
         model: {},
         sdkMessages: [],
+        sourceSdkMessages: [],
       } as never,
       activeProviderId: 'anthropic',
       activeModelId: 'claude-3-7-sonnet',
@@ -185,7 +303,11 @@ describe('ChatMessageOrchestrationService', () => {
     });
     expect(modelInvocation.streamPrepared).toHaveBeenCalled();
     expect(streamResult).toEqual({
-      fullStream: {},
+      providerId: 'anthropic',
+      modelId: 'claude-3-7-sonnet',
+      stream: {
+        fullStream: {},
+      },
     });
   });
 

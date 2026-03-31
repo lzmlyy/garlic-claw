@@ -19,8 +19,18 @@ describe('router', () => {
     expect(router.resolve({ name: 'commands' }).path).toBe('/commands')
   })
 
+  it('registers the skills workspace route', () => {
+    expect(router.hasRoute('skills')).toBe(true)
+    expect(router.resolve({ name: 'skills' }).path).toBe('/skills')
+  })
+
   it('registers the background subagent task route', () => {
     expect(router.hasRoute('subagent-tasks')).toBe(true)
     expect(router.resolve({ name: 'subagent-tasks' }).path).toBe('/subagents')
+  })
+
+  it('registers the scoped api key management route', () => {
+    expect(router.hasRoute('api-keys')).toBe(true)
+    expect(router.resolve({ name: 'api-keys' }).path).toBe('/api-keys')
   })
 })

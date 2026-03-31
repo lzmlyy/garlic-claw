@@ -47,13 +47,17 @@ describe('ChatTaskService', () => {
       providerId: 'openai',
       modelId: 'gpt-4o-mini',
       createStream: () => ({
-        fullStream: createStream([
-          { type: 'text-delta', text: '你' },
-          { type: 'text-delta', text: '好' },
-          { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
-          { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
-          { type: 'finish' },
-        ]),
+        providerId: 'openai',
+        modelId: 'gpt-4o-mini',
+        stream: {
+          fullStream: createStream([
+            { type: 'text-delta', text: '你' },
+            { type: 'text-delta', text: '好' },
+            { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
+            { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
+            { type: 'finish' },
+          ]),
+        },
       }),
     });
 
@@ -122,13 +126,17 @@ describe('ChatTaskService', () => {
       providerId: 'openai',
       modelId: 'gpt-4o-mini',
       createStream: () => ({
-        fullStream: createStream([
-          { type: 'text-delta', text: '你' },
-          { type: 'text-delta', text: '好' },
-          { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
-          { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
-          { type: 'finish' },
-        ]),
+        providerId: 'openai',
+        modelId: 'gpt-4o-mini',
+        stream: {
+          fullStream: createStream([
+            { type: 'text-delta', text: '你' },
+            { type: 'text-delta', text: '好' },
+            { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
+            { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
+            { type: 'finish' },
+          ]),
+        },
       }),
       onComplete,
     });
@@ -183,13 +191,17 @@ describe('ChatTaskService', () => {
       providerId: 'openai',
       modelId: 'gpt-4o-mini',
       createStream: () => ({
-        fullStream: createStream([
-          { type: 'text-delta', text: '原始' },
-          { type: 'text-delta', text: '回复' },
-          { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
-          { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
-          { type: 'finish' },
-        ]),
+        providerId: 'openai',
+        modelId: 'gpt-4o-mini',
+        stream: {
+          fullStream: createStream([
+            { type: 'text-delta', text: '原始' },
+            { type: 'text-delta', text: '回复' },
+            { type: 'tool-call', toolCallId: 'tool-1', toolName: 'search', input: { q: 'test' } },
+            { type: 'tool-result', toolCallId: 'tool-1', toolName: 'search', output: { ok: true } },
+            { type: 'finish' },
+          ]),
+        },
       }),
       onComplete,
       onSent,
@@ -271,7 +283,11 @@ describe('ChatTaskService', () => {
       providerId: 'anthropic',
       modelId: 'claude-3-7-sonnet',
       createStream: (abortSignal: AbortSignal) => ({
-        fullStream: createAbortAwareStream(abortSignal),
+        providerId: 'anthropic',
+        modelId: 'claude-3-7-sonnet',
+        stream: {
+          fullStream: createAbortAwareStream(abortSignal),
+        },
       }),
     });
     const unsubscribe = service.subscribe('assistant-2', (event: ChatTaskEvent) => {
@@ -309,7 +325,11 @@ describe('ChatTaskService', () => {
       providerId: 'openai',
       modelId: 'gpt-4o-mini',
       createStream: (abortSignal: AbortSignal) => ({
-        fullStream: createGracefulAbortStream(abortSignal),
+        providerId: 'openai',
+        modelId: 'gpt-4o-mini',
+        stream: {
+          fullStream: createGracefulAbortStream(abortSignal),
+        },
       }),
     });
 

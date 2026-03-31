@@ -1,6 +1,8 @@
 import type {
+  AiHostModelRoutingConfig,
   AiProviderConnectionTestResult,
   AiModelConfig,
+  AiModelRouteTarget,
   AiProviderConfig,
   AiProviderSummary,
   DiscoveredAiModel,
@@ -20,6 +22,13 @@ export interface VisionModelOption {
 }
 
 /**
+ * 宿主模型路由可选模型项。
+ */
+export interface HostModelRoutingOption extends AiModelRouteTarget {
+  label: string
+}
+
+/**
  * provider 测试连接结果。
  */
 export interface ProviderConnectionResult {
@@ -34,6 +43,7 @@ export interface ProviderSettingsBaseData {
   catalog: OfficialProviderCatalogItem[]
   providers: AiProviderSummary[]
   visionConfig: VisionFallbackConfig
+  hostModelRoutingConfig: AiHostModelRoutingConfig
 }
 
 /**
@@ -49,16 +59,18 @@ export interface ProviderSettingsSelectionData {
  * @returns 官方目录、provider 列表和视觉配置
  */
 export async function loadProviderSettingsBaseData(): Promise<ProviderSettingsBaseData> {
-  const [catalog, providers, visionConfig] = await Promise.all([
+  const [catalog, providers, visionConfig, hostModelRoutingConfig] = await Promise.all([
     api.listOfficialProviderCatalog(),
     api.listAiProviders(),
     api.getVisionFallbackConfig(),
+    api.getHostModelRoutingConfig(),
   ])
 
   return {
     catalog,
     providers,
     visionConfig,
+    hostModelRoutingConfig,
   }
 }
 
@@ -145,6 +157,31 @@ export async function loadVisionModelOptions(
         modelId: model.id,
         label: `${provider.name} / ${model.name}`,
       })),
+  )
+}
+
+/**
+ * 构建宿主模型路由使用的全量模型候选。
+ * @param providers 当前 provider 摘要列表
+ * @returns fallback/utility role 可选模型
+ */
+export async function loadHostModelRoutingOptions(
+  providers: AiProviderSummary[],
+): Promise<HostModelRoutingOption[]> {
+  const availableProviders = providers.filter((item) => item.available)
+  const modelGroups = await Promise.all(
+    availableProviders.map(async (provider) => ({
+      provider,
+      models: await listProviderModelsSafely(provider.id),
+    })),
+  )
+
+  return modelGroups.flatMap(({ provider, models }) =>
+    models.map((model) => ({
+      providerId: provider.id,
+      modelId: model.id,
+      label: `${provider.name} / ${model.name}`,
+    })),
   )
 }
 

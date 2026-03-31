@@ -151,6 +151,7 @@ export class ChatModelInvocationService {
     return this.aiModelExecution.generatePrepared({
       prepared,
       system: input.system,
+      allowFallbackChatModels: true,
       variant: input.variant,
       providerOptions: input.providerOptions,
       headers: input.headers,
@@ -167,7 +168,10 @@ export class ChatModelInvocationService {
     input: StreamPreparedChatModelInvocationInput,
   ): ReturnType<AiModelExecutionService['streamPrepared']> {
     return this.aiModelExecution.streamPrepared(
-      input as StreamPreparedAiModelExecutionInput,
+      {
+        ...input,
+        allowFallbackChatModels: true,
+      } as StreamPreparedAiModelExecutionInput,
     );
   }
 }

@@ -46,6 +46,11 @@ const router = createRouter({
           component: () => import('../views/ToolsView.vue'),
         },
         {
+          path: 'skills',
+          name: 'skills',
+          component: () => import('../views/SkillsView.vue'),
+        },
+        {
           path: 'commands',
           name: 'commands',
           component: () => import('../views/CommandsView.vue'),
@@ -54,6 +59,11 @@ const router = createRouter({
           path: 'subagents',
           name: 'subagent-tasks',
           component: () => import('../views/SubagentTasksView.vue'),
+        },
+        {
+          path: 'api-keys',
+          name: 'api-keys',
+          component: () => import('../views/ApiKeysView.vue'),
         },
         {
           path: 'automations',

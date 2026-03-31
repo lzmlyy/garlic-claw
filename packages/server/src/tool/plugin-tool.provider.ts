@@ -3,7 +3,12 @@ import type { PluginCallContext } from '@garlic-claw/shared';
 import type { JsonObject } from '../common/types/json-value';
 import { PluginService } from '../plugin/plugin.service';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
-import type { ToolProvider, ToolProviderState, ToolProviderTool } from './tool.types';
+import type {
+  ToolHealthStatus,
+  ToolProvider,
+  ToolProviderState,
+  ToolProviderTool,
+} from './tool.types';
 
 @Injectable()
 export class PluginToolProvider implements ToolProvider {
@@ -62,11 +67,7 @@ export class PluginToolProvider implements ToolProvider {
         id: entry.pluginId,
         label: entry.manifest.name || entry.pluginId,
         enabled: true,
-        health: persisted?.status === 'online'
-          ? ((persisted.healthStatus as 'healthy' | 'error' | 'unknown' | 'degraded' | null) === 'degraded'
-            ? 'error'
-            : (persisted.healthStatus as 'healthy' | 'error' | 'unknown' | null) ?? 'unknown')
-          : 'unknown',
+        health: readToolHealthStatus(persisted),
         lastError: persisted?.lastError ?? null,
         lastCheckedAt: persisted?.lastCheckedAt?.toISOString() ?? null,
         supportedActions: entry.supportedActions,
@@ -112,5 +113,28 @@ export class PluginToolProvider implements ToolProvider {
       pluginId: entry.pluginId,
       runtimeKind: entry.runtimeKind,
     }));
+  }
+}
+
+function readToolHealthStatus(persisted: {
+  status?: string | null;
+  healthStatus?: string | null;
+} | undefined): ToolHealthStatus {
+  if (persisted?.status !== 'online') {
+    return 'unknown';
+  }
+
+  switch (persisted.healthStatus) {
+    case 'healthy':
+      return 'healthy';
+    case 'degraded':
+    case 'error':
+      return 'error';
+    case 'unknown':
+    case null:
+    case undefined:
+      return 'unknown';
+    default:
+      return 'unknown';
   }
 }

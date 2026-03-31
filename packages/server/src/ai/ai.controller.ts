@@ -16,6 +16,7 @@ import {
   SetDefaultModelDto,
   TestAiProviderConnectionDto,
   UpdateModelCapabilitiesDto,
+  UpdateHostModelRoutingDto,
   UpdateVisionFallbackDto,
   UpsertAiModelDto,
   UpsertAiProviderDto,
@@ -121,5 +122,21 @@ export class AiController {
   @Put('vision-fallback')
   updateVisionFallbackConfig(@Body() dto: UpdateVisionFallbackDto) {
     return this.managementService.updateVisionFallbackConfig(dto);
+  }
+
+  @Get('host-model-routing')
+  getHostModelRoutingConfig() {
+    return this.managementService.getHostModelRoutingConfig();
+  }
+
+  @Put('host-model-routing')
+  updateHostModelRoutingConfig(@Body() dto: UpdateHostModelRoutingDto) {
+    return this.managementService.updateHostModelRoutingConfig({
+      fallbackChatModels: dto.fallbackChatModels ?? [],
+      ...(dto.compressionModel
+        ? { compressionModel: dto.compressionModel }
+        : {}),
+      utilityModelRoles: dto.utilityModelRoles ?? {},
+    });
   }
 }

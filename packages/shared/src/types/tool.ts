@@ -1,6 +1,6 @@
 import type { PluginActionName, PluginParamSchema, PluginRuntimeKind } from './plugin';
 
-export type ToolSourceKind = 'plugin' | 'mcp';
+export type ToolSourceKind = 'plugin' | 'mcp' | 'skill';
 
 export type ToolHealthStatus = 'healthy' | 'error' | 'unknown';
 

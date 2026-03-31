@@ -79,8 +79,15 @@ describe('PluginScopeEditor', () => {
           name: 'builtin.memory-context',
           deviceType: 'builtin',
           status: 'online',
-          capabilities: [],
           connected: true,
+          manifest: {
+            id: 'builtin.memory-context',
+            name: 'builtin.memory-context',
+            version: '1.0.0',
+            runtime: 'builtin',
+            permissions: [],
+            tools: [],
+          },
           governance: {
             canDisable: true,
             builtinRole: 'user-facing',
@@ -121,8 +128,15 @@ describe('PluginScopeEditor', () => {
           name: 'builtin.core-tools',
           deviceType: 'builtin',
           status: 'online',
-          capabilities: [],
           connected: true,
+          manifest: {
+            id: 'builtin.core-tools',
+            name: 'builtin.core-tools',
+            version: '1.0.0',
+            runtime: 'builtin',
+            permissions: [],
+            tools: [],
+          },
           governance: {
             canDisable: false,
             disableReason: '基础内建工具属于宿主必需插件，不能禁用。',
