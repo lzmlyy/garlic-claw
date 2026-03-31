@@ -1,6 +1,7 @@
 import type { ToolAfterCallHookPayload } from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 工具调用审计摘要。
@@ -65,7 +66,7 @@ export function createToolAuditPlugin(): BuiltinPluginDefinition {
     },
     hooks: {
       'tool:after-call': async (payload, { host }) => {
-        const afterCall = payload as unknown as ToolAfterCallHookPayload;
+        const afterCall = readBuiltinHookPayload<ToolAfterCallHookPayload>(payload);
         const summary = buildToolAuditSummary(afterCall);
         const storageScope = afterCall.source.kind === 'plugin'
           ? afterCall.pluginId ?? afterCall.source.id

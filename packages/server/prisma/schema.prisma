@@ -128,12 +128,8 @@ model Plugin {
   runtimeKind        String   @default("remote") @map("runtime_kind")
   description        String?
   status             String   @default("offline") // online | offline | error
-  capabilities       String?  // PluginCapability[] 的 JSON 字符串
+  manifestJson       String?  @map("manifest_json") // PluginManifest 的 JSON 字符串
   version            String?
-  permissions        String?  // PluginPermission[] 的 JSON 字符串
-  hooks              String?  // PluginHookDescriptor[] 的 JSON 字符串
-  routes             String?  // PluginRouteDescriptor[] 的 JSON 字符串
-  configSchema       String?  @map("config_schema") // PluginConfigSchema 的 JSON 字符串
   config             String?  // 已保存配置的 JSON 字符串
   defaultEnabled     Boolean  @default(true) @map("default_enabled")
   conversationScopes String?  @map("conversation_scopes") // conversationId -> enabled 的 JSON 字符串

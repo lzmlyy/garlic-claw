@@ -3,6 +3,7 @@ import type {
   PluginConfigSchema,
   PluginManifest,
 } from '@garlic-claw/shared';
+import { serializePersistedPluginManifest } from './plugin-manifest.persistence';
 import { PluginService } from './plugin.service';
 
 describe('PluginService', () => {
@@ -79,19 +80,7 @@ describe('PluginService', () => {
         name: 'builtin.memory-context',
         runtimeKind: 'builtin',
         version: '1.0.0',
-        permissions: JSON.stringify(['memory:read', 'config:read']),
-        hooks: JSON.stringify([
-          {
-            name: 'chat:before-model',
-          },
-        ]),
-        routes: JSON.stringify([
-          {
-            path: 'inspect/context',
-            methods: ['GET'],
-          },
-        ]),
-        configSchema: JSON.stringify(configSchema),
+        manifest: manifest,
         config: JSON.stringify({
           limit: 8,
         }),
@@ -107,6 +96,7 @@ describe('PluginService', () => {
       'builtin',
       manifest,
     );
+    const persistedManifestJson = serializePersistedPluginManifest(manifest);
 
     expect(prisma.plugin.upsert).toHaveBeenCalledWith({
       where: {
@@ -114,40 +104,26 @@ describe('PluginService', () => {
       },
       create: expect.objectContaining({
         name: 'builtin.memory-context',
+        displayName: '记忆上下文',
         deviceType: 'builtin',
         runtimeKind: 'builtin',
+        description: undefined,
+        status: 'online',
         version: '1.0.0',
-        permissions: JSON.stringify(['memory:read', 'config:read']),
-        hooks: JSON.stringify([
-          {
-            name: 'chat:before-model',
-          },
-        ]),
-        routes: JSON.stringify([
-          {
-            path: 'inspect/context',
-            methods: ['GET'],
-          },
-        ]),
-        configSchema: JSON.stringify(configSchema),
+        manifestJson: persistedManifestJson,
+        healthStatus: 'healthy',
+        lastSeenAt: expect.any(Date),
       }),
       update: expect.objectContaining({
+        displayName: '记忆上下文',
         deviceType: 'builtin',
         runtimeKind: 'builtin',
+        description: undefined,
+        status: 'online',
         version: '1.0.0',
-        permissions: JSON.stringify(['memory:read', 'config:read']),
-        hooks: JSON.stringify([
-          {
-            name: 'chat:before-model',
-          },
-        ]),
-        routes: JSON.stringify([
-          {
-            path: 'inspect/context',
-            methods: ['GET'],
-          },
-        ]),
-        configSchema: JSON.stringify(configSchema),
+        manifestJson: persistedManifestJson,
+        healthStatus: 'healthy',
+        lastSeenAt: expect.any(Date),
       }),
     });
     expect(snapshot).toEqual({
@@ -206,7 +182,11 @@ describe('PluginService', () => {
     prisma.plugin.findUnique.mockResolvedValue(
       createPluginRecord({
         name: 'builtin.memory-context',
-        configSchema: JSON.stringify(configSchema),
+        manifest: {
+          ...manifest,
+          id: 'builtin.memory-context',
+          name: 'builtin.memory-context',
+        },
         config: JSON.stringify({
           limit: 8,
         }),
@@ -225,7 +205,11 @@ describe('PluginService', () => {
     prisma.plugin.findUnique.mockResolvedValue(
       createPluginRecord({
         name: 'builtin.memory-context',
-        configSchema: JSON.stringify(configSchema),
+        manifest: {
+          ...manifest,
+          id: 'builtin.memory-context',
+          name: 'builtin.memory-context',
+        },
         config: JSON.stringify({
           limit: 8,
         }),
@@ -234,7 +218,11 @@ describe('PluginService', () => {
     prisma.plugin.update.mockResolvedValue(
       createPluginRecord({
         name: 'builtin.memory-context',
-        configSchema: JSON.stringify(configSchema),
+        manifest: {
+          ...manifest,
+          id: 'builtin.memory-context',
+          name: 'builtin.memory-context',
+        },
         config: JSON.stringify({
           limit: 6,
           promptPrefix: '已知用户记忆',
@@ -545,7 +533,7 @@ describe('PluginService', () => {
       lastCheckedAt: '2026-03-27T12:00:00.000Z',
     });
     await expect(
-      (service as any).listPluginEvents('builtin.memory-context', 10),
+      (service as any).listPluginEvents('builtin.memory-context', { limit: 10 }),
     ).resolves.toEqual({
       items: [
         {
@@ -753,10 +741,7 @@ describe('PluginService', () => {
     prisma.plugin.findUnique.mockResolvedValue(
       createPluginRecord({
         name: 'builtin.broken-json',
-        permissions: '{not-json',
-        hooks: '{not-json',
-        routes: '{not-json',
-        configSchema: '{not-json',
+        manifestJson: '{not-json',
         config: '{not-json',
         conversationScopes: '{not-json',
       }),
@@ -815,17 +800,53 @@ describe('PluginService', () => {
 function createPluginRecord(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
+  const {
+    manifest,
+    manifestJson,
+    ...recordOverrides
+  } = overrides as Partial<Record<string, unknown>> & {
+    manifest?: Partial<PluginManifest>;
+    manifestJson?: string | null;
+  };
+  const name = typeof recordOverrides.name === 'string'
+    ? recordOverrides.name
+    : 'builtin.memory-context';
+  const displayName = typeof recordOverrides.displayName === 'string'
+    ? recordOverrides.displayName
+    : name;
+  const version = typeof recordOverrides.version === 'string'
+    ? recordOverrides.version
+    : '1.0.0';
+  const runtime =
+    recordOverrides.runtimeKind === 'remote'
+      ? 'remote'
+      : 'builtin';
+  const persistedManifest: PluginManifest = {
+    id: name,
+    name: displayName,
+    version,
+    runtime,
+    permissions: [],
+    tools: [],
+    hooks: [],
+    routes: [],
+    ...(typeof recordOverrides.description === 'string'
+      ? { description: recordOverrides.description }
+      : {}),
+    ...(manifest ?? {}),
+  };
+
   return {
     id: 'plugin-1',
-    name: 'builtin.memory-context',
+    name,
     deviceType: 'builtin',
     runtimeKind: 'builtin',
     status: 'online',
-    capabilities: '[]',
-    version: '1.0.0',
-    permissions: '[]',
-    hooks: '[]',
-    configSchema: null,
+    version,
+    manifestJson:
+      manifestJson !== undefined
+        ? manifestJson
+        : JSON.stringify(persistedManifest),
     config: null,
     defaultEnabled: true,
     conversationScopes: '{}',
@@ -839,7 +860,7 @@ function createPluginRecord(
     lastSeenAt: new Date('2026-03-27T12:00:00.000Z'),
     createdAt: new Date('2026-03-27T12:00:00.000Z'),
     updatedAt: new Date('2026-03-27T12:00:00.000Z'),
-    ...overrides,
+    ...recordOverrides,
   };
 }
 

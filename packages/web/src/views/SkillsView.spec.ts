@@ -28,6 +28,18 @@ vi.mock('../composables/use-skill-management', () => ({
           allow: ['kb.search'],
           deny: [],
         },
+        governance: {
+          enabled: true,
+          trustLevel: 'local-script',
+        },
+        assets: [
+          {
+            path: 'scripts/plan.js',
+            kind: 'script',
+            textReadable: true,
+            executable: true,
+          },
+        ],
         content: '# Planner\n\n把复杂请求拆成 3-5 步，再开始执行。',
       },
     ]),
@@ -44,6 +56,18 @@ vi.mock('../composables/use-skill-management', () => ({
           allow: ['kb.search'],
           deny: [],
         },
+        governance: {
+          enabled: true,
+          trustLevel: 'local-script',
+        },
+        assets: [
+          {
+            path: 'scripts/plan.js',
+            kind: 'script',
+            textReadable: true,
+            executable: true,
+          },
+        ],
         content: '# Planner\n\n把复杂请求拆成 3-5 步，再开始执行。',
       },
     ]),
@@ -60,6 +84,18 @@ vi.mock('../composables/use-skill-management', () => ({
         allow: ['kb.search'],
         deny: [],
       },
+      governance: {
+        enabled: true,
+        trustLevel: 'local-script',
+      },
+      assets: [
+        {
+          path: 'scripts/plan.js',
+          kind: 'script',
+          textReadable: true,
+          executable: true,
+        },
+      ],
       content: '# Planner\n\n把复杂请求拆成 3-5 步，再开始执行。',
     })),
     conversationSkillState: ref({
@@ -77,15 +113,23 @@ vi.mock('../composables/use-skill-management', () => ({
             allow: ['kb.search'],
             deny: [],
           },
+          governance: {
+            enabled: true,
+            trustLevel: 'local-script',
+          },
         },
       ],
     }),
     totalCount: computed(() => 1),
     activeCount: computed(() => 1),
     restrictedCount: computed(() => 1),
+    packageCount: computed(() => 1),
+    disabledCount: computed(() => 0),
+    mutatingSkillId: ref(null),
     selectSkill: vi.fn(),
     toggleSkill: vi.fn(),
     clearConversationSkills: vi.fn(),
+    updateSkillGovernance: vi.fn(),
     refreshAll: vi.fn(),
   }),
 }))
@@ -98,6 +142,8 @@ describe('SkillsView', () => {
     expect(wrapper.text()).toContain('规划执行')
     expect(wrapper.text()).toContain('当前会话已激活')
     expect(wrapper.text()).toContain('kb.search')
+    expect(wrapper.text()).toContain('可执行脚本')
+    expect(wrapper.text()).toContain('scripts/plan.js')
     expect(wrapper.text()).toContain('把复杂请求拆成 3-5 步')
   })
 })

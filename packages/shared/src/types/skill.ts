@@ -1,7 +1,25 @@
+import type { JsonObject } from './json';
+
 /**
  * skill 来源类型。
  */
 export type SkillSourceKind = 'project' | 'user';
+
+export type SkillTrustLevel = 'prompt-only' | 'asset-read' | 'local-script';
+
+export type SkillAssetKind = 'script' | 'template' | 'reference' | 'asset' | 'other';
+
+export interface SkillGovernanceInfo {
+  enabled: boolean;
+  trustLevel: SkillTrustLevel;
+}
+
+export interface SkillAssetSummary {
+  path: string;
+  kind: SkillAssetKind;
+  textReadable: boolean;
+  executable: boolean;
+}
 
 /**
  * skill 可声明的工具策略。
@@ -33,6 +51,8 @@ export interface SkillSummary {
   promptPreview: string;
   /** 工具白名单/黑名单策略。 */
   toolPolicy: SkillToolPolicy;
+  /** 全局治理信息。 */
+  governance: SkillGovernanceInfo;
 }
 
 /**
@@ -41,6 +61,8 @@ export interface SkillSummary {
 export interface SkillDetail extends SkillSummary {
   /** 完整 markdown 内容。 */
   content: string;
+  /** 目录资产列表。 */
+  assets: SkillAssetSummary[];
 }
 
 /**
@@ -59,4 +81,33 @@ export interface ConversationSkillState {
 export interface UpdateConversationSkillsPayload {
   /** 要设置的激活 skill ID 列表。 */
   activeSkillIds: string[];
+}
+
+export interface UpdateSkillGovernancePayload {
+  enabled?: boolean;
+  trustLevel?: SkillTrustLevel;
+}
+
+export interface SkillAssetRef extends JsonObject {
+  skillId: string;
+  path: string;
+  kind: SkillAssetKind;
+  textReadable: boolean;
+  executable: boolean;
+}
+
+export interface SkillAssetReadResult extends JsonObject {
+  skillId: string;
+  path: string;
+  content: string;
+  truncated: boolean;
+}
+
+export interface SkillScriptRunResult extends JsonObject {
+  skillId: string;
+  path: string;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
 }

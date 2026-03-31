@@ -5,7 +5,7 @@ import type {
 } from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 
-export type ToolSourceKind = 'plugin' | 'mcp';
+export type ToolSourceKind = 'plugin' | 'mcp' | 'skill';
 
 export type ToolHealthStatus = 'healthy' | 'error' | 'unknown';
 

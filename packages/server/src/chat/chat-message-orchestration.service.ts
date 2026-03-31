@@ -157,7 +157,7 @@ export class ChatMessageOrchestrationService {
         request: {
           providerId: input.modelConfig.providerId,
           modelId: input.modelConfig.id,
-          systemPrompt: appendSystemPrompt(input.systemPrompt, skillContext.systemPrompt),
+          systemPrompt: mergeSystemPrompts(input.systemPrompt, skillContext.systemPrompt),
           messages: input.messages,
           availableTools,
         },
@@ -366,7 +366,7 @@ export class ChatMessageOrchestrationService {
   }
 }
 
-function appendSystemPrompt(basePrompt: string, appendedPrompt: string): string {
+function mergeSystemPrompts(basePrompt: string, appendedPrompt: string): string {
   if (!appendedPrompt.trim()) {
     return basePrompt;
   }

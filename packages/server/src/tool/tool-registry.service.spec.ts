@@ -208,6 +208,84 @@ describe('ToolRegistryService', () => {
     ]);
   });
 
+  it('projects generic skill package tools with stable call names', async () => {
+    const skillProvider = createProvider('skill', [
+      {
+        source: {
+          kind: 'skill',
+          id: 'active-packages',
+          label: 'Active Skill Packages',
+          enabled: true,
+          health: 'healthy',
+          lastError: null,
+          lastCheckedAt: '2026-03-31T10:00:00.000Z',
+        },
+        name: 'asset.list',
+        description: '列出当前会话 skill package 资产',
+        parameters: {},
+      },
+      {
+        source: {
+          kind: 'skill',
+          id: 'active-packages',
+          label: 'Active Skill Packages',
+          enabled: true,
+          health: 'healthy',
+          lastError: null,
+          lastCheckedAt: '2026-03-31T10:00:00.000Z',
+        },
+        name: 'script.run',
+        description: '执行当前会话 skill package 脚本',
+        parameters: {
+          skillId: {
+            type: 'string',
+            required: true,
+          },
+        },
+      },
+    ]);
+    const service = new ToolRegistryService(
+      {
+        getSourceEnabled: jest.fn(),
+        getToolEnabled: jest.fn(),
+      } as never,
+      createPluginRuntime() as never,
+      createProvider('plugin', []) as never,
+      createProvider('mcp', []) as never,
+      skillProvider as never,
+    );
+
+    await expect(
+      service.listAvailableToolSummaries({
+        context,
+      }),
+    ).resolves.toEqual([
+      {
+        name: 'skill__asset__list',
+        callName: 'skill__asset__list',
+        toolId: 'skill:active-packages:asset.list',
+        description: '[Skill] 列出当前会话 skill package 资产',
+        parameters: {},
+        sourceKind: 'skill',
+        sourceId: 'active-packages',
+      },
+      {
+        name: 'skill__script__run',
+        callName: 'skill__script__run',
+        toolId: 'skill:active-packages:script.run',
+        description: '[Skill] 执行当前会话 skill package 脚本',
+        parameters: {
+          skillId: {
+            type: 'string',
+            required: true,
+          },
+        },
+        sourceKind: 'skill',
+        sourceId: 'active-packages',
+      },
+    ]);
+  });
+
   it('builds filtered AI tool sets and executes through the owning provider', async () => {
     const pluginExecuteTool = jest.fn()
       .mockResolvedValueOnce({
@@ -467,12 +545,6 @@ describe('ToolRegistryService', () => {
         enabled: false,
         totalTools: 1,
         enabledTools: 0,
-      }),
-    ]);
-    await expect(service.listToolInfos()).resolves.toEqual([
-      expect.objectContaining({
-        toolId: 'plugin:builtin.memory-tools:save_memory',
-        enabled: false,
       }),
     ]);
     await expect(

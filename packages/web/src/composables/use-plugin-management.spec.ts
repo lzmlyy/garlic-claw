@@ -21,22 +21,47 @@ vi.mock('../api', () => ({
   listPluginStorage: vi.fn(),
 }))
 
+function createPlugin(
+  input: Partial<PluginInfo> & Pick<PluginInfo, 'id' | 'name'>,
+): PluginInfo {
+  return {
+    id: input.id,
+    name: input.name,
+    displayName: input.displayName ?? input.name,
+    description: input.description,
+    deviceType: input.deviceType ?? 'builtin',
+    status: input.status ?? 'online',
+    connected: input.connected ?? true,
+    runtimeKind: input.runtimeKind ?? 'builtin',
+    manifest: input.manifest ?? {
+      id: input.name,
+      name: input.displayName ?? input.name,
+      version: '1.0.0',
+      runtime: input.runtimeKind ?? 'builtin',
+      permissions: [],
+      tools: [],
+    },
+    supportedActions: input.supportedActions,
+    crons: input.crons ?? [],
+    health: input.health,
+    governance: input.governance,
+    lastSeenAt: input.lastSeenAt ?? null,
+    createdAt: input.createdAt ?? '2026-03-28T00:00:00.000Z',
+    updatedAt: input.updatedAt ?? '2026-03-28T00:00:00.000Z',
+  }
+}
+
 describe('usePluginManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('syncs refreshed health snapshots back into the sidebar plugin list', async () => {
-    const initialPlugin: PluginInfo = {
+    const initialPlugin: PluginInfo = createPlugin({
       id: 'plugin-1',
       name: 'builtin.demo',
       displayName: 'Demo Plugin',
       description: 'demo',
-      deviceType: 'builtin',
-      status: 'online',
-      capabilities: [],
-      connected: true,
-      runtimeKind: 'builtin',
       health: {
         status: 'healthy',
         failureCount: 0,
@@ -47,9 +72,7 @@ describe('usePluginManagement', () => {
         lastCheckedAt: '2026-03-28T00:00:00.000Z',
       },
       lastSeenAt: '2026-03-28T00:00:00.000Z',
-      createdAt: '2026-03-28T00:00:00.000Z',
-      updatedAt: '2026-03-28T00:00:00.000Z',
-    }
+    })
     const refreshedHealth: PluginHealthSnapshot = {
       status: 'degraded',
       failureCount: 3,
@@ -97,20 +120,13 @@ describe('usePluginManagement', () => {
   })
 
   it('loads and force-finishes selected plugin conversation sessions', async () => {
-    const initialPlugin: PluginInfo = {
+    const initialPlugin: PluginInfo = createPlugin({
       id: 'plugin-1',
       name: 'builtin.demo',
       displayName: 'Demo Plugin',
       description: 'demo',
-      deviceType: 'builtin',
-      status: 'online',
-      capabilities: [],
-      connected: true,
-      runtimeKind: 'builtin',
       lastSeenAt: '2026-03-28T00:00:00.000Z',
-      createdAt: '2026-03-28T00:00:00.000Z',
-      updatedAt: '2026-03-28T00:00:00.000Z',
-    }
+    })
     const sessions: PluginConversationSessionInfo[] = [
       {
         pluginId: 'builtin.demo',
@@ -192,16 +208,11 @@ describe('usePluginManagement', () => {
 
   it('prefers a user-facing plugin instead of a system builtin on first load', async () => {
     vi.mocked(api.listPlugins).mockResolvedValue([
-      {
+      createPlugin({
         id: 'plugin-1',
         name: 'builtin.tool-audit',
         displayName: 'Tool Audit',
         description: 'system builtin',
-        deviceType: 'builtin',
-        status: 'online',
-        capabilities: [],
-        connected: true,
-        runtimeKind: 'builtin',
         manifest: {
           id: 'builtin.tool-audit',
           name: 'Tool Audit',
@@ -211,19 +222,12 @@ describe('usePluginManagement', () => {
           tools: [],
         },
         lastSeenAt: null,
-        createdAt: '2026-03-28T00:00:00.000Z',
-        updatedAt: '2026-03-28T00:00:00.000Z',
-      },
-      {
+      }),
+      createPlugin({
         id: 'plugin-2',
         name: 'builtin.provider-router',
         displayName: 'Provider Router',
         description: 'user-facing builtin',
-        deviceType: 'builtin',
-        status: 'online',
-        capabilities: [],
-        connected: true,
-        runtimeKind: 'builtin',
         manifest: {
           id: 'builtin.provider-router',
           name: 'Provider Router',
@@ -241,9 +245,7 @@ describe('usePluginManagement', () => {
           },
         },
         lastSeenAt: null,
-        createdAt: '2026-03-28T00:00:00.000Z',
-        updatedAt: '2026-03-28T00:00:00.000Z',
-      },
+      }),
     ] as PluginInfo[])
     vi.mocked(api.getPluginConfig).mockResolvedValue({
       schema: null,
@@ -289,16 +291,11 @@ describe('usePluginManagement', () => {
     const preferredPluginName = ref('builtin.persona-router')
 
     vi.mocked(api.listPlugins).mockResolvedValue([
-      {
+      createPlugin({
         id: 'plugin-1',
         name: 'builtin.provider-router',
         displayName: 'Provider Router',
         description: 'provider routing',
-        deviceType: 'builtin',
-        status: 'online',
-        capabilities: [],
-        connected: true,
-        runtimeKind: 'builtin',
         manifest: {
           id: 'builtin.provider-router',
           name: 'Provider Router',
@@ -316,19 +313,12 @@ describe('usePluginManagement', () => {
           },
         },
         lastSeenAt: null,
-        createdAt: '2026-03-28T00:00:00.000Z',
-        updatedAt: '2026-03-28T00:00:00.000Z',
-      },
-      {
+      }),
+      createPlugin({
         id: 'plugin-2',
         name: 'builtin.persona-router',
         displayName: 'Persona Router',
         description: 'persona routing',
-        deviceType: 'builtin',
-        status: 'online',
-        capabilities: [],
-        connected: true,
-        runtimeKind: 'builtin',
         manifest: {
           id: 'builtin.persona-router',
           name: 'Persona Router',
@@ -346,9 +336,7 @@ describe('usePluginManagement', () => {
           },
         },
         lastSeenAt: null,
-        createdAt: '2026-03-28T00:00:00.000Z',
-        updatedAt: '2026-03-28T00:00:00.000Z',
-      },
+      }),
     ] as PluginInfo[])
     vi.mocked(api.getPluginConfig).mockResolvedValue({
       schema: null,

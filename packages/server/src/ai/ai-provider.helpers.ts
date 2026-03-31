@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
+import { createModelConfig } from './model-config.helpers';
 import { inferModelCapabilities } from './model-capability-inference';
 
 import type {
@@ -232,18 +233,14 @@ export function buildRuntimeModelConfig(
   registration: RuntimeProviderRegistration,
   modelId: string,
 ): ModelConfig {
-  return {
-    id: modelId,
+  return createModelConfig({
+    modelId,
     providerId: registration.id,
     name: modelId,
     capabilities: inferModelCapabilities(modelId),
-    api: {
-      id: modelId,
-      url: registration.baseUrl,
-      npm: registration.npm,
-    },
-    status: 'active',
-  };
+    baseUrl: registration.baseUrl,
+    npm: registration.npm,
+  });
 }
 
 /**
@@ -258,7 +255,7 @@ export function buildRuntimeModelConfig(
  * 预期行为:
  * - 只允许 openai / anthropic / gemini 三种兼容格式
  */
-export function getCompatibleProviderNpm(driver: string): string {
+export function getCompatibleProviderNpm(driver: CompatibleProviderDriver): string {
   switch (driver) {
     case 'anthropic':
       return '@ai-sdk/anthropic';

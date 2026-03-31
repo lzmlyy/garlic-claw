@@ -2,6 +2,7 @@ import type {
   PluginConfigSchema,
   PluginConversationSessionInfo,
   PluginInfo,
+  PluginManifest,
 } from '@garlic-claw/shared';
 import { PluginController } from './plugin.controller';
 
@@ -144,20 +145,27 @@ describe('PluginController', () => {
       name: 'builtin.memory-context',
       deviceType: 'builtin',
       status: 'online',
-      capabilities: [],
       connected: true,
+      manifest: {
+        id: 'builtin.memory-context',
+        name: 'builtin.memory-context',
+        version: '0.0.0',
+        runtime: 'builtin',
+        permissions: [],
+        tools: [],
+      },
       lastSeenAt: '2026-03-27T12:00:00.000Z',
       createdAt: '2026-03-27T12:00:00.000Z',
       updatedAt: '2026-03-27T12:00:00.000Z',
     };
     pluginService.findAll.mockResolvedValue([
-      {
+      createPersistedPluginRecord({
         ...pluginInfo,
         lastSeenAt: new Date('2026-03-27T12:00:00.000Z'),
         createdAt: new Date('2026-03-27T12:00:00.000Z'),
         updatedAt: new Date('2026-03-27T12:00:00.000Z'),
-        capabilities: '[]',
-      },
+        manifest: pluginInfo.manifest,
+      }),
     ]);
     pluginRuntime.listPlugins.mockReturnValue([
       {
@@ -220,13 +228,15 @@ describe('PluginController', () => {
       },
       supportedActions: ['health-check', 'reload'],
       version: '1.0.0',
-      permissions: ['memory:read', 'config:read'],
-      routes: [
-        {
-          path: 'inspect/context',
-          methods: ['GET'],
-        },
-      ],
+      manifest: expect.objectContaining({
+        permissions: ['memory:read', 'config:read'],
+        routes: [
+          {
+            path: 'inspect/context',
+            methods: ['GET'],
+          },
+        ],
+      }),
       crons: [
         {
           id: 'cron-job-1',
@@ -282,7 +292,7 @@ describe('PluginController', () => {
 
   it('returns runtime-declared governance actions instead of letting the client guess by runtime kind', async () => {
     pluginService.findAll.mockResolvedValue([
-      {
+      createPersistedPluginRecord({
         id: 'plugin-2',
         name: 'remote.pc-host',
         displayName: '电脑助手',
@@ -290,10 +300,6 @@ describe('PluginController', () => {
         deviceType: 'pc',
         runtimeKind: 'remote',
         status: 'online',
-        capabilities: '[]',
-        permissions: '[]',
-        hooks: '[]',
-        routes: '[]',
         version: '1.0.0',
         healthStatus: 'healthy',
         failureCount: 0,
@@ -305,7 +311,7 @@ describe('PluginController', () => {
         lastSeenAt: new Date('2026-03-27T12:10:00.000Z'),
         createdAt: new Date('2026-03-27T12:10:00.000Z'),
         updatedAt: new Date('2026-03-27T12:10:00.000Z'),
-      },
+      }),
     ]);
     pluginRuntime.listPlugins.mockReturnValue([
       {
@@ -336,7 +342,7 @@ describe('PluginController', () => {
 
   it('falls back to safe defaults when persisted plugin manifest json is malformed', async () => {
     pluginService.findAll.mockResolvedValue([
-      {
+      createPersistedPluginRecord({
         id: 'plugin-3',
         name: 'remote.broken-manifest',
         displayName: 'Broken Manifest',
@@ -344,10 +350,7 @@ describe('PluginController', () => {
         deviceType: 'pc',
         runtimeKind: 'remote',
         status: 'offline',
-        capabilities: '{not-json',
-        permissions: '{not-json',
-        hooks: '{not-json',
-        routes: '{not-json',
+        manifestJson: '{not-json',
         version: '1.0.0',
         healthStatus: 'unknown',
         failureCount: 0,
@@ -359,23 +362,74 @@ describe('PluginController', () => {
         lastSeenAt: null,
         createdAt: new Date('2026-03-27T12:10:00.000Z'),
         updatedAt: new Date('2026-03-27T12:10:00.000Z'),
-      },
+      }),
     ]);
     pluginRuntime.listPlugins.mockReturnValue([]);
     pluginCronService.listCronJobs.mockResolvedValue([]);
 
-    await expect(controller.listPlugins()).resolves.toEqual([
-      expect.objectContaining({
+    await expect(controller.listPlugins()).resolves.toMatchObject([
+      {
         name: 'remote.broken-manifest',
         governance: {
           canDisable: true,
         },
-        capabilities: [],
-        permissions: [],
-        hooks: [],
-        routes: [],
+        manifest: {
+          id: 'remote.broken-manifest',
+          name: 'Broken Manifest',
+          version: '1.0.0',
+          runtime: 'remote',
+          description: '损坏的持久化清单',
+          permissions: [],
+          tools: [],
+          hooks: [],
+          routes: [],
+        },
         supportedActions: ['health-check'],
+      },
+    ]);
+  });
+
+  it('falls back to unknown when persisted plugin health status is invalid', async () => {
+    pluginService.findAll.mockResolvedValue([
+      createPersistedPluginRecord({
+        id: 'plugin-4',
+        name: 'remote.odd-health',
+        displayName: 'Odd Health',
+        description: '健康状态字段被污染',
+        deviceType: 'pc',
+        runtimeKind: 'remote',
+        status: 'online',
+        manifest: {
+          runtime: 'remote',
+        },
+        healthStatus: 'odd-status',
+        failureCount: 3,
+        consecutiveFailures: 2,
+        lastError: 'something went wrong',
+        lastErrorAt: new Date('2026-03-27T12:30:00.000Z'),
+        lastSuccessAt: new Date('2026-03-27T12:20:00.000Z'),
+        lastCheckedAt: new Date('2026-03-27T12:31:00.000Z'),
+        lastSeenAt: new Date('2026-03-27T12:32:00.000Z'),
+        createdAt: new Date('2026-03-27T12:10:00.000Z'),
+        updatedAt: new Date('2026-03-27T12:33:00.000Z'),
       }),
+    ]);
+    pluginRuntime.listPlugins.mockReturnValue([]);
+    pluginCronService.listCronJobs.mockResolvedValue([]);
+
+    await expect(controller.listPlugins()).resolves.toMatchObject([
+      {
+        name: 'remote.odd-health',
+        health: {
+          status: 'unknown',
+          failureCount: 3,
+          consecutiveFailures: 2,
+          lastError: 'something went wrong',
+          lastErrorAt: '2026-03-27T12:30:00.000Z',
+          lastSuccessAt: '2026-03-27T12:20:00.000Z',
+          lastCheckedAt: '2026-03-27T12:31:00.000Z',
+        },
+      },
     ]);
   });
 
@@ -597,3 +651,67 @@ describe('PluginController', () => {
     );
   });
 });
+
+function createPersistedPluginRecord(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  const {
+    manifest,
+    manifestJson,
+    ...recordOverrides
+  } = overrides as Partial<Record<string, unknown>> & {
+    manifest?: Partial<PluginManifest>;
+    manifestJson?: string | null;
+  };
+  const name = typeof recordOverrides.name === 'string'
+    ? recordOverrides.name
+    : 'builtin.memory-context';
+  const displayName = typeof recordOverrides.displayName === 'string'
+    ? recordOverrides.displayName
+    : name;
+  const version = typeof recordOverrides.version === 'string'
+    ? recordOverrides.version
+    : '1.0.0';
+  const runtime =
+    recordOverrides.runtimeKind === 'remote'
+      ? 'remote'
+      : 'builtin';
+  const persistedManifest: PluginManifest = {
+    id: name,
+    name: displayName,
+    version,
+    runtime,
+    permissions: [],
+    tools: [],
+    hooks: [],
+    routes: [],
+    ...(typeof recordOverrides.description === 'string'
+      ? { description: recordOverrides.description }
+      : {}),
+    ...(manifest ?? {}),
+  };
+
+  return {
+    id: 'plugin-1',
+    name,
+    deviceType: 'builtin',
+    runtimeKind: 'builtin',
+    status: 'online',
+    version,
+    manifestJson:
+      manifestJson !== undefined
+        ? manifestJson
+        : JSON.stringify(persistedManifest),
+    healthStatus: 'healthy',
+    failureCount: 0,
+    consecutiveFailures: 0,
+    lastError: null,
+    lastErrorAt: null,
+    lastSuccessAt: null,
+    lastCheckedAt: null,
+    lastSeenAt: new Date('2026-03-27T12:00:00.000Z'),
+    createdAt: new Date('2026-03-27T12:00:00.000Z'),
+    updatedAt: new Date('2026-03-27T12:00:00.000Z'),
+    ...recordOverrides,
+  };
+}

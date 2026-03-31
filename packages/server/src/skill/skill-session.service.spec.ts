@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SkillSessionService } from './skill-session.service';
 
 describe('SkillSessionService', () => {
@@ -31,6 +31,18 @@ describe('SkillSessionService', () => {
           allow: ['kb.search'],
           deny: [],
         },
+        governance: {
+          enabled: true,
+          trustLevel: 'local-script',
+        },
+        assets: [
+          {
+            path: 'scripts/plan.js',
+            kind: 'script',
+            textReadable: true,
+            executable: true,
+          },
+        ],
       },
       {
         id: 'project/plugin-operator',
@@ -44,6 +56,11 @@ describe('SkillSessionService', () => {
           allow: [],
           deny: ['automation.run'],
         },
+        governance: {
+          enabled: false,
+          trustLevel: 'asset-read',
+        },
+        assets: [],
       },
     ]);
     skillRegistry.listSkills.mockResolvedValue([
@@ -59,6 +76,18 @@ describe('SkillSessionService', () => {
           allow: ['kb.search'],
           deny: [],
         },
+        governance: {
+          enabled: true,
+          trustLevel: 'local-script',
+        },
+        assets: [
+          {
+            path: 'scripts/plan.js',
+            kind: 'script',
+            textReadable: true,
+            executable: true,
+          },
+        ],
         content: '先拆任务，再逐步执行。',
       },
       {
@@ -73,6 +102,11 @@ describe('SkillSessionService', () => {
           allow: [],
           deny: ['automation.run'],
         },
+        governance: {
+          enabled: false,
+          trustLevel: 'asset-read',
+        },
+        assets: [],
         content: '统一查看和治理插件。',
       },
     ]);
@@ -125,13 +159,11 @@ describe('SkillSessionService', () => {
       service.updateConversationSkillStateForUser('user-1', 'conversation-1', [
         'project/planner',
         'project/planner',
-        'project/plugin-operator',
       ]),
     ).resolves.toEqual({
-      activeSkillIds: ['project/planner', 'project/plugin-operator'],
+      activeSkillIds: ['project/planner'],
       activeSkills: [
         expect.objectContaining({ id: 'project/planner' }),
-        expect.objectContaining({ id: 'project/plugin-operator' }),
       ],
     });
 
@@ -140,5 +172,62 @@ describe('SkillSessionService', () => {
         'missing/skill',
       ]),
     ).rejects.toBeInstanceOf(NotFoundException);
+
+    await expect(
+      service.updateConversationSkillStateForUser('user-1', 'conversation-1', [
+        'project/plugin-operator',
+      ]),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('filters disabled active skills from the conversation state and appends skill package tool guidance', async () => {
+    prisma.conversation.findUnique
+      .mockResolvedValueOnce({
+        id: 'conversation-1',
+        userId: 'user-1',
+        skillsJson: JSON.stringify([
+          'project/planner',
+          'project/plugin-operator',
+        ]),
+      })
+      .mockResolvedValueOnce({
+        id: 'conversation-1',
+        skillsJson: JSON.stringify([
+          'project/planner',
+          'project/plugin-operator',
+        ]),
+      });
+    prisma.conversation.update.mockResolvedValue(null);
+
+    await expect(
+      service.getConversationSkillStateForUser('user-1', 'conversation-1'),
+    ).resolves.toEqual({
+      activeSkillIds: ['project/planner'],
+      activeSkills: [
+        expect.objectContaining({
+          id: 'project/planner',
+        }),
+      ],
+    });
+
+    await expect(
+      service.getConversationSkillContext('conversation-1'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        activeSkills: [
+          expect.objectContaining({
+            id: 'project/planner',
+          }),
+        ],
+        allowedToolNames: [
+          'kb.search',
+          'skill__asset__list',
+          'skill__asset__read',
+          'skill__script__run',
+        ],
+        deniedToolNames: [],
+        systemPrompt: expect.stringContaining('skill__script__run'),
+      }),
+    );
   });
 });

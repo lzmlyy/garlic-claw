@@ -1,6 +1,7 @@
 import type { AutomationAfterRunHookPayload } from '@garlic-claw/shared';
 import type { JsonObject } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 自动化执行摘要。
@@ -51,7 +52,7 @@ export function createAutomationRecorderPlugin(): BuiltinPluginDefinition {
     },
     hooks: {
       'automation:after-run': async (payload, { host }) => {
-        const afterRun = payload as unknown as AutomationAfterRunHookPayload;
+        const afterRun = readBuiltinHookPayload<AutomationAfterRunHookPayload>(payload);
         const summary = buildAutomationRunSummary(afterRun);
 
         await host.setStorage(

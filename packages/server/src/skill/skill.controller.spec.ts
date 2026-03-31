@@ -4,6 +4,7 @@ describe('SkillController', () => {
   const skillRegistry = {
     listSkills: jest.fn(),
     refreshSkills: jest.fn(),
+    updateSkillGovernance: jest.fn(),
   };
 
   let controller: SkillController;
@@ -43,5 +44,28 @@ describe('SkillController', () => {
         id: 'project/planner',
       }),
     ]);
+  });
+
+  it('updates governance for one skill', async () => {
+    skillRegistry.updateSkillGovernance.mockResolvedValue({
+      id: 'project/planner',
+      governance: {
+        enabled: true,
+        trustLevel: 'local-script',
+      },
+    });
+
+    await expect(
+      controller.updateSkillGovernance('project/planner', {
+        trustLevel: 'local-script',
+      } as never),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        governance: {
+          enabled: true,
+          trustLevel: 'local-script',
+        },
+      }),
+    );
   });
 });

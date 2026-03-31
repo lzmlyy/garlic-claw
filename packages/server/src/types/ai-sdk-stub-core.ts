@@ -40,10 +40,8 @@ export interface ImagePart {
   type: 'image';
   /** 图片内容。 */
   image: string | URL | ArrayBuffer;
-  /** 兼容字段。 */
+  /** 图片 MIME 类型。 */
   mimeType?: string;
-  /** 兼容字段。 */
-  mediaType?: string;
 }
 
 /**
@@ -107,8 +105,6 @@ export interface Tool {
   description?: string;
   /** 工具输入 schema。 */
   inputSchema?: object;
-  /** 兼容旧字段。 */
-  parameters?: object;
 }
 
 /**
@@ -223,16 +219,10 @@ export interface StreamTextResult {
   textStream: AsyncIterable<string>;
   /** 完整流。 */
   fullStream: AsyncIterable<StreamPart>;
-  /** 兼容字段。 */
+  /** 用量统计。 */
   usage: Promise<{ promptTokens: number; completionTokens: number }>;
-  /** 兼容字段。 */
+  /** 完成原因。 */
   finishReason: Promise<string>;
-  /** 兼容字段。 */
-  response: Promise<Response>;
-  /** 兼容字段。 */
-  steps: Promise<JsonValue[]>;
-  /** 兼容字段。 */
-  warnings: Promise<JsonValue[]>;
 }
 
 /**
@@ -263,31 +253,4 @@ export interface GenerateTextResult {
   usage: { promptTokens: number; completionTokens: number };
   /** 完成原因。 */
   finishReason: string;
-  /** 原始响应。 */
-  response: Response;
-  /** 兼容字段。 */
-  steps?: JsonValue[];
-  /** 兼容字段。 */
-  warnings?: JsonValue[];
-}
-
-/**
- * 语言模型 V1 兼容别名。
- */
-export type LanguageModelV1 = LanguageModel;
-
-/**
- * provider 兼容最小形状。
- */
-export interface ProviderV1 {
-  /** provider 名。 */
-  provider: string;
-}
-
-/**
- * 兼容旧代码的配置载入类型。
- */
-export interface LoadSetting {
-  /** 初始值。 */
-  initialValue?: JsonValue;
 }

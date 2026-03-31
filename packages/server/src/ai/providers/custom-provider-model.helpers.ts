@@ -1,4 +1,5 @@
 import { inferModelCapabilities } from '../model-capability-inference';
+import { createModelConfig } from '../model-config.helpers';
 import {
   createDefaultCapabilities,
   createModelId,
@@ -8,7 +9,6 @@ import {
   type ProviderId,
 } from '../types';
 import type {
-  CompatibleProviderFormat,
   CustomModelDto,
   DiscoveredModel,
   RegisterCustomProviderDto,
@@ -99,7 +99,6 @@ export function createCustomProviderConfig(
   providerId: ProviderId,
   dto: RegisterCustomProviderDto,
   npm: string,
-  format: CompatibleProviderFormat,
 ): ProviderConfig {
   return {
     id: providerId,
@@ -107,7 +106,6 @@ export function createCustomProviderConfig(
     npm,
     api: dto.baseUrl,
     env: dto.apiKeyEnv ? [dto.apiKeyEnv] : [],
-    type: format,
     options: dto.options,
   };
 }
@@ -121,21 +119,17 @@ export function createCustomModelConfig(
   baseUrl: string,
   npmPackage: string,
 ): ModelConfig {
-  return {
-    id: createModelId(modelDto.id),
+  return createModelConfig({
+    modelId: createModelId(modelDto.id),
     providerId,
     name: modelDto.name,
     capabilities: mergeCustomModelCapabilities(
       createDefaultCapabilities(),
       modelDto.capabilities ?? {},
     ),
-    api: {
-      id: modelDto.id,
-      url: baseUrl,
-      npm: npmPackage,
-    },
-    status: 'active',
-  };
+    baseUrl,
+    npm: npmPackage,
+  });
 }
 
 /**
@@ -147,16 +141,12 @@ export function createDiscoveredModelConfig(
   baseUrl: string,
   npmPackage: string,
 ): ModelConfig {
-  return {
-    id: createModelId(model.id),
+  return createModelConfig({
+    modelId: createModelId(model.id),
     providerId,
     name: model.name,
     capabilities: model.capabilities,
-    api: {
-      id: model.id,
-      url: baseUrl,
-      npm: npmPackage,
-    },
-    status: 'active',
-  };
+    baseUrl,
+    npm: npmPackage,
+  });
 }

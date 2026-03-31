@@ -110,7 +110,7 @@ export class AiManagementService {
     this.configManager.removeProvider(providerId);
 
     for (const modelId of provider.models) {
-      this.modelRegistry.unregisterModel(providerId as never, modelId as never);
+      this.modelRegistry.unregisterModel(providerId, modelId);
     }
   }
 
@@ -182,7 +182,7 @@ export class AiManagementService {
         provider.defaultModel === modelId ? nextModels[0] : provider.defaultModel,
       models: nextModels,
     });
-    this.modelRegistry.unregisterModel(providerId as never, modelId as never);
+    this.modelRegistry.unregisterModel(providerId, modelId);
   }
 
   /**

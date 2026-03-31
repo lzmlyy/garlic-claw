@@ -1,6 +1,11 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { SkillDetail, SkillToolPolicy } from '@garlic-claw/shared';
+import type {
+  SkillAssetKind,
+  SkillAssetSummary,
+  SkillDetail,
+  SkillToolPolicy,
+} from '@garlic-claw/shared';
 import {
   Inject,
   Injectable,
@@ -53,6 +58,7 @@ export class SkillDiscoveryService {
         const relativePath = normalizeRelativePath(path.relative(source.root, filePath));
         const relativeSkillPath = stripSkillFileName(relativePath);
         const parsed = await parseSkillFile(filePath);
+        const assets = await listSkillAssets(path.dirname(filePath));
         const name = parsed.frontmatter.name?.trim() || fallbackSkillName(relativeSkillPath);
         const description = parsed.frontmatter.description?.trim() || '';
         const tags = normalizeStringList(parsed.frontmatter.tags);
@@ -67,6 +73,11 @@ export class SkillDiscoveryService {
           entryPath: relativePath,
           promptPreview: buildPromptPreview(parsed.content),
           toolPolicy,
+          governance: {
+            enabled: true,
+            trustLevel: 'prompt-only',
+          },
+          assets,
           content: parsed.content,
         });
       }
@@ -74,6 +85,44 @@ export class SkillDiscoveryService {
 
     return discovered.sort(compareSkills);
   }
+}
+
+async function listSkillAssets(skillRoot: string): Promise<SkillAssetSummary[]> {
+  const entries = await fs.readdir(skillRoot, { withFileTypes: true });
+  const assets: SkillAssetSummary[] = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(skillRoot, entry.name);
+    if (entry.isDirectory()) {
+      assets.push(...await collectAssetFiles(skillRoot, entryPath));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name !== 'SKILL.md') {
+      assets.push(toSkillAssetSummary(skillRoot, entryPath));
+    }
+  }
+
+  return assets.sort((left, right) => left.path.localeCompare(right.path, 'zh-CN'));
+}
+
+async function collectAssetFiles(skillRoot: string, directoryPath: string): Promise<SkillAssetSummary[]> {
+  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+  const assets: SkillAssetSummary[] = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(directoryPath, entry.name);
+    if (entry.isDirectory()) {
+      assets.push(...await collectAssetFiles(skillRoot, entryPath));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name !== 'SKILL.md') {
+      assets.push(toSkillAssetSummary(skillRoot, entryPath));
+    }
+  }
+
+  return assets;
 }
 
 async function listSkillFiles(rootPath: string): Promise<string[]> {
@@ -136,11 +185,26 @@ async function parseSkillFile(filePath: string): Promise<{
 }
 
 function normalizeFrontmatter(parsed: unknown): ParsedSkillFrontmatter {
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  const object = readUnknownObject(parsed);
+  if (!object) {
     return {};
   }
 
-  return parsed as ParsedSkillFrontmatter;
+  const tools = readUnknownObject(object.tools);
+
+  return {
+    ...(typeof object.name === 'string' ? { name: object.name } : {}),
+    ...(typeof object.description === 'string' ? { description: object.description } : {}),
+    ...('tags' in object ? { tags: object.tags } : {}),
+    ...(tools
+      ? {
+          tools: {
+            ...('allow' in tools ? { allow: tools.allow } : {}),
+            ...('deny' in tools ? { deny: tools.deny } : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -188,6 +252,85 @@ function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join('/');
 }
 
+function toSkillAssetSummary(skillRoot: string, assetPath: string): SkillAssetSummary {
+  const relativePath = normalizeRelativePath(path.relative(skillRoot, assetPath));
+  const kind = detectSkillAssetKind(relativePath);
+
+  return {
+    path: relativePath,
+    kind,
+    textReadable: isTextReadableAsset(relativePath, kind),
+    executable: isExecutableScript(relativePath, kind),
+  };
+}
+
+function detectSkillAssetKind(relativePath: string): SkillAssetKind {
+  const firstSegment = relativePath.split('/')[0]?.toLowerCase() ?? '';
+
+  if (firstSegment === 'scripts') {
+    return 'script';
+  }
+  if (firstSegment === 'templates') {
+    return 'template';
+  }
+  if (firstSegment === 'references') {
+    return 'reference';
+  }
+  if (firstSegment === 'assets') {
+    return 'asset';
+  }
+
+  return 'other';
+}
+
+function isTextReadableAsset(relativePath: string, kind: SkillAssetKind): boolean {
+  if (kind === 'script' || kind === 'template' || kind === 'reference') {
+    return true;
+  }
+
+  const extension = path.extname(relativePath).toLowerCase();
+  return [
+    '.txt',
+    '.md',
+    '.json',
+    '.yaml',
+    '.yml',
+    '.toml',
+    '.ini',
+    '.csv',
+    '.svg',
+    '.xml',
+    '.html',
+    '.css',
+    '.js',
+    '.mjs',
+    '.cjs',
+    '.ts',
+    '.py',
+    '.ps1',
+    '.sh',
+    '.bat',
+    '.cmd',
+  ].includes(extension);
+}
+
+function isExecutableScript(relativePath: string, kind: SkillAssetKind): boolean {
+  if (kind !== 'script') {
+    return false;
+  }
+
+  return [
+    '.js',
+    '.mjs',
+    '.cjs',
+    '.py',
+    '.ps1',
+    '.sh',
+    '.bat',
+    '.cmd',
+  ].includes(path.extname(relativePath).toLowerCase());
+}
+
 function dedupeStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -198,4 +341,12 @@ function compareSkills(left: SkillDetail, right: SkillDetail): number {
   }
 
   return left.id.localeCompare(right.id, 'zh-CN');
+}
+
+function readUnknownObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : null;
 }

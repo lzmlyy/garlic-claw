@@ -3,6 +3,38 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { PluginInfo } from '@garlic-claw/shared'
 import PluginSidebar from './PluginSidebar.vue'
 
+function createPlugin(
+  input: Partial<PluginInfo> & Pick<PluginInfo, 'id' | 'name'>,
+): PluginInfo {
+  return {
+    id: input.id,
+    name: input.name,
+    displayName: input.displayName ?? input.name,
+    description: input.description,
+    deviceType: input.deviceType ?? 'builtin',
+    status: input.status ?? 'online',
+    connected: input.connected ?? true,
+    runtimeKind: input.runtimeKind ?? 'remote',
+    manifest: input.manifest ?? {
+      id: input.name,
+      name: input.displayName ?? input.name,
+      version: '1.0.0',
+      runtime: input.runtimeKind ?? 'remote',
+      permissions: [],
+      tools: [],
+      hooks: [],
+      routes: [],
+    },
+    supportedActions: input.supportedActions,
+    crons: input.crons ?? [],
+    health: input.health,
+    governance: input.governance,
+    lastSeenAt: input.lastSeenAt ?? null,
+    createdAt: input.createdAt ?? '2026-03-28T00:00:00.000Z',
+    updatedAt: input.updatedAt ?? '2026-03-28T00:00:00.000Z',
+  }
+}
+
 describe('PluginSidebar', () => {
   afterEach(() => {
     localStorage.clear()
@@ -15,16 +47,11 @@ describe('PluginSidebar', () => {
         selectedPluginName: 'builtin.demo',
         error: null,
         plugins: [
-          {
+          createPlugin({
             id: 'plugin-1',
             name: 'builtin.demo',
             displayName: 'Demo Plugin',
             description: 'demo',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
-            runtimeKind: 'builtin',
             health: {
               status: 'healthy',
               failureCount: 0,
@@ -39,9 +66,7 @@ describe('PluginSidebar', () => {
               },
             },
             lastSeenAt: '2026-03-28T00:00:00.000Z',
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
+          }),
         ],
       },
     })
@@ -56,16 +81,11 @@ describe('PluginSidebar', () => {
         selectedPluginName: null,
         error: null,
         plugins: [
-          {
+          createPlugin({
             id: 'plugin-1',
             name: 'builtin.alpha',
             displayName: 'Alpha Plugin',
             description: 'alpha',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
-            runtimeKind: 'builtin',
             health: {
               status: 'healthy',
               failureCount: 0,
@@ -76,19 +96,12 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
-          {
+          }),
+          createPlugin({
             id: 'plugin-2',
             name: 'builtin.busy',
             displayName: 'Busy Plugin',
             description: 'busy',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
-            runtimeKind: 'builtin',
             health: {
               status: 'healthy',
               failureCount: 0,
@@ -103,9 +116,7 @@ describe('PluginSidebar', () => {
               },
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
+          }),
         ],
       },
     })
@@ -122,16 +133,11 @@ describe('PluginSidebar', () => {
         selectedPluginName: null,
         error: null,
         plugins: [
-          {
+          createPlugin({
             id: 'plugin-1',
             name: 'builtin.busy',
             displayName: 'Busy Plugin',
             description: 'busy',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
-            runtimeKind: 'builtin',
             health: {
               status: 'healthy',
               failureCount: 0,
@@ -146,17 +152,14 @@ describe('PluginSidebar', () => {
               },
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
-          {
+          }),
+          createPlugin({
             id: 'plugin-2',
             name: 'remote.error',
             displayName: 'Error Plugin',
             description: 'error',
             deviceType: 'api',
             status: 'error',
-            capabilities: [],
             connected: false,
             runtimeKind: 'remote',
             health: {
@@ -169,9 +172,7 @@ describe('PluginSidebar', () => {
               lastCheckedAt: '2026-03-28T00:00:00.000Z',
             },
             lastSeenAt: '2026-03-28T00:00:00.000Z',
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
+          }),
         ],
       },
     })
@@ -187,16 +188,11 @@ describe('PluginSidebar', () => {
         selectedPluginName: null,
         error: null,
         plugins: [
-          {
+          createPlugin({
             id: 'plugin-1',
             name: 'builtin.alpha',
             displayName: 'Alpha Plugin',
             description: 'healthy builtin plugin',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
-            runtimeKind: 'builtin',
             health: {
               status: 'healthy',
               failureCount: 0,
@@ -207,17 +203,14 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
-          {
+          }),
+          createPlugin({
             id: 'plugin-2',
             name: 'remote.error',
             displayName: 'Error Plugin',
             description: 'remote plugin',
             deviceType: 'api',
             status: 'error',
-            capabilities: [],
             connected: false,
             runtimeKind: 'remote',
             health: {
@@ -230,9 +223,7 @@ describe('PluginSidebar', () => {
               lastCheckedAt: '2026-03-28T00:00:00.000Z',
             },
             lastSeenAt: '2026-03-28T00:00:00.000Z',
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
+          }),
         ],
       },
     })
@@ -258,16 +249,11 @@ describe('PluginSidebar', () => {
         selectedPluginName: 'builtin.alpha',
         error: null,
         plugins: [
-          {
+          createPlugin({
             id: 'plugin-1',
             name: 'builtin.alpha',
             displayName: 'Alpha Plugin',
             description: 'healthy builtin plugin',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
-            runtimeKind: 'builtin',
             health: {
               status: 'healthy',
               failureCount: 0,
@@ -278,17 +264,14 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
-          {
+          }),
+          createPlugin({
             id: 'plugin-2',
             name: 'remote.error',
             displayName: 'Error Plugin',
             description: 'remote plugin',
             deviceType: 'api',
             status: 'error',
-            capabilities: [],
             connected: false,
             runtimeKind: 'remote',
             health: {
@@ -301,9 +284,7 @@ describe('PluginSidebar', () => {
               lastCheckedAt: '2026-03-28T00:00:00.000Z',
             },
             lastSeenAt: '2026-03-28T00:00:00.000Z',
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
+          }),
         ],
       },
     })
@@ -320,16 +301,11 @@ describe('PluginSidebar', () => {
   })
 
   it('paginates plugin index results and resets to the first page after searching', async () => {
-    const plugins: PluginInfo[] = Array.from({ length: 11 }, (_, index): PluginInfo => ({
+    const plugins: PluginInfo[] = Array.from({ length: 11 }, (_, index): PluginInfo => createPlugin({
       id: `plugin-${index + 1}`,
       name: `builtin.plugin-${index + 1}`,
       displayName: `Plugin ${String(index + 1).padStart(2, '0')}`,
       description: `plugin ${index + 1}`,
-      deviceType: 'builtin',
-      status: 'online',
-      capabilities: [],
-      connected: true,
-      runtimeKind: 'builtin',
       health: {
         status: 'healthy',
         failureCount: 0,
@@ -340,8 +316,6 @@ describe('PluginSidebar', () => {
         lastCheckedAt: null,
       },
       lastSeenAt: null,
-      createdAt: '2026-03-28T00:00:00.000Z',
-      updatedAt: '2026-03-28T00:00:00.000Z',
     }))
 
     const wrapper = mount(PluginSidebar, {
@@ -377,15 +351,11 @@ describe('PluginSidebar', () => {
         selectedPluginName: null,
         error: null,
         plugins: [
-          {
+          createPlugin({
             id: 'plugin-1',
             name: 'builtin.tool-audit',
             displayName: 'Tool Audit',
             description: 'system builtin',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
             runtimeKind: 'builtin',
             manifest: {
               id: 'builtin.tool-audit',
@@ -405,18 +375,12 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
-          {
+          }),
+          createPlugin({
             id: 'plugin-2',
             name: 'builtin.provider-router',
             displayName: 'Provider Router',
             description: 'user-facing builtin',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
             runtimeKind: 'builtin',
             manifest: {
               id: 'builtin.provider-router',
@@ -444,17 +408,14 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
-          {
+          }),
+          createPlugin({
             id: 'plugin-3',
             name: 'remote.pc-host',
             displayName: 'PC Host',
             description: 'remote plugin',
             deviceType: 'api',
             status: 'online',
-            capabilities: [],
             connected: true,
             runtimeKind: 'remote',
             health: {
@@ -467,9 +428,7 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
+          }),
         ],
       },
     })
@@ -495,15 +454,11 @@ describe('PluginSidebar', () => {
         selectedPluginName: null,
         error: null,
         plugins: [
-          {
+          createPlugin({
             id: 'plugin-1',
             name: 'builtin.tool-audit',
             displayName: 'Tool Audit',
             description: 'system builtin',
-            deviceType: 'builtin',
-            status: 'online',
-            capabilities: [],
-            connected: true,
             runtimeKind: 'builtin',
             manifest: {
               id: 'builtin.tool-audit',
@@ -523,17 +478,14 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
-          {
+          }),
+          createPlugin({
             id: 'plugin-2',
             name: 'remote.pc-host',
             displayName: 'PC Host',
             description: 'remote plugin',
             deviceType: 'api',
             status: 'online',
-            capabilities: [],
             connected: true,
             runtimeKind: 'remote',
             health: {
@@ -546,9 +498,7 @@ describe('PluginSidebar', () => {
               lastCheckedAt: null,
             },
             lastSeenAt: null,
-            createdAt: '2026-03-28T00:00:00.000Z',
-            updatedAt: '2026-03-28T00:00:00.000Z',
-          },
+          }),
         ],
       },
     })

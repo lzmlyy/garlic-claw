@@ -1,11 +1,12 @@
 import type { AiProviderSummary } from '@garlic-claw/shared';
+import { getCompatibleProviderNpm } from './ai-provider.helpers';
 import type { StoredAiProviderConfig } from './config/config-manager.service';
-import { inferModelCapabilities } from './model-capability-inference';
+import { createModelConfig } from './model-config.helpers';
 import {
-  COMPATIBLE_PROVIDER_DRIVERS,
   getOfficialProviderCatalogItem,
-  type CompatibleProviderDriver,
+  isCompatibleProviderDriver,
 } from './official-provider-catalog';
+import { inferModelCapabilities } from './model-capability-inference';
 import type { ModelConfig } from './types/provider.types';
 import type { ModelCapabilities } from './types/provider.types';
 
@@ -79,11 +80,7 @@ export function validateManagedProviderInput(input: UpsertAiProviderInput): void
     return;
   }
 
-  if (
-    !COMPATIBLE_PROVIDER_DRIVERS.includes(
-      input.driver as CompatibleProviderDriver,
-    )
-  ) {
+  if (!isCompatibleProviderDriver(input.driver)) {
     throw new Error(
       'Compatible provider driver must be one of: openai, anthropic, gemini',
     );
@@ -106,36 +103,16 @@ export function buildManagedModelConfig(
     provider.mode === 'official'
       ? getOfficialProviderCatalogItem(provider.driver)
       : null;
+  const compatibleDriver = isCompatibleProviderDriver(provider.driver)
+    ? provider.driver
+    : 'openai';
 
-  return {
-    id: modelId,
+  return createModelConfig({
+    modelId,
     providerId: provider.id,
     name: name ?? modelId,
     capabilities: inferModelCapabilities(modelId),
-    api: {
-      id: modelId,
-      url: provider.baseUrl ?? official?.defaultBaseUrl ?? '',
-      npm:
-        official?.npm ??
-        getCompatibleProviderNpm(provider.driver as CompatibleProviderDriver),
-    },
-    status: 'active',
-  };
-}
-
-/**
- * 获取兼容 provider 对应的 SDK 包名。
- * @param driver 兼容驱动
- * @returns SDK 包名
- */
-function getCompatibleProviderNpm(driver: CompatibleProviderDriver): string {
-  switch (driver) {
-    case 'anthropic':
-      return '@ai-sdk/anthropic';
-    case 'gemini':
-      return '@ai-sdk/google';
-    case 'openai':
-    default:
-      return '@ai-sdk/openai';
-  }
+    baseUrl: provider.baseUrl ?? official?.defaultBaseUrl ?? '',
+    npm: official?.npm ?? getCompatibleProviderNpm(compatibleDriver),
+  });
 }

@@ -47,7 +47,7 @@ export function normalizeModelCapabilitiesEntry(
 }
 
 /**
- * 归一化模型能力，兼容旧 schema 并丢弃废弃字段。
+ * 归一化模型能力，只保留当前 schema 需要的字段。
  * @param value 原始能力 JSON
  * @returns 只包含当前 schema 的模型能力；无法识别时返回 `null`
  */

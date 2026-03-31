@@ -30,11 +30,7 @@ describe('ToolSettingsService', () => {
     service.setToolEnabled('mcp:weather-server:get_forecast', false);
 
     expect(fs.existsSync(tempConfigPath)).toBe(true);
-    const persisted = JSON.parse(fs.readFileSync(tempConfigPath, 'utf-8')) as {
-      version: number;
-      sources: Record<string, { enabled: boolean }>;
-      tools: Record<string, { enabled: boolean }>;
-    };
+    const persisted = JSON.parse(fs.readFileSync(tempConfigPath, 'utf-8'));
 
     expect(persisted).toEqual({
       version: 1,
@@ -53,5 +49,40 @@ describe('ToolSettingsService', () => {
     const reloaded = new ToolSettingsService();
     expect(reloaded.getSourceEnabled('mcp', 'weather-server')).toBe(false);
     expect(reloaded.getToolEnabled('mcp:weather-server:get_forecast')).toBe(false);
+  });
+
+  it('keeps valid persisted source and tool overrides while dropping malformed entries', () => {
+    fs.writeFileSync(
+      tempConfigPath,
+      JSON.stringify({
+        version: 1,
+        sources: {
+          'mcp:weather-server': {
+            enabled: false,
+          },
+          'mcp:broken-string': {
+            enabled: 'nope',
+          },
+          'mcp:not-object': 'bad',
+        },
+        tools: {
+          'mcp:weather-server:get_forecast': {
+            enabled: true,
+          },
+          'mcp:broken-array': [],
+          'mcp:broken-value': {
+            enabled: null,
+          },
+        },
+      }, null, 2),
+      'utf-8',
+    );
+
+    const service = new ToolSettingsService();
+
+    expect(service.getSourceEnabled('mcp', 'weather-server')).toBe(false);
+    expect(service.getSourceEnabled('mcp', 'broken-string')).toBeUndefined();
+    expect(service.getToolEnabled('mcp:weather-server:get_forecast')).toBe(true);
+    expect(service.getToolEnabled('mcp:broken-value')).toBeUndefined();
   });
 });

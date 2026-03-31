@@ -29,6 +29,7 @@ coverage/
 config/ai-settings.json
 config/model-capabilities.json
 config/tool-governance.json
+config/skill-governance.json
 
 # Skill 产物（仅本地协作使用，不提交 git）
 task_plan.md

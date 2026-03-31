@@ -134,6 +134,16 @@ export const COMPATIBLE_PROVIDER_DRIVERS: CompatibleProviderDriver[] = [
   'anthropic',
   'gemini',
 ];
+const COMPATIBLE_PROVIDER_DRIVER_SET = new Set<string>(COMPATIBLE_PROVIDER_DRIVERS);
+
+/**
+ * 判断给定 driver 是否属于兼容 provider 驱动。
+ */
+export function isCompatibleProviderDriver(
+  driver: string,
+): driver is CompatibleProviderDriver {
+  return COMPATIBLE_PROVIDER_DRIVER_SET.has(driver);
+}
 
 /**
  * 查找官方 provider 元数据。

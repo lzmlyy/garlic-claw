@@ -2,6 +2,7 @@ import type {
   ConversationSkillState,
   SkillDetail,
   UpdateConversationSkillsPayload,
+  UpdateSkillGovernancePayload,
 } from '@garlic-claw/shared'
 import { request } from './base'
 
@@ -12,6 +13,16 @@ export function listSkills() {
 export function refreshSkills() {
   return request<SkillDetail[]>('/skills/refresh', {
     method: 'POST',
+  })
+}
+
+export function updateSkillGovernance(
+  skillId: string,
+  payload: UpdateSkillGovernancePayload,
+) {
+  return request<SkillDetail>(`/skills/${encodeURIComponent(skillId)}/governance`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
   })
 }
 

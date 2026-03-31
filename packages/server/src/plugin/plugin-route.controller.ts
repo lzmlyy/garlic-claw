@@ -1,5 +1,6 @@
 import {
   All,
+  BadRequestException,
   Controller,
   Param,
   Query,
@@ -29,6 +30,14 @@ const BLOCKED_PLUGIN_RESPONSE_HEADERS = new Set([
   'set-cookie',
   'transfer-encoding',
 ]);
+
+const PLUGIN_ROUTE_METHODS: PluginRouteRequest['method'][] = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+];
 
 @ApiTags('Plugin Routes')
 @ApiBearerAuth()
@@ -86,11 +95,6 @@ export class PluginRouteController {
  * @returns 去掉首尾斜杠后的 Route 路径
  */
 function readWildcardPath(req: Request): string {
-  const legacyPath = req.params?.[0];
-  if (typeof legacyPath === 'string' && legacyPath.trim()) {
-    return normalizeRoutePath(legacyPath);
-  }
-
   const namedPath = req.params?.path;
   if (typeof namedPath === 'string' && namedPath.trim()) {
     return normalizeRoutePath(namedPath);
@@ -120,9 +124,9 @@ function buildRouteRequest(
 ): PluginRouteRequest {
   return {
     path: routePath,
-    method: req.method as PluginRouteRequest['method'],
+    method: normalizeRouteMethod(req.method),
     headers: normalizeHeaders(req.headers),
-    query: toJsonValue(query) as JsonObject,
+    query: normalizeQueryParams(query),
     body: normalizeRequestBody(req.body),
   };
 }
@@ -140,18 +144,34 @@ function readConversationId(
   if (typeof query.conversationId === 'string' && query.conversationId.trim()) {
     return query.conversationId.trim();
   }
-  if (
-    body &&
-    typeof body === 'object' &&
-    !Array.isArray(body) &&
-    'conversationId' in body &&
-    typeof (body as Record<string, unknown>).conversationId === 'string'
-  ) {
-    const conversationId = (body as Record<string, unknown>).conversationId as string;
+  const bodyObject = readUnknownObject(body);
+  if (bodyObject && typeof bodyObject.conversationId === 'string') {
+    const conversationId = bodyObject.conversationId;
     return conversationId.trim() || undefined;
   }
 
   return undefined;
+}
+
+function normalizeRouteMethod(method: string): PluginRouteRequest['method'] {
+  const matchedMethod = PLUGIN_ROUTE_METHODS.find((candidate) => candidate === method);
+  if (matchedMethod) {
+    return matchedMethod;
+  }
+
+  throw new BadRequestException(`插件 Route 暂不支持 HTTP 方法 ${method}`);
+}
+
+function normalizeQueryParams(query: Record<string, unknown>): JsonObject {
+  const normalized: JsonObject = {};
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === 'undefined') {
+      continue;
+    }
+    normalized[key] = toJsonValue(value);
+  }
+
+  return normalized;
 }
 
 /**
@@ -188,6 +208,19 @@ function normalizeRequestBody(body: unknown): JsonValue | null {
   }
 
   return toJsonValue(body);
+}
+
+function readUnknownObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const record: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    record[key] = entry;
+  }
+
+  return record;
 }
 
 /**

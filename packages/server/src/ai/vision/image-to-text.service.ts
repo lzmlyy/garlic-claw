@@ -18,6 +18,7 @@ import type { VisionFallbackConfig } from '@garlic-claw/shared';
 import { toAiSdkImageInput } from '../../common/utils/ai-sdk-image';
 import { AiModelExecutionService } from '../ai-model-execution.service';
 import { ConfigManagerService } from '../config/config-manager.service';
+import type { AiSdkMessage } from '../sdk-adapter';
 
 @Injectable()
 export class ImageToTextService {
@@ -71,24 +72,26 @@ export class ImageToTextService {
       throw new Error('Vision fallback is not configured');
     }
 
+    const sdkMessages: AiSdkMessage[] = [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: config.prompt ?? ImageToTextService.DEFAULT_PROMPT,
+          },
+          {
+            type: 'image',
+            image: toAiSdkImageInput(imageData),
+          },
+        ],
+      },
+    ];
+
     const executed = await this.aiModelExecution.generateText({
       providerId: config.providerId,
       modelId: config.modelId,
-      sdkMessages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: config.prompt ?? ImageToTextService.DEFAULT_PROMPT,
-            },
-            {
-              type: 'image',
-              image: toAiSdkImageInput(imageData),
-            } as never,
-          ],
-        },
-      ],
+      sdkMessages,
       maxOutputTokens: 500,
     });
 

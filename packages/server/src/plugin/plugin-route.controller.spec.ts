@@ -29,7 +29,7 @@ describe('PluginRouteController', () => {
     const req = {
       method: 'GET',
       params: {
-        0: 'inspect/context',
+        path: 'inspect/context',
       },
       headers: {
         authorization: 'Bearer token',
@@ -119,6 +119,30 @@ describe('PluginRouteController', () => {
         conversationId: undefined,
       },
     });
+  });
+
+  it('rejects unsupported http methods before dispatching into plugin runtime', async () => {
+    const res = createResponseStub();
+    const req = {
+      method: 'HEAD',
+      params: {
+        path: 'inspect/context',
+      },
+      headers: {},
+      body: undefined,
+    };
+
+    await expect(
+      controller.handleRoute(
+        'user-1',
+        'builtin.route-inspector',
+        {},
+        req as never,
+        res as never,
+      ),
+    ).rejects.toThrow('插件 Route 暂不支持 HTTP 方法 HEAD');
+
+    expect(pluginRuntime.invokeRoute).not.toHaveBeenCalled();
   });
 });
 

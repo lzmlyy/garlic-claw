@@ -15,28 +15,26 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'node:fs';
-import type { AiUtilityModelRole } from '@garlic-claw/shared';
+import type { JsonValue } from '../../common/types/json-value';
 import type {
   AiSettingsFile,
-  RawStoredAiModelRouteTarget,
-  RawStoredAiProviderConfig,
   StoredAiHostModelRoutingConfig,
   StoredAiProviderConfig,
   StoredVisionFallbackConfig,
 } from './config-manager.types';
+import { normalizeAiSettingsFile } from './config-manager.loader';
 import { resolveConfigFilePath } from './config-path.util';
 
 export type {
   AiSettingsFile,
   StoredAiHostModelRoutingConfig,
-  RawStoredAiProviderConfig,
   StoredAiProviderConfig,
   StoredVisionFallbackConfig,
 } from './config-manager.types';
 
 @Injectable()
 export class ConfigManagerService {
-  private static readonly CURRENT_VERSION = 2;
+  private static readonly CURRENT_VERSION = 3;
 
   private readonly logger = new Logger(ConfigManagerService.name);
   private readonly settingsPath: string;
@@ -178,63 +176,32 @@ export class ConfigManagerService {
     }
 
     try {
-      const parsed = JSON.parse(
-        fs.readFileSync(this.settingsPath, 'utf-8'),
-      ) as Partial<AiSettingsFile>;
+      const normalized = normalizeAiSettingsFile(
+        JSON.parse(fs.readFileSync(this.settingsPath, 'utf-8')) as JsonValue,
+        ConfigManagerService.CURRENT_VERSION,
+      );
+      if (normalized.changed) {
+        const migratedAt = new Date().toISOString();
+        fs.writeFileSync(
+          this.settingsPath,
+          JSON.stringify(
+            {
+              ...normalized.settings,
+              updatedAt: migratedAt,
+            },
+            null,
+            2,
+          ),
+          'utf-8',
+        );
 
-      return {
-        version:
-          typeof parsed.version === 'number'
-            ? parsed.version
-            : ConfigManagerService.CURRENT_VERSION,
-        updatedAt:
-          typeof parsed.updatedAt === 'string'
-            ? parsed.updatedAt
-            : new Date().toISOString(),
-        providers: Array.isArray(parsed.providers)
-          ? (parsed.providers as RawStoredAiProviderConfig[]).map((provider) => ({
-              id: String(provider.id),
-              name: String(provider.name),
-              mode:
-                provider.mode === 'official' || provider.mode === 'compatible'
-                  ? provider.mode
-                  : 'compatible',
-              driver:
-                typeof provider.driver === 'string'
-                  ? provider.driver
-                  : provider.type
-                    ? String(provider.type)
-                    : String(provider.id),
-              apiKey: provider.apiKey ? String(provider.apiKey) : undefined,
-              baseUrl: provider.baseUrl ? String(provider.baseUrl) : undefined,
-              defaultModel: provider.defaultModel
-                ? String(provider.defaultModel)
-                : undefined,
-              models: Array.isArray(provider.models)
-                ? provider.models.map((model) => String(model))
-                : [],
-            }))
-          : [],
-        visionFallback: {
-          enabled: parsed.visionFallback?.enabled === true,
-          providerId: parsed.visionFallback?.providerId
-            ? String(parsed.visionFallback.providerId)
-            : undefined,
-          modelId: parsed.visionFallback?.modelId
-            ? String(parsed.visionFallback.modelId)
-            : undefined,
-          prompt: parsed.visionFallback?.prompt
-            ? String(parsed.visionFallback.prompt)
-            : undefined,
-          maxDescriptionLength:
-            typeof parsed.visionFallback?.maxDescriptionLength === 'number'
-              ? parsed.visionFallback.maxDescriptionLength
-              : undefined,
-        },
-        hostModelRouting: normalizeHostModelRoutingConfig(
-          parsed.hostModelRouting,
-        ),
-      };
+        return {
+          ...normalized.settings,
+          updatedAt: migratedAt,
+        };
+      }
+
+      return normalized.settings;
     } catch (error) {
       this.logger.warn(`AI 设置文件损坏，已重置为空配置: ${String(error)}`);
       const empty = this.createEmptySettings();
@@ -274,63 +241,6 @@ export class ConfigManagerService {
     };
   }
 
-}
-
-function normalizeHostModelRoutingConfig(
-  raw: unknown,
-): StoredAiHostModelRoutingConfig {
-  const hostModelRouting = raw as {
-    fallbackChatModels?: RawStoredAiModelRouteTarget[];
-    compressionModel?: RawStoredAiModelRouteTarget;
-    utilityModelRoles?: Partial<Record<AiUtilityModelRole, RawStoredAiModelRouteTarget>>;
-  } | undefined;
-
-  return {
-    fallbackChatModels: Array.isArray(hostModelRouting?.fallbackChatModels)
-      ? hostModelRouting.fallbackChatModels
-          .map(normalizeModelRouteTarget)
-          .filter(
-            (
-              target,
-            ): target is NonNullable<ReturnType<typeof normalizeModelRouteTarget>> =>
-              Boolean(target),
-          )
-      : [],
-    compressionModel: normalizeModelRouteTarget(hostModelRouting?.compressionModel),
-    utilityModelRoles: {
-      ...normalizeUtilityModelRole(hostModelRouting?.utilityModelRoles?.conversationTitle),
-      ...normalizeUtilityModelRole(
-        hostModelRouting?.utilityModelRoles?.pluginGenerateText,
-        'pluginGenerateText',
-      ),
-    },
-  };
-}
-
-function normalizeUtilityModelRole(
-  raw: RawStoredAiModelRouteTarget | undefined,
-  role: AiUtilityModelRole = 'conversationTitle',
-) {
-  const target = normalizeModelRouteTarget(raw);
-  return target ? { [role]: target } : {};
-}
-
-function normalizeModelRouteTarget(
-  raw?: RawStoredAiModelRouteTarget,
-): { providerId: string; modelId: string } | undefined {
-  if (
-    typeof raw?.providerId !== 'string'
-    || !raw.providerId
-    || typeof raw?.modelId !== 'string'
-    || !raw.modelId
-  ) {
-    return undefined;
-  }
-
-  return {
-    providerId: raw.providerId,
-    modelId: raw.modelId,
-  };
 }
 
 function cloneHostModelRoutingConfig(

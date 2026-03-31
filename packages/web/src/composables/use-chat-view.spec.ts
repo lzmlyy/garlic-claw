@@ -286,6 +286,10 @@ describe('useChatView', () => {
             allow: ['kb.search'],
             deny: [],
           },
+          governance: {
+            enabled: true,
+            trustLevel: 'asset-read',
+          },
         },
       ],
     })

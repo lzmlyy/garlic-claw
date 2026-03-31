@@ -23,19 +23,14 @@ export function usePersonaSettings() {
   const selectedPersonaId = ref<string | null>(null)
   const currentPersona = ref<PluginPersonaCurrentInfo | null>(null)
 
-  const currentConversationId = computed(() => {
-    return (unref(chat.currentConversationId as never) ?? null) as string | null
-  })
+  const currentConversationId = computed<string | null>(() => unref(chat.currentConversationId) ?? null)
   const currentConversationTitle = computed(() => {
     const conversationId = currentConversationId.value
     if (!conversationId) {
       return null
     }
 
-    const conversations = (unref(chat.conversations as never) ?? []) as Array<{
-      id: string
-      title: string
-    }>
+    const conversations = unref(chat.conversations) ?? []
     return conversations.find((conversation) => conversation.id === conversationId)?.title ?? null
   })
   const selectedPersona = computed(() => {

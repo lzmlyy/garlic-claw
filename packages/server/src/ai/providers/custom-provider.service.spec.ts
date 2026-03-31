@@ -20,7 +20,6 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { CustomProviderService } from './custom-provider.service';
 import { ProviderRegistryService } from '../registry/provider-registry.service';
 import { ModelRegistryService } from '../registry/model-registry.service';
-import type { ProviderFactory } from '../types';
 
 jest.mock('@ai-sdk/openai', () => ({
   createOpenAI: jest.fn(() => ({
@@ -53,17 +52,10 @@ describe('CustomProviderService compatibility formats', () => {
     clearProviderModels: jest.Mock;
     listModels: jest.Mock;
   };
-  let capturedFactory: ProviderFactory | null;
-
   beforeEach(async () => {
-    capturedFactory = null;
-
     providerRegistry = {
       hasProvider: jest.fn().mockReturnValue(false),
-      registerProvider: jest.fn((config, factory) => {
-        capturedFactory = factory;
-        return config;
-      }),
+      registerProvider: jest.fn((config) => config),
       unregisterProvider: jest.fn(),
       getProviderConfig: jest.fn(),
     };
@@ -113,17 +105,14 @@ describe('CustomProviderService compatibility formats', () => {
         }),
       }),
     );
-
-    const providerInstance = capturedFactory?.({ apiKey: 'gemini-key' });
-    providerInstance?.createModel('gemini-2.5-flash');
-
-    expect(createGoogleGenerativeAI).toHaveBeenCalledWith(
+    expect(providerRegistry.registerProvider.mock.calls[0]).toEqual([
       expect.objectContaining({
-        apiKey: 'gemini-key',
-        baseURL: 'https://gemini.example.com/v1beta',
-        name: 'gemini-proxy',
+        id: expect.any(String),
+        name: 'Gemini Proxy',
+        npm: '@ai-sdk/google',
       }),
-    );
+    ]);
+    expect(createGoogleGenerativeAI).not.toHaveBeenCalled();
   });
 
   it('uses the anthropic adapter for anthropic-compatible providers', async () => {
@@ -143,17 +132,14 @@ describe('CustomProviderService compatibility formats', () => {
         }),
       }),
     );
-
-    const providerInstance = capturedFactory?.({ apiKey: 'anthropic-key' });
-    providerInstance?.createModel('claude-3-7-sonnet');
-
-    expect(createAnthropic).toHaveBeenCalledWith(
+    expect(providerRegistry.registerProvider.mock.calls[0]).toEqual([
       expect.objectContaining({
-        apiKey: 'anthropic-key',
-        baseURL: 'https://anthropic.example.com/v1',
-        name: 'anthropic-proxy',
+        id: expect.any(String),
+        name: 'Anthropic Proxy',
+        npm: '@ai-sdk/anthropic',
       }),
-    );
+    ]);
+    expect(createAnthropic).not.toHaveBeenCalled();
   });
 
   it('defaults to the openai adapter when format is omitted', async () => {
@@ -172,16 +158,13 @@ describe('CustomProviderService compatibility formats', () => {
         }),
       }),
     );
-
-    const providerInstance = capturedFactory?.({ apiKey: 'openai-key' });
-    providerInstance?.createModel('gpt-4.1');
-
-    expect(createOpenAI).toHaveBeenCalledWith(
+    expect(providerRegistry.registerProvider.mock.calls[0]).toEqual([
       expect.objectContaining({
-        apiKey: 'openai-key',
-        baseURL: 'https://openai.example.com/v1',
-        name: 'openai-proxy',
+        id: expect.any(String),
+        name: 'OpenAI Proxy',
+        npm: '@ai-sdk/openai',
       }),
-    );
+    ]);
+    expect(createOpenAI).not.toHaveBeenCalled();
   });
 });

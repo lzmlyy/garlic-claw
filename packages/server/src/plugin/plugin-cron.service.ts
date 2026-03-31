@@ -533,7 +533,8 @@ export class PluginCronService implements OnModuleDestroy {
     }
 
     try {
-      return JSON.parse(raw) as JsonValue;
+      const parsed = JSON.parse(raw) as unknown;
+      return isJsonValue(parsed) ? parsed : undefined;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`插件 cron data JSON 无效，已回退为空值: ${message}`);
@@ -572,4 +573,25 @@ export class PluginCronService implements OnModuleDestroy {
 
     return interval >= 10000 ? interval : null;
   }
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((entry) => isJsonValue(entry));
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return Object.values(value).every((entry) => isJsonValue(entry));
 }

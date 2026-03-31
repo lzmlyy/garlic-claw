@@ -55,8 +55,8 @@ export function createRouteInspectorPlugin(): BuiltinPluginDefinition {
         let messageCount = 0;
 
         if (context.callContext.conversationId) {
-          conversation = (await context.host.getConversation()) as RouteInspectorConversationSummary;
-          const messages = (await context.host.listConversationMessages()) as JsonValue[];
+          conversation = readConversationSummary(await context.host.getConversation());
+          const messages = await context.host.listConversationMessages();
           messageCount = Array.isArray(messages) ? messages.length : 0;
         }
 
@@ -72,4 +72,19 @@ export function createRouteInspectorPlugin(): BuiltinPluginDefinition {
       },
     },
   };
+}
+
+function readConversationSummary(value: JsonValue): RouteInspectorConversationSummary {
+  if (!isJsonObjectValue(value)) {
+    return {};
+  }
+
+  return {
+    ...(typeof value.id === 'string' ? { id: value.id } : {}),
+    ...(typeof value.title === 'string' ? { title: value.title } : {}),
+  };
+}
+
+function isJsonObjectValue(value: JsonValue): value is Record<string, JsonValue> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -9,6 +9,7 @@ import type {
 } from '@garlic-claw/shared';
 import { Injectable } from '@nestjs/common';
 import { describePluginGovernance } from './plugin-governance-policy';
+import { parsePersistedPluginManifest } from './plugin-manifest.persistence';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginService } from './plugin.service';
 
@@ -83,7 +84,9 @@ export class PluginCommandService {
     plugin: PersistedPluginRecord,
     runtimePlugin: RuntimePluginRecord | null,
   ): PluginCommandInfo[] {
-    const runtimeKind = (runtimePlugin?.runtimeKind ?? plugin.runtimeKind) as PluginRuntimeKind;
+    const runtimeKind = readPluginRuntimeKind(
+      runtimePlugin?.runtimeKind ?? plugin.runtimeKind,
+    );
     const governance = describePluginGovernance({
       pluginId: plugin.name,
       runtimeKind,
@@ -111,7 +114,14 @@ export class PluginCommandService {
     descriptor: PluginCommandDescriptor;
     source: PluginCommandInfo['source'];
   }> {
-    const manifestCommands = runtimePlugin?.manifest.commands ?? [];
+    const persistedManifest = parsePersistedPluginManifest(plugin.manifestJson, {
+      id: plugin.name,
+      displayName: plugin.displayName,
+      description: plugin.description,
+      version: plugin.version,
+      runtimeKind: plugin.runtimeKind,
+    });
+    const manifestCommands = runtimePlugin?.manifest.commands ?? persistedManifest.commands ?? [];
     if (manifestCommands.length > 0) {
       return manifestCommands.map((descriptor) => ({
         descriptor: cloneCommandDescriptor(descriptor),
@@ -119,7 +129,7 @@ export class PluginCommandService {
       }));
     }
 
-    const hooks = runtimePlugin?.manifest.hooks ?? parsePersistedHooks(plugin.hooks);
+    const hooks = runtimePlugin?.manifest.hooks ?? persistedManifest.hooks ?? [];
     return extractCommandsFromHooks(hooks).map((descriptor) => ({
       descriptor,
       source: 'hook-filter' as const,
@@ -173,19 +183,6 @@ export class PluginCommandService {
 
         return left.trigger.localeCompare(right.trigger, 'zh-CN');
       });
-  }
-}
-
-function parsePersistedHooks(raw: string | null): PluginHookDescriptor[] {
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed as PluginHookDescriptor[] : [];
-  } catch {
-    return [];
   }
 }
 
@@ -280,4 +277,8 @@ function cloneCommandDescriptor(command: PluginCommandDescriptor): PluginCommand
     ...(command.description ? { description: command.description } : {}),
     ...(typeof command.priority === 'number' ? { priority: command.priority } : {}),
   };
+}
+
+function readPluginRuntimeKind(value: string | null | undefined): PluginRuntimeKind {
+  return value === 'builtin' ? 'builtin' : 'remote';
 }

@@ -1,29 +1,10 @@
-import { createRequire } from 'node:module';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createOpenAI } from '@ai-sdk/openai';
-import type { LanguageModel } from 'ai';
-
-import type { ProviderOptions } from '../types';
+import { getCompatibleProviderNpm } from '../ai-provider.helpers';
 import type {
   CompatibleProviderFormat,
   DiscoveredModel,
   RegisterCustomProviderDto,
 } from './custom-provider.types';
 import { inferCustomProviderCapabilities } from './custom-provider-model.helpers';
-
-/**
- * 兼容 provider 实例最小形状。
- */
-interface CompatibleProviderInstance {
-  /** 创建聊天模型。 */
-  chat: (modelId: string) => LanguageModel;
-}
-
-type CompatibleProviderFactory = (options: {
-  apiKey: string;
-  baseURL?: string;
-  name: string;
-}) => CompatibleProviderInstance;
 
 /**
  * 兼容格式元数据。
@@ -33,49 +14,6 @@ export interface FormatMetadata {
   npm: string;
   /** 发现模型时使用的认证头构建器。 */
   buildHeaders: (apiKey: string) => Record<string, string>;
-  /** 创建 SDK provider 实例。 */
-  createInstance: (
-    dto: RegisterCustomProviderDto,
-    options: ProviderOptions,
-    resolveApiKey: (dto: RegisterCustomProviderDto) => string,
-  ) => CompatibleProviderInstance;
-}
-
-const createGeminiProvider = createLazyCompatibleProviderFactory(
-  '@ai-sdk/google',
-  'createGoogleGenerativeAI',
-);
-const localRequire = createRequire(__filename);
-
-function createLazyCompatibleProviderFactory(
-  moduleName: string,
-  exportName: string,
-): CompatibleProviderFactory {
-  return (options) => {
-    const loadedModule = loadOptionalModule(moduleName);
-    const factory = loadedModule[exportName];
-    if (typeof factory !== 'function') {
-      throw new Error(
-        `兼容 Provider SDK "${moduleName}" 没有导出 "${exportName}"，无法创建 provider。`,
-      );
-    }
-
-    return (factory as CompatibleProviderFactory)(options);
-  };
-}
-
-function loadOptionalModule(moduleName: string): Record<string, unknown> {
-  try {
-    return localRequire(moduleName) as Record<string, unknown>;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `缺少兼容 Provider SDK "${moduleName}"。如需启用对应格式，请先安装该依赖。原始错误: ${detail}`,
-      {
-        cause: error,
-      },
-    );
-  }
 }
 
 /**
@@ -97,47 +35,29 @@ export function getCompatibleProviderFormatMetadata(
   switch (format) {
     case 'anthropic':
       return {
-        npm: '@ai-sdk/anthropic',
+        npm: getCompatibleProviderNpm(format),
         buildHeaders: (apiKey: string) => ({
           'content-type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
         }),
-        createInstance: (dto, options, resolveApiKey) =>
-          createAnthropic({
-            apiKey: String(options.apiKey ?? resolveApiKey(dto)),
-            baseURL: dto.baseUrl,
-            name: dto.id,
-          }),
       };
     case 'gemini':
       return {
-        npm: '@ai-sdk/google',
+        npm: getCompatibleProviderNpm(format),
         buildHeaders: (apiKey: string) => ({
           'content-type': 'application/json',
           'x-goog-api-key': apiKey,
         }),
-        createInstance: (dto, options, resolveApiKey) =>
-          createGeminiProvider({
-            apiKey: String(options.apiKey ?? resolveApiKey(dto)),
-            baseURL: dto.baseUrl,
-            name: dto.id,
-          }),
       };
     case 'openai':
     default:
       return {
-        npm: '@ai-sdk/openai',
+        npm: getCompatibleProviderNpm(format),
         buildHeaders: (apiKey: string) => ({
           'content-type': 'application/json',
           authorization: `Bearer ${apiKey}`,
         }),
-        createInstance: (dto, options, resolveApiKey) =>
-          createOpenAI({
-            apiKey: String(options.apiKey ?? resolveApiKey(dto)),
-            baseURL: dto.baseUrl,
-            name: dto.id,
-          }),
       };
   }
 }

@@ -60,7 +60,7 @@ describe('PluginCommandService', () => {
         runtimeKind: 'builtin',
         status: 'online',
         defaultEnabled: true,
-        hooks: JSON.stringify(runtimeManifest.hooks ?? []),
+        manifestJson: JSON.stringify(runtimeManifest),
       },
       {
         id: 'plugin-2',
@@ -69,17 +69,26 @@ describe('PluginCommandService', () => {
         runtimeKind: 'remote',
         status: 'offline',
         defaultEnabled: false,
-        hooks: JSON.stringify([
-          {
-            name: 'message:received',
-            priority: 5,
-            filter: {
-              message: {
-                commands: ['/sys reload', '/ops status'],
+        manifestJson: JSON.stringify({
+          id: 'remote.ops-helper',
+          name: '运维助手',
+          version: '1.0.0',
+          runtime: 'remote',
+          permissions: [],
+          tools: [],
+          hooks: [
+            {
+              name: 'message:received',
+              priority: 5,
+              filter: {
+                message: {
+                  commands: ['/sys reload', '/ops status'],
+                },
               },
             },
-          },
-        ]),
+          ],
+          routes: [],
+        }),
       },
     ]);
     pluginRuntime.listPlugins.mockReturnValue([
@@ -152,6 +161,50 @@ describe('PluginCommandService', () => {
           }),
         ],
       },
+    ]);
+  });
+
+  it('falls back to remote when persisted runtime kind is invalid', async () => {
+    pluginService.findAll.mockResolvedValue([
+      {
+        id: 'plugin-3',
+        name: 'remote.invalid-runtime',
+        displayName: '坏运行时类型',
+        runtimeKind: 'desktop-shell',
+        status: 'offline',
+        defaultEnabled: true,
+        manifestJson: JSON.stringify({
+          id: 'remote.invalid-runtime',
+          name: '坏运行时类型',
+          version: '1.0.0',
+          runtime: 'remote',
+          permissions: [],
+          tools: [],
+          commands: [
+            {
+              kind: 'command',
+              canonicalCommand: '/ops diagnose',
+              path: ['ops', 'diagnose'],
+              aliases: [],
+              variants: ['/ops diagnose'],
+            },
+          ],
+        }),
+      },
+    ]);
+    pluginRuntime.listPlugins.mockReturnValue([]);
+
+    const result = await service.listOverview();
+
+    expect(result.commands).toEqual([
+      expect.objectContaining({
+        pluginId: 'remote.invalid-runtime',
+        runtimeKind: 'remote',
+        connected: false,
+        governance: {
+          canDisable: true,
+        },
+      }),
     ]);
   });
 });

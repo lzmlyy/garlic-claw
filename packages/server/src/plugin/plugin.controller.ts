@@ -1,19 +1,16 @@
 import type {
   PluginActionName,
   PluginActionResult,
-  PluginCapability,
   PluginConfigSnapshot,
   PluginConversationSessionInfo,
   PluginEventLevel,
   PluginEventListResult,
-  PluginHookDescriptor,
   PluginHealthSnapshot,
   PluginInfo,
-  PluginPermission,
-  PluginRouteDescriptor,
   PluginScopeSettings,
   PluginStorageEntry,
 } from '@garlic-claw/shared';
+import type { Plugin as PersistedPluginRecord } from '@prisma/client';
 import {
   BadRequestException,
   Body,
@@ -30,6 +27,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { toJsonValue } from '../common/utils/json-value';
 import {
   UpdatePluginConfigDto,
   UpdatePluginScopeDto,
@@ -38,6 +36,7 @@ import {
 import { PluginAdminService } from './plugin-admin.service';
 import { PluginCronService } from './plugin-cron.service';
 import { describePluginGovernance } from './plugin-governance-policy';
+import { parsePersistedPluginManifest } from './plugin-manifest.persistence';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginService } from './plugin.service';
 
@@ -62,6 +61,7 @@ export class PluginController {
     );
     return Promise.all(plugins.map(async (p) => {
       const runtimePlugin = runtimePlugins.get(p.name);
+      const manifest = runtimePlugin?.manifest ?? buildPersistedManifest(p);
       const governance = describePluginGovernance({
         pluginId: p.name,
         runtimeKind: runtimePlugin?.runtimeKind ?? p.runtimeKind,
@@ -69,24 +69,18 @@ export class PluginController {
       return {
         id: p.id,
         name: p.name,
-        displayName: runtimePlugin?.manifest.name ?? p.displayName ?? undefined,
-        description: runtimePlugin?.manifest.description ?? p.description ?? undefined,
+        displayName: manifest.name,
+        description: manifest.description,
         deviceType: p.deviceType,
         status: p.status,
-        capabilities: runtimePlugin?.manifest.tools
-          ?? parsePluginCapabilities(p.capabilities),
         connected: runtimePlugins.has(p.name),
         runtimeKind: runtimePlugin?.runtimeKind
           ?? (p.runtimeKind === 'builtin' ? 'builtin' : 'remote'),
-        version: runtimePlugin?.manifest.version ?? p.version ?? undefined,
-        permissions: runtimePlugin?.manifest.permissions
-          ?? parsePluginPermissions(p.permissions),
+        version: manifest.version,
         supportedActions: runtimePlugin?.supportedActions
           ?? resolvePersistedSupportedActions(),
         crons: await this.pluginCronService.listCronJobs(p.name),
-        hooks: runtimePlugin?.manifest.hooks ?? parsePluginHooks(p.hooks),
-        routes: runtimePlugin?.manifest.routes ?? parsePluginRoutes(p.routes),
-        manifest: runtimePlugin?.manifest,
+        manifest,
         health: serializePluginHealth(p, runtimePlugin?.runtimePressure ?? null),
         governance,
         lastSeenAt: p.lastSeenAt ? p.lastSeenAt.toISOString() : null,
@@ -101,7 +95,7 @@ export class PluginController {
     return this.pluginRuntime.listPlugins().map((plugin) => ({
       name: plugin.pluginId,
       runtimeKind: plugin.runtimeKind,
-      capabilities: plugin.manifest.tools,
+      manifest: plugin.manifest,
     }));
   }
 
@@ -150,7 +144,11 @@ export class PluginController {
   ): Promise<PluginStorageEntry> {
     return {
       key: dto.key,
-      value: await this.pluginService.setPluginStorage(name, dto.key, dto.value as never),
+      value: await this.pluginService.setPluginStorage(
+        name,
+        dto.key,
+        toJsonValue(dto.value),
+      ),
     };
   }
 
@@ -273,60 +271,32 @@ export class PluginController {
     @Param('name') name: string,
     @Param('action') action: string,
   ): Promise<PluginActionResult> {
-    return this.pluginAdmin.runAction(name, action as never);
+    if (!isPluginActionName(action)) {
+      throw new BadRequestException(
+        'action 必须是 reload / reconnect / health-check',
+      );
+    }
+
+    return this.pluginAdmin.runAction(name, action);
   }
 }
 
 /**
- * 解析能力 JSON 字符串。
- * @param raw 原始 JSON 字符串
- * @returns 能力数组；解析失败时回退为空数组
+ * 为离线或未接入运行时的插件合成统一 manifest。
+ * @param plugin Prisma 插件记录
+ * @returns 统一插件清单
  */
-function parsePluginCapabilities(raw: string | null): PluginCapability[] {
-  if (!raw) {
-    return [];
-  }
-
-  return safeJsonParse(raw, []);
-}
-
-/**
- * 解析权限 JSON 字符串。
- * @param raw 原始 JSON 字符串
- * @returns 权限数组；缺失时返回 undefined
- */
-function parsePluginPermissions(raw: string | null): PluginPermission[] | undefined {
-  if (!raw) {
-    return undefined;
-  }
-
-  return safeJsonParse<PluginPermission[]>(raw, []);
-}
-
-/**
- * 解析 Hook JSON 字符串。
- * @param raw 原始 JSON 字符串
- * @returns Hook 数组；缺失时返回 undefined
- */
-function parsePluginHooks(raw: string | null): PluginHookDescriptor[] | undefined {
-  if (!raw) {
-    return undefined;
-  }
-
-  return safeJsonParse<PluginHookDescriptor[]>(raw, []);
-}
-
-/**
- * 解析 Route JSON 字符串。
- * @param raw 原始 JSON 字符串
- * @returns Route 数组；缺失时返回 undefined
- */
-function parsePluginRoutes(raw: string | null): PluginRouteDescriptor[] | undefined {
-  if (!raw) {
-    return undefined;
-  }
-
-  return safeJsonParse<PluginRouteDescriptor[]>(raw, []);
+function buildPersistedManifest(plugin: PersistedPluginRecord): PluginInfo['manifest'] {
+  return parsePersistedPluginManifest(
+    typeof plugin.manifestJson === 'string' ? plugin.manifestJson : null,
+    {
+      id: plugin.name,
+      displayName: plugin.displayName,
+      description: plugin.description,
+      version: plugin.version,
+      runtimeKind: plugin.runtimeKind,
+    },
+  );
 }
 
 /**
@@ -335,17 +305,17 @@ function parsePluginRoutes(raw: string | null): PluginRouteDescriptor[] | undefi
  * @returns API 侧健康快照
  */
 function serializePluginHealth(
-  plugin: Record<string, unknown>,
+  plugin: PersistedPluginRecord,
   runtimePressure: PluginHealthSnapshot['runtimePressure'] | null = null,
 ): PluginHealthSnapshot {
   const status = plugin.status === 'offline'
     ? 'offline'
-    : (plugin.healthStatus as PluginHealthSnapshot['status'] | undefined) ?? 'unknown';
+    : readPersistedHealthStatus(plugin.healthStatus);
   return {
     status,
-    failureCount: (plugin.failureCount as number | undefined) ?? 0,
-    consecutiveFailures: (plugin.consecutiveFailures as number | undefined) ?? 0,
-    lastError: (plugin.lastError as string | null | undefined) ?? null,
+    failureCount: plugin.failureCount,
+    consecutiveFailures: plugin.consecutiveFailures,
+    lastError: plugin.lastError,
     lastErrorAt: plugin.lastErrorAt instanceof Date
       ? plugin.lastErrorAt.toISOString()
       : null,
@@ -359,12 +329,31 @@ function serializePluginHealth(
   };
 }
 
+function readPersistedHealthStatus(
+  value: string | null,
+): PluginHealthSnapshot['status'] {
+  switch (value) {
+    case 'healthy':
+    case 'degraded':
+    case 'error':
+    case 'offline':
+    case 'unknown':
+      return value;
+    default:
+      return 'unknown';
+  }
+}
+
 /**
  * 为未接入当前 runtime 的插件记录提供保守治理动作回退。
  * @returns 最小治理动作列表
  */
 function resolvePersistedSupportedActions(): PluginActionName[] {
   return ['health-check'];
+}
+
+function isPluginActionName(action: string): action is PluginActionName {
+  return action === 'reload' || action === 'reconnect' || action === 'health-check';
 }
 
 /**
@@ -409,18 +398,4 @@ function parsePluginEventQuery(raw: {
     ...(keyword ? { keyword } : {}),
     ...(cursor ? { cursor } : {}),
   };
-}
-
-/**
- * 安全解析 JSON；解析失败时回退默认值。
- * @param raw 原始 JSON 字符串
- * @param fallback 解析失败时的回退值
- * @returns 解析结果或回退值
- */
-function safeJsonParse<T>(raw: string, fallback: T): T {
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
 }

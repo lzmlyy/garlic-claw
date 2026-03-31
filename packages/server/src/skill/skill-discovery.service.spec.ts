@@ -18,6 +18,9 @@ describe('SkillDiscoveryService', () => {
     const projectSkillsRoot = path.join(tempRoot, 'project-skills');
     const userSkillsRoot = path.join(tempRoot, 'user-skills');
     await fs.mkdir(path.join(projectSkillsRoot, 'planner'), { recursive: true });
+    await fs.mkdir(path.join(projectSkillsRoot, 'planner', 'scripts'), { recursive: true });
+    await fs.mkdir(path.join(projectSkillsRoot, 'planner', 'templates'), { recursive: true });
+    await fs.mkdir(path.join(projectSkillsRoot, 'planner', 'references'), { recursive: true });
     await fs.mkdir(path.join(userSkillsRoot, 'ops', 'incident'), { recursive: true });
     await fs.writeFile(
       path.join(projectSkillsRoot, 'planner', 'SKILL.md'),
@@ -40,6 +43,21 @@ describe('SkillDiscoveryService', () => {
         '',
         '把复杂请求拆成 3-5 步，再开始执行。',
       ].join('\n'),
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(projectSkillsRoot, 'planner', 'scripts', 'plan.js'),
+      'console.log("planner");\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(projectSkillsRoot, 'planner', 'templates', 'task.md'),
+      '# task template\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(projectSkillsRoot, 'planner', 'references', 'notes.txt'),
+      'reference notes\n',
       'utf8',
     );
     await fs.writeFile(
@@ -75,6 +93,30 @@ describe('SkillDiscoveryService', () => {
           allow: ['kb.search', 'llm.generate'],
           deny: ['automation.run'],
         },
+        governance: {
+          enabled: true,
+          trustLevel: 'prompt-only',
+        },
+        assets: [
+          {
+            path: 'references/notes.txt',
+            kind: 'reference',
+            textReadable: true,
+            executable: false,
+          },
+          {
+            path: 'scripts/plan.js',
+            kind: 'script',
+            textReadable: true,
+            executable: true,
+          },
+          {
+            path: 'templates/task.md',
+            kind: 'template',
+            textReadable: true,
+            executable: false,
+          },
+        ],
         content: expect.stringContaining('# Planner'),
       }),
       expect.objectContaining({
@@ -89,6 +131,59 @@ describe('SkillDiscoveryService', () => {
           allow: [],
           deny: [],
         },
+        governance: {
+          enabled: true,
+          trustLevel: 'prompt-only',
+        },
+        assets: [],
+      }),
+    ]);
+  });
+
+  it('drops malformed frontmatter fields without crashing discovery', async () => {
+    const projectSkillsRoot = path.join(tempRoot, 'project-skills');
+    await fs.mkdir(path.join(projectSkillsRoot, 'broken-types'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectSkillsRoot, 'broken-types', 'SKILL.md'),
+      [
+        '---',
+        'name:',
+        '  bad: true',
+        'description:',
+        '  - not',
+        '  - a',
+        '  - string',
+        'tags:',
+        '  - ops',
+        '  - 42',
+        'tools:',
+        '  allow: kb.search',
+        '  deny:',
+        '    - automation.run',
+        '    - 99',
+        '---',
+        '',
+        '保持发现流程稳定。',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const service = new SkillDiscoveryService({
+      projectSkillsRoot,
+      userSkillsRoot: path.join(tempRoot, 'missing-user-skills'),
+    });
+
+    await expect(service.discoverSkills()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'project/broken-types',
+        name: 'Broken Types',
+        description: '',
+        tags: ['ops'],
+        toolPolicy: {
+          allow: [],
+          deny: ['automation.run'],
+        },
+        promptPreview: expect.stringContaining('保持发现流程稳定'),
       }),
     ]);
   });

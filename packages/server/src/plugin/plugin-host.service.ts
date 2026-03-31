@@ -27,6 +27,7 @@ import { AiProviderService } from '../ai/ai-provider.service';
 import { ModelRegistryService } from '../ai/registry/model-registry.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { deserializeMessageParts } from '../chat/message-parts';
+import { toAiSdkMessages } from '../chat/sdk-message-converter';
 import { toJsonValue } from '../common/utils/json-value';
 import { KbService } from '../kb/kb.service';
 import { MemoryService } from '../memory/memory.service';
@@ -155,7 +156,7 @@ export class PluginHostService {
       return config;
     }
 
-    return (config[key] as JsonValue | undefined) ?? null;
+    return Object.prototype.hasOwnProperty.call(config, key) ? config[key] : null;
   }
 
   /**
@@ -534,14 +535,10 @@ export class PluginHostService {
     params: JsonObject,
   ): Promise<JsonValue> {
     const key = this.requireString(params, 'key');
-    if (!Object.prototype.hasOwnProperty.call(params, 'value')) {
-      throw new BadRequestException('storage.set 缺少 value');
-    }
-
     return this.pluginService.setPluginStorage(
       pluginId,
       key,
-      params.value as JsonValue,
+      this.requireJsonValue(params, 'value', 'storage.set'),
     );
   }
 
@@ -617,11 +614,11 @@ export class PluginHostService {
    */
   private setState(pluginId: string, params: JsonObject): JsonValue {
     const key = this.requireString(params, 'key');
-    if (!Object.prototype.hasOwnProperty.call(params, 'value')) {
-      throw new BadRequestException('state.set 缺少 value');
-    }
-
-    return this.stateService.set(pluginId, key, params.value as JsonValue);
+    return this.stateService.set(
+      pluginId,
+      key,
+      this.requireJsonValue(params, 'value', 'state.set'),
+    );
   }
 
   /**
@@ -729,10 +726,7 @@ export class PluginHostService {
       ...(typeof params.maxOutputTokens === 'number'
         ? { maxOutputTokens: params.maxOutputTokens }
         : {}),
-      sdkMessages: params.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })) as never,
+      sdkMessages: toAiSdkMessages(params.messages),
     });
 
     return {
@@ -747,7 +741,7 @@ export class PluginHostService {
         ? { finishReason: String(executed.result.finishReason) }
         : {}),
       ...(executed.result.usage !== undefined
-        ? { usage: toJsonValue(executed.result.usage as never) }
+        ? { usage: toJsonValue(executed.result.usage) }
         : {}),
     };
   }
@@ -937,11 +931,7 @@ export class PluginHostService {
    * @returns 已校验的消息
    */
   private readLlmMessage(value: JsonValue, index: number): PluginLlmMessage {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`messages[${index}] 必须是对象`);
-    }
-
-    const message = value as JsonObject;
+    const message = readJsonObjectValue(value, `messages[${index}]`);
     if (
       message.role !== 'user'
       && message.role !== 'assistant'
@@ -956,7 +946,7 @@ export class PluginHostService {
     return {
       role: message.role,
       content: this.readLlmMessageContent(
-        message.content as JsonValue,
+        message.content,
         `messages[${index}].content`,
       ),
     };
@@ -991,11 +981,7 @@ export class PluginHostService {
    * @returns 已校验的消息 part
    */
   private readChatMessagePart(value: JsonValue, label: string): ChatMessagePart {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`${label} 必须是对象`);
-    }
-
-    const part = value as JsonObject;
+    const part = readJsonObjectValue(value, label);
     if (part.type === 'text' && typeof part.text === 'string') {
       return {
         type: 'text',
@@ -1075,11 +1061,27 @@ export class PluginHostService {
     if (value === undefined || value === null) {
       return null;
     }
-    if (typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException(`${key} 必须是对象`);
+
+    return readJsonObjectValue(value, key);
+  }
+
+  /**
+   * 从参数对象读取必填 JSON 值字段。
+   * @param params 参数对象
+   * @param key 字段名
+   * @param method 当前 Host API 方法名
+   * @returns JSON 值
+   */
+  private requireJsonValue(
+    params: JsonObject,
+    key: string,
+    method: string,
+  ): JsonValue {
+    if (!Object.prototype.hasOwnProperty.call(params, key)) {
+      throw new BadRequestException(`${method} 缺少 ${key}`);
     }
 
-    return value as JsonObject;
+    return params[key];
   }
 
   /**
@@ -1125,4 +1127,16 @@ export class PluginHostService {
 
     return value;
   }
+}
+
+function readJsonObjectValue(value: JsonValue, label: string): JsonObject {
+  if (!isJsonObjectValue(value)) {
+    throw new BadRequestException(`${label} 必须是对象`);
+  }
+
+  return value;
+}
+
+function isJsonObjectValue(value: JsonValue): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

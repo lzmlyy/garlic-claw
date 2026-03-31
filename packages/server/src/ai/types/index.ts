@@ -7,18 +7,12 @@ export type {
   ProviderId,
   ModelId,
   ModalityCapabilities,
-  ReasoningConfig,
   ModelCapabilities,
   ApiConfig,
   ModelCost,
   ModelLimit,
   ModelConfig,
   ProviderConfig,
-  ProviderOptions,
-  ProviderInstance,
-  ProviderFactory,
-  CustomModelLoader,
-  ProviderLoader,
 } from './provider.types';
 
 export {
@@ -26,6 +20,4 @@ export {
   createModelId,
   createDefaultModalityCapabilities,
   createDefaultCapabilities,
-  BUILTIN_PROVIDER_IDS,
-  BUILTIN_SDK_PACKAGES,
 } from './provider.types';

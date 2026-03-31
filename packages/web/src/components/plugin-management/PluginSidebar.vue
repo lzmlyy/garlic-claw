@@ -415,7 +415,7 @@ function pluginSortWeight(plugin: PluginInfo): number {
  * @returns 扩展摘要
  */
 function pluginSurfaceSummary(plugin: PluginInfo): string {
-  return `${plugin.capabilities.length} 工具 · ${plugin.hooks?.length ?? 0} Hook · ${plugin.routes?.length ?? 0} Route`
+  return `${plugin.manifest.tools.length} 工具 · ${plugin.manifest.hooks?.length ?? 0} Hook · ${plugin.manifest.routes?.length ?? 0} Route`
 }
 
 function readShowSystemBuiltinsPreference(): boolean {

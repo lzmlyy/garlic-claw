@@ -151,7 +151,7 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
         return automations.map((automation) => ({
           id: automation.id,
           name: automation.name,
-          trigger: automation.trigger as unknown as JsonValue,
+          trigger: toJsonValue(automation.trigger),
           enabled: automation.enabled,
           lastRunAt: automation.lastRunAt,
         }));
@@ -257,7 +257,7 @@ function readOptionalObject(
     throw new Error(`${key} 必须是对象`);
   }
 
-  return value as JsonObject;
+  return value;
 }
 
 /**
@@ -302,12 +302,8 @@ function readAutomationAction(
   value: JsonValue,
   index: number,
 ): ActionConfig {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`actions[${index}] 必须是对象`);
-  }
-
-  const action = value as JsonObject;
-  const type = readRequiredString(action, 'type') as ActionConfig['type'];
+  const action = readJsonObjectValue(value, `actions[${index}]`);
+  const type = readRequiredString(action, 'type');
   if (type !== 'device_command' && type !== 'ai_message') {
     throw new Error(`actions[${index}].type 不合法`);
   }
@@ -342,11 +338,7 @@ function readOptionalActionTarget(
   if (value === undefined || value === null) {
     return undefined;
   }
-  if (typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${path}.target 必须是对象`);
-  }
-
-  const target = value as JsonObject;
+  const target = readJsonObjectValue(value, `${path}.target`);
   const type = readRequiredString(target, 'type');
   if (type !== 'conversation') {
     throw new Error(`${path}.target.type 当前只支持 conversation`);
@@ -356,4 +348,16 @@ function readOptionalActionTarget(
     type: 'conversation',
     id: readRequiredString(target, 'id'),
   };
+}
+
+function readJsonObjectValue(value: JsonValue, label: string): JsonObject {
+  if (!isJsonObjectValue(value)) {
+    throw new Error(`${label} 必须是对象`);
+  }
+
+  return value;
+}
+
+function isJsonObjectValue(value: JsonValue): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

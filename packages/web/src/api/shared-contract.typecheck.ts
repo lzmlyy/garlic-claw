@@ -106,14 +106,21 @@ const pluginInfo: PluginInfo = {
   name: 'plugin-pc',
   deviceType: 'pc',
   status: 'online',
-  capabilities: [
-    {
-      name: 'echo',
-      description: 'echo text',
-      parameters: {},
-    },
-  ],
   connected: true,
+  manifest: {
+    id: 'plugin-pc',
+    name: 'plugin-pc',
+    version: '1.0.0',
+    runtime: 'remote',
+    permissions: [],
+    tools: [
+      {
+        name: 'echo',
+        description: 'echo text',
+        parameters: {},
+      },
+    ],
+  },
   supportedActions: ['health-check', 'reload'],
   lastSeenAt: '2026-03-26T00:00:00.000Z',
   createdAt: '2026-03-26T00:00:00.000Z',

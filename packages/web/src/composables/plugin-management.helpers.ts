@@ -14,8 +14,8 @@ function hasConfigurableSurface(plugin: PluginInfo): boolean {
  */
 function hasUserFacingSurface(plugin: PluginInfo): boolean {
   return hasConfigurableSurface(plugin)
-    || plugin.capabilities.length > 0
-    || (plugin.routes?.length ?? 0) > 0
+    || plugin.manifest.tools.length > 0
+    || (plugin.manifest.routes?.length ?? 0) > 0
 }
 
 /**

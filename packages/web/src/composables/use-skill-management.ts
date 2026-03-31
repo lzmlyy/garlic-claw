@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 import type {
   ConversationSkillState,
   SkillDetail,
+  UpdateSkillGovernancePayload,
 } from '@garlic-claw/shared'
 import * as api from '../api'
 import type { useChatStore } from '../stores/chat'
@@ -14,6 +15,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
   const skills = ref<SkillDetail[]>([])
   const selectedSkillId = ref<string | null>(null)
   const conversationSkillState = ref<ConversationSkillState | null>(null)
+  const mutatingSkillId = ref<string | null>(null)
   let conversationSkillRequestId = 0
 
   const filteredSkills = computed(() => {
@@ -33,15 +35,26 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
       return haystack.includes(keyword)
     })
   })
-  const selectedSkill = computed(() => filteredSkills.value.find((skill) => skill.id === selectedSkillId.value)
-    ?? skills.value.find((skill) => skill.id === selectedSkillId.value)
-    ?? filteredSkills.value[0]
-    ?? skills.value[0]
-    ?? null)
+  const selectedSkill = computed(() => {
+    const currentSkillId = selectedSkillId.value
+    if (currentSkillId) {
+      return filteredSkills.value.find((skill) => skill.id === currentSkillId)
+        ?? skills.value.find((skill) => skill.id === currentSkillId)
+        ?? null
+    }
+
+    return filteredSkills.value[0] ?? skills.value[0] ?? null
+  })
   const totalCount = computed(() => skills.value.length)
   const activeCount = computed(() => conversationSkillState.value?.activeSkillIds.length ?? 0)
   const restrictedCount = computed(() =>
     skills.value.filter((skill) => skill.toolPolicy.allow.length > 0 || skill.toolPolicy.deny.length > 0).length,
+  )
+  const packageCount = computed(() =>
+    skills.value.filter((skill) => skill.assets.length > 0).length,
+  )
+  const disabledCount = computed(() =>
+    skills.value.filter((skill) => !skill.governance.enabled).length,
   )
 
   watch(
@@ -54,17 +67,19 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
 
   void loadSkills()
 
+  function replaceSkills(nextSkills: SkillDetail[]) {
+    skills.value = nextSkills
+    selectedSkillId.value = replaceSelectedSkillId(nextSkills, selectedSkillId.value)
+  }
+
   async function loadSkills() {
     loading.value = true
     error.value = null
 
     try {
-      skills.value = await api.listSkills()
-      if (!selectedSkillId.value || !skills.value.some((skill) => skill.id === selectedSkillId.value)) {
-        selectedSkillId.value = skills.value[0]?.id ?? null
-      }
+      replaceSkills(await api.listSkills())
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '加载 skills 失败'
+      error.value = toErrorMessage(cause, '加载 skills 失败')
     } finally {
       loading.value = false
     }
@@ -75,24 +90,16 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
     error.value = null
 
     try {
-      skills.value = await api.refreshSkills()
-      if (!selectedSkillId.value || !skills.value.some((skill) => skill.id === selectedSkillId.value)) {
-        selectedSkillId.value = skills.value[0]?.id ?? null
-      }
+      replaceSkills(await api.refreshSkills())
       await refreshConversationSkillState(chat.currentConversationId)
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '刷新 skills 失败'
+      error.value = toErrorMessage(cause, '刷新 skills 失败')
     } finally {
       refreshing.value = false
     }
   }
 
   async function toggleSkill(skillId: string) {
-    const conversationId = chat.currentConversationId
-    if (!conversationId) {
-      return
-    }
-
     const currentIds = conversationSkillState.value?.activeSkillIds ?? []
     const activeSet = new Set(currentIds)
     if (activeSet.has(skillId)) {
@@ -101,24 +108,52 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
       activeSet.add(skillId)
     }
 
-    conversationSkillState.value = await api.updateConversationSkills(conversationId, {
-      activeSkillIds: [...activeSet],
-    })
+    await persistConversationSkills([...activeSet])
   }
 
   async function clearConversationSkills() {
+    await persistConversationSkills([])
+  }
+
+  function selectSkill(skillId: string) {
+    selectedSkillId.value = skillId
+  }
+
+  async function updateSkillGovernance(
+    skillId: string,
+    patch: UpdateSkillGovernancePayload,
+  ) {
+    mutatingSkillId.value = skillId
+    error.value = null
+
+    try {
+      const updated = await api.updateSkillGovernance(skillId, patch)
+      replaceSkills(applySkillUpdate(skills.value, updated))
+      await refreshConversationSkillState(chat.currentConversationId)
+    } catch (cause) {
+      error.value = toErrorMessage(cause, '更新 skill 治理失败')
+    } finally {
+      if (mutatingSkillId.value === skillId) {
+        mutatingSkillId.value = null
+      }
+    }
+  }
+
+  async function persistConversationSkills(activeSkillIds: string[]) {
     const conversationId = chat.currentConversationId
     if (!conversationId) {
       return
     }
 
-    conversationSkillState.value = await api.updateConversationSkills(conversationId, {
-      activeSkillIds: [],
-    })
-  }
+    error.value = null
 
-  function selectSkill(skillId: string) {
-    selectedSkillId.value = skillId
+    try {
+      conversationSkillState.value = await api.updateConversationSkills(conversationId, {
+        activeSkillIds,
+      })
+    } catch (cause) {
+      error.value = toErrorMessage(cause, '更新当前会话 skills 失败')
+    }
   }
 
   async function refreshConversationSkillState(
@@ -132,26 +167,27 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
 
     try {
       const state = await api.getConversationSkills(conversationId)
-      if (
-        requestId !== conversationSkillRequestId ||
-        chat.currentConversationId !== conversationId
-      ) {
+      if (isConversationSkillRequestStale(
+        requestId,
+        conversationSkillRequestId,
+        conversationId,
+        chat.currentConversationId,
+      )) {
         return
       }
 
       conversationSkillState.value = state
     } catch {
-      if (
-        requestId !== conversationSkillRequestId ||
-        chat.currentConversationId !== conversationId
-      ) {
+      if (isConversationSkillRequestStale(
+        requestId,
+        conversationSkillRequestId,
+        conversationId,
+        chat.currentConversationId,
+      )) {
         return
       }
 
-      conversationSkillState.value = {
-        activeSkillIds: [],
-        activeSkills: [],
-      }
+      conversationSkillState.value = createEmptyConversationSkillState()
     }
   }
 
@@ -159,6 +195,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
     loading,
     refreshing,
     error,
+    mutatingSkillId,
     searchKeyword,
     skills,
     filteredSkills,
@@ -168,9 +205,54 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
     totalCount,
     activeCount,
     restrictedCount,
+    packageCount,
+    disabledCount,
     selectSkill,
     toggleSkill,
     clearConversationSkills,
+    updateSkillGovernance,
     refreshAll,
   }
+}
+
+function applySkillUpdate(skills: SkillDetail[], updated: SkillDetail): SkillDetail[] {
+  const index = skills.findIndex((skill) => skill.id === updated.id)
+  if (index === -1) {
+    return skills
+  }
+
+  const next = [...skills]
+  next.splice(index, 1, updated)
+  return next
+}
+
+function replaceSelectedSkillId(
+  skills: SkillDetail[],
+  currentSkillId: string | null,
+): string | null {
+  if (currentSkillId && skills.some((skill) => skill.id === currentSkillId)) {
+    return currentSkillId
+  }
+
+  return skills[0]?.id ?? null
+}
+
+function createEmptyConversationSkillState(): ConversationSkillState {
+  return {
+    activeSkillIds: [],
+    activeSkills: [],
+  }
+}
+
+function isConversationSkillRequestStale(
+  requestId: number,
+  activeRequestId: number,
+  requestedConversationId: string,
+  currentConversationId: string | null,
+): boolean {
+  return requestId !== activeRequestId || currentConversationId !== requestedConversationId
+}
+
+function toErrorMessage(cause: unknown, fallback: string): string {
+  return cause instanceof Error ? cause.message : fallback
 }

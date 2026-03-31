@@ -127,6 +127,34 @@ describe('BuiltinPluginTransport', () => {
     });
   });
 
+  it('returns an empty recall result when the host returns malformed memory search data', async () => {
+    hostService.call.mockResolvedValueOnce({
+      not: 'a-memory-array',
+    });
+
+    const transport = new BuiltinPluginTransport(
+      createMemoryToolsPlugin(),
+      hostService as never,
+    );
+
+    await expect(
+      transport.executeTool({
+        toolName: 'recall_memory',
+        params: {
+          query: '咖啡',
+        },
+        context: {
+          source: 'chat-tool',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+      }),
+    ).resolves.toEqual({
+      count: 0,
+      memories: [],
+    });
+  });
+
   it('invokes chat:before-model hooks through the same host api facade', async () => {
     hostService.call
       .mockResolvedValueOnce({
@@ -199,8 +227,55 @@ describe('BuiltinPluginTransport', () => {
       },
     });
     expect(result).toEqual({
-      appendSystemPrompt: '已知用户记忆：\n- [preference] 用户喜欢咖啡',
+      action: 'mutate',
+      systemPrompt: '你是 Garlic Claw\n\n已知用户记忆：\n- [preference] 用户喜欢咖啡',
     });
+  });
+
+  it('skips memory context injection when the host returns malformed memory results', async () => {
+    hostService.call
+      .mockResolvedValueOnce({
+        limit: 3,
+        promptPrefix: '已知用户记忆',
+      })
+      .mockResolvedValueOnce({
+        content: '这不是数组',
+      });
+
+    const transport = new BuiltinPluginTransport(
+      createMemoryContextPlugin(),
+      hostService as never,
+    );
+
+    await expect(
+      transport.invokeHook({
+        hookName: 'chat:before-model',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        payload: {
+          context: {
+            source: 'chat-hook',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+          },
+          request: {
+            providerId: 'openai',
+            modelId: 'gpt-5.2',
+            systemPrompt: '你是 Garlic Claw',
+            messages: [
+              {
+                role: 'user',
+                content: '今天我想喝咖啡',
+              },
+            ],
+            availableTools: [],
+          },
+        } satisfies ChatBeforeModelHookPayload,
+      }),
+    ).resolves.toBeNull();
   });
 
   it('invokes kb search through the same host api facade', async () => {
@@ -278,8 +353,9 @@ describe('BuiltinPluginTransport', () => {
       },
     });
     expect(result).toEqual({
-      appendSystemPrompt:
-        '与当前问题相关的系统知识：\n- [统一插件运行时] Garlic Claw 使用 builtin 与 remote 统一插件运行时。',
+      action: 'mutate',
+      systemPrompt:
+        '你是 Garlic Claw\n\n与当前问题相关的系统知识：\n- [统一插件运行时] Garlic Claw 使用 builtin 与 remote 统一插件运行时。',
     });
   });
 
@@ -646,6 +722,55 @@ describe('BuiltinPluginTransport', () => {
     });
 
     expect(hostService.call).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips title generation when the host returns malformed conversation messages', async () => {
+    hostService.call
+      .mockResolvedValueOnce({
+        defaultTitle: 'New Chat',
+        maxMessages: 4,
+      })
+      .mockResolvedValueOnce({
+        id: 'conversation-1',
+        title: 'New Chat',
+        createdAt: '2026-03-27T09:00:00.000Z',
+        updatedAt: '2026-03-27T09:00:00.000Z',
+      })
+      .mockResolvedValueOnce({
+        id: 'not-a-message-list',
+      });
+
+    const transport = new BuiltinPluginTransport(
+      createConversationTitlePlugin(),
+      hostService as never,
+    );
+
+    await expect(
+      transport.invokeHook({
+        hookName: 'chat:after-model',
+        context: {
+          source: 'chat-hook',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        payload: {
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          assistantMessageId: 'assistant-1',
+          assistantContent: '好的，我来帮你总结咖啡偏好。',
+          assistantParts: [
+            {
+              type: 'text',
+              text: '好的，我来帮你总结咖啡偏好。',
+            },
+          ],
+          toolCalls: [],
+          toolResults: [],
+        } satisfies ChatAfterModelHookPayload,
+      }),
+    ).resolves.toBeNull();
+
+    expect(hostService.call).toHaveBeenCalledTimes(3);
   });
 
   it('invokes builtin web routes through the same host api facade', async () => {
