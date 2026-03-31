@@ -5,13 +5,14 @@ import {
   type AutomationInfo,
   type ChatMessagePart,
   type DeviceType,
-  type ExecuteErrorPayload,
-  type ExecutePayload,
-  type ExecuteResultPayload,
-  type HostCallPayload,
-  type HostResultPayload,
-  type JsonObject,
-  type JsonValue,
+    type ExecuteErrorPayload,
+    type ExecutePayload,
+    type ExecuteResultPayload,
+    type HostCallPayload,
+    type HostResultPayload,
+    type HookInvokePayload,
+    type JsonObject,
+    type JsonValue,
   type MessageReceivedHookPayload,
   type MessageReceivedHookResult,
   type PluginCallContext,
@@ -50,8 +51,9 @@ import {
   type PluginSubagentTaskDetail,
   type PluginSubagentTaskStartParams,
   type PluginSubagentTaskSummary,
-  type RegisterPayload,
-  type RouteResultPayload,
+    type RegisterPayload,
+    type RouteInvokePayload,
+    type RouteResultPayload,
   type TriggerConfig,
   WS_ACTION,
   WS_TYPE,
@@ -92,8 +94,6 @@ export interface PluginClientOptions {
   pluginName: string;
   /** 设备类型 */
   deviceType: DeviceType;
-  /** 旧版能力列表输入；会被自动转换为 manifest.tools */
-  capabilities?: PluginCapability[];
   /** 新版 manifest 输入 */
   manifest?: PluginManifestInput;
   /** 断开时自动重连（默认：true） */
@@ -736,7 +736,7 @@ export class PluginClient {
   private messageHandlerOrder = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly options: Required<Omit<PluginClientOptions, 'manifest'>> & {
+  private readonly options: Required<PluginClientOptions> & {
     manifest: PluginManifestInput;
   };
 
@@ -745,7 +745,6 @@ export class PluginClient {
       autoReconnect: true,
       reconnectInterval: 5000,
       heartbeatInterval: 20000,
-      capabilities: [],
       manifest: {},
       ...options,
     };
@@ -1140,10 +1139,17 @@ export class PluginClient {
         await this.handleRouteInvoke(msg);
         return;
       case WS_ACTION.HOST_RESULT:
-        this.resolveHostCall(
-          msg.requestId,
-          (msg.payload as HostResultPayload).data,
-        );
+        try {
+          this.resolveHostCall(
+            msg.requestId,
+            readHostResultPayload(msg.payload).data,
+          );
+        } catch (error) {
+          this.rejectHostCall(
+            msg.requestId,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
         return;
       case WS_ACTION.HOST_ERROR:
         this.rejectHostCall(
@@ -1162,7 +1168,19 @@ export class PluginClient {
    * @returns 无返回值
    */
   private async handleExecute(msg: WsMessage<PluginClientPayload>) {
-    const payload = msg.payload as ExecutePayload;
+    let payload: ExecutePayload;
+    try {
+      payload = readExecutePayload(msg.payload);
+    } catch (error) {
+      this.send(
+        WS_TYPE.COMMAND,
+        WS_ACTION.EXECUTE_ERROR,
+        { error: error instanceof Error ? error.message : String(error) },
+        msg.requestId,
+      );
+      return;
+    }
+
     const toolName = payload.toolName ?? payload.capability ?? '';
     const handler = this.handlers.get(toolName);
 
@@ -1203,11 +1221,19 @@ export class PluginClient {
    * @returns 无返回值
    */
   private async handleHookInvoke(msg: WsMessage<PluginClientPayload>) {
-    const payload = msg.payload as {
-      hookName: PluginHookName;
-      context: PluginCallContext;
-      payload: JsonValue;
-    };
+    let payload: HookInvokePayload;
+    try {
+      payload = readHookInvokePayload(msg.payload);
+    } catch (error) {
+      this.send(
+        WS_TYPE.PLUGIN,
+        WS_ACTION.HOOK_ERROR,
+        { error: error instanceof Error ? error.message : String(error) },
+        msg.requestId,
+      );
+      return;
+    }
+
     const executionContext = this.createExecutionContext(payload.context);
     const hasInternalMessagePipeline = payload.hookName === 'message:received'
       && (this.messageHandlers.length > 0 || this.commandHandlers.length > 0);
@@ -1227,7 +1253,7 @@ export class PluginClient {
       let result: JsonValue | null | undefined;
       if (payload.hookName === 'message:received') {
         result = await this.handleMessageReceivedHook(
-          payload.payload as unknown as MessageReceivedHookPayload,
+          readMessageReceivedHookPayload(payload.payload),
           executionContext,
         );
       } else if (handler) {
@@ -1260,10 +1286,19 @@ export class PluginClient {
    * @returns 无返回值
    */
   private async handleRouteInvoke(msg: WsMessage<PluginClientPayload>) {
-    const payload = msg.payload as {
-      request: PluginRouteRequest;
-      context: PluginCallContext;
-    };
+    let payload: RouteInvokePayload;
+    try {
+      payload = readRouteInvokePayload(msg.payload);
+    } catch (error) {
+      this.send(
+        WS_TYPE.PLUGIN,
+        WS_ACTION.ROUTE_ERROR,
+        { error: error instanceof Error ? error.message : String(error) },
+        msg.requestId,
+      );
+      return;
+    }
+
     const handler = this.routeHandlers.get(normalizeRoutePath(payload.request.path));
 
     if (!handler) {
@@ -1307,46 +1342,33 @@ export class PluginClient {
   ): PluginExecutionContext {
     const context = callContext ?? { source: 'plugin' as const };
     const conversationSession = this.createConversationSessionController(context);
+    const call: PluginHostFacade['call'] = (method, params) =>
+      this.sendHostCall(method, params, context);
+    const callHost = <T>(
+      method: HostCallPayload['method'],
+      params: JsonObject = {},
+    ): Promise<T> => this.callHost<T>(method, params, context);
 
     return {
       callContext: context,
       host: {
-        call: (method, params) => this.sendHostCall(method, params, context),
+        call,
         conversationSession,
         getCurrentProvider: () =>
-          this.sendHostCall(
-            'provider.current.get',
-            {},
-            context,
-          ) as unknown as Promise<PluginProviderCurrentInfo>,
-        listProviders: () =>
-          this.sendHostCall(
-            'provider.list',
-            {},
-            context,
-          ) as unknown as Promise<PluginProviderSummary[]>,
+          callHost<PluginProviderCurrentInfo>('provider.current.get'),
+        listProviders: () => callHost<PluginProviderSummary[]>('provider.list'),
         getProvider: (providerId) =>
-          this.sendHostCall(
-            'provider.get',
-            { providerId },
-            context,
-          ) as unknown as Promise<PluginProviderSummary>,
+          callHost<PluginProviderSummary>('provider.get', { providerId }),
         getProviderModel: (providerId, modelId) =>
-          this.sendHostCall(
-            'provider.model.get',
-            { providerId, modelId },
-            context,
-          ) as unknown as Promise<PluginProviderModelSummary>,
+          callHost<PluginProviderModelSummary>('provider.model.get', {
+            providerId,
+            modelId,
+          }),
         searchMemories: (query, limit = 10) =>
-          this.sendHostCall('memory.search', { query, limit }, context),
-        getConversation: () =>
-          this.sendHostCall('conversation.get', {}, context),
+          call('memory.search', { query, limit }),
+        getConversation: () => call('conversation.get', {}),
         getCurrentMessageTarget: () =>
-          this.sendHostCall(
-            'message.target.current.get',
-            {},
-            context,
-          ) as unknown as Promise<PluginMessageTargetInfo | null>,
+          callHost<PluginMessageTargetInfo | null>('message.target.current.get'),
         sendMessage: ({
           target,
           content,
@@ -1356,13 +1378,13 @@ export class PluginClient {
         }) => {
           const params: JsonObject = {};
           if (target) {
-            params.target = target as unknown as JsonValue;
+            params.target = toHostJsonValue(target);
           }
           if (typeof content === 'string') {
             params.content = content;
           }
           if (parts) {
-            params.parts = parts as unknown as JsonValue;
+            params.parts = toHostJsonValue(parts);
           }
           if (typeof provider === 'string') {
             params.provider = provider;
@@ -1371,162 +1393,95 @@ export class PluginClient {
             params.model = model;
           }
 
-          return this.sendHostCall(
-            'message.send',
-            params,
-            context,
-          ) as unknown as Promise<PluginMessageSendInfo>;
+          return callHost<PluginMessageSendInfo>('message.send', params);
         },
         startConversationSession: (input) => conversationSession.start(input),
         getConversationSession: () => conversationSession.get(),
         keepConversationSession: (input) => conversationSession.keep(input),
         finishConversationSession: () => conversationSession.finish(),
         listKnowledgeBaseEntries: (limit) =>
-          this.sendHostCall(
+          callHost<PluginKbEntrySummary[]>(
             'kb.list',
             typeof limit === 'number' ? { limit } : {},
-            context,
-          ) as unknown as Promise<PluginKbEntrySummary[]>,
+          ),
         searchKnowledgeBase: (query, limit = 5) =>
-          this.sendHostCall(
+          callHost<PluginKbEntryDetail[]>(
             'kb.search',
             { query, limit },
-            context,
-          ) as unknown as Promise<PluginKbEntryDetail[]>,
+          ),
         getKnowledgeBaseEntry: (entryId) =>
-          this.sendHostCall(
-            'kb.get',
-            { entryId },
-            context,
-          ) as unknown as Promise<PluginKbEntryDetail>,
+          callHost<PluginKbEntryDetail>('kb.get', { entryId }),
         getCurrentPersona: () =>
-          this.sendHostCall(
-            'persona.current.get',
-            {},
-            context,
-          ) as unknown as Promise<PluginPersonaCurrentInfo>,
-        listPersonas: () =>
-          this.sendHostCall(
-            'persona.list',
-            {},
-            context,
-          ) as unknown as Promise<PluginPersonaSummary[]>,
+          callHost<PluginPersonaCurrentInfo>('persona.current.get'),
+        listPersonas: () => callHost<PluginPersonaSummary[]>('persona.list'),
         getPersona: (personaId) =>
-          this.sendHostCall(
-            'persona.get',
-            { personaId },
-            context,
-          ) as unknown as Promise<PluginPersonaSummary>,
+          callHost<PluginPersonaSummary>('persona.get', { personaId }),
         activatePersona: (personaId) =>
-          this.sendHostCall(
-            'persona.activate',
-            { personaId },
-            context,
-          ) as unknown as Promise<PluginPersonaCurrentInfo>,
+          callHost<PluginPersonaCurrentInfo>('persona.activate', { personaId }),
         registerCron: (descriptor) =>
-          this.sendHostCall(
-            'cron.register',
-            {
-              name: descriptor.name,
-              cron: descriptor.cron,
-              ...(descriptor.description ? { description: descriptor.description } : {}),
-              ...(typeof descriptor.enabled === 'boolean' ? { enabled: descriptor.enabled } : {}),
-              ...(Object.prototype.hasOwnProperty.call(descriptor, 'data')
-                ? { data: descriptor.data as JsonValue }
-                : {}),
-            },
-            context,
-          ) as unknown as Promise<PluginCronJobSummary>,
-        listCrons: () =>
-          this.sendHostCall('cron.list', {}, context) as unknown as Promise<PluginCronJobSummary[]>,
+          callHost<PluginCronJobSummary>('cron.register', {
+            name: descriptor.name,
+            cron: descriptor.cron,
+            ...(descriptor.description ? { description: descriptor.description } : {}),
+            ...(typeof descriptor.enabled === 'boolean' ? { enabled: descriptor.enabled } : {}),
+            ...(typeof descriptor.data !== 'undefined' ? { data: descriptor.data } : {}),
+          }),
+        listCrons: () => callHost<PluginCronJobSummary[]>('cron.list'),
         deleteCron: (jobId) =>
-          this.sendHostCall(
-            'cron.delete',
-            {
-              jobId,
-            },
-            context,
-          ) as unknown as Promise<boolean>,
+          callHost<boolean>('cron.delete', {
+            jobId,
+          }),
         createAutomation: ({ name, trigger, actions }) =>
-          this.sendHostCall(
-            'automation.create',
-            {
-              name,
-              trigger: trigger as never,
-              actions: actions as never,
-            },
-            context,
-          ) as unknown as Promise<AutomationInfo>,
-        listAutomations: () =>
-          this.sendHostCall(
-            'automation.list',
-            {},
-            context,
-          ) as unknown as Promise<AutomationInfo[]>,
+          callHost<AutomationInfo>('automation.create', {
+            name,
+            trigger: toHostJsonValue(trigger),
+            actions: toHostJsonValue(actions),
+          }),
+        listAutomations: () => callHost<AutomationInfo[]>('automation.list'),
         toggleAutomation: (automationId) =>
-          this.sendHostCall(
-            'automation.toggle',
-            { automationId },
-            context,
-          ) as unknown as Promise<{ id: string; enabled: boolean } | null>,
+          callHost<{ id: string; enabled: boolean } | null>('automation.toggle', {
+            automationId,
+          }),
         runAutomation: (automationId) =>
-          this.sendHostCall(
-            'automation.run',
-            { automationId },
-            context,
-          ) as unknown as Promise<{ status: string; results: JsonValue[] } | null>,
+          callHost<{ status: string; results: JsonValue[] } | null>('automation.run', {
+            automationId,
+          }),
         emitAutomationEvent: (event) =>
-          this.sendHostCall(
-            'automation.event.emit',
-            { event },
-            context,
-          ) as unknown as Promise<AutomationEventDispatchInfo>,
-        getPluginSelf: () =>
-          this.sendHostCall('plugin.self.get', {}, context) as unknown as Promise<PluginSelfInfo>,
+          callHost<AutomationEventDispatchInfo>('automation.event.emit', {
+            event,
+          }),
+        getPluginSelf: () => callHost<PluginSelfInfo>('plugin.self.get'),
         writeLog: ({ level, message, type, metadata }) =>
-          this.sendHostCall(
-            'log.write',
-            {
-              level,
-              message,
-              ...(type ? { type } : {}),
-              ...(metadata ? { metadata } : {}),
-            },
-            context,
-          ) as unknown as Promise<boolean>,
+          callHost<boolean>('log.write', {
+            level,
+            message,
+            ...(type ? { type } : {}),
+            ...(metadata ? { metadata } : {}),
+          }),
         saveMemory: ({ content, category, keywords }) =>
-          this.sendHostCall(
-            'memory.save',
-            {
-              content,
-              ...(category ? { category } : {}),
-              ...(keywords ? { keywords } : {}),
-            },
-            context,
-          ),
+          call('memory.save', {
+            content,
+            ...(category ? { category } : {}),
+            ...(keywords ? { keywords } : {}),
+          }),
         listConversationMessages: () =>
-          this.sendHostCall('conversation.messages.list', {}, context),
+          call('conversation.messages.list', {}),
         getStorage: (key) =>
-          this.sendHostCall('storage.get', { key }, context),
+          call('storage.get', { key }),
         setStorage: (key, value) =>
-          this.sendHostCall('storage.set', { key, value }, context),
+          call('storage.set', { key, value }),
         deleteStorage: (key) =>
-          this.sendHostCall('storage.delete', { key }, context),
+          call('storage.delete', { key }),
         listStorage: (prefix) =>
-          this.sendHostCall('storage.list', prefix ? { prefix } : {}, context),
-        getState: (key) => this.sendHostCall('state.get', { key }, context),
+          call('storage.list', prefix ? { prefix } : {}),
+        getState: (key) => call('state.get', { key }),
         setState: (key, value) =>
-          this.sendHostCall('state.set', { key, value }, context),
+          call('state.set', { key, value }),
         getConfig: (key) =>
-          this.sendHostCall('config.get', key ? { key } : {}, context),
-        getUser: () =>
-          this.sendHostCall('user.get', {}, context),
+          call('config.get', key ? { key } : {}),
+        getUser: () => call('user.get', {}),
         setConversationTitle: (title) =>
-          this.sendHostCall(
-            'conversation.title.set',
-            { title },
-            context,
-          ),
+          call('conversation.title.set', { title }),
         generate: ({
           providerId,
           modelId,
@@ -1537,20 +1492,16 @@ export class PluginClient {
           headers,
           maxOutputTokens,
         }) =>
-          this.sendHostCall(
-            'llm.generate',
-            {
-              ...(providerId ? { providerId } : {}),
-              ...(modelId ? { modelId } : {}),
-              ...(system ? { system } : {}),
-              messages: messages as never,
-              ...(variant ? { variant } : {}),
-              ...(providerOptions ? { providerOptions } : {}),
-              ...(headers ? { headers } : {}),
-              ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-            },
-            context,
-          ) as unknown as Promise<PluginLlmGenerateResult>,
+          callHost<PluginLlmGenerateResult>('llm.generate', {
+            ...(providerId ? { providerId } : {}),
+            ...(modelId ? { modelId } : {}),
+            ...(system ? { system } : {}),
+            messages: toHostJsonValue(messages),
+            ...(variant ? { variant } : {}),
+            ...(providerOptions ? { providerOptions } : {}),
+            ...(headers ? { headers } : {}),
+            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+          }),
         runSubagent: ({
           providerId,
           modelId,
@@ -1563,22 +1514,18 @@ export class PluginClient {
           maxOutputTokens,
           maxSteps,
         }) =>
-          this.sendHostCall(
-            'subagent.run',
-            {
-              ...(providerId ? { providerId } : {}),
-              ...(modelId ? { modelId } : {}),
-              ...(system ? { system } : {}),
-              messages: messages as never,
-              ...(toolNames ? { toolNames } : {}),
-              ...(variant ? { variant } : {}),
-              ...(providerOptions ? { providerOptions } : {}),
-              ...(headers ? { headers } : {}),
-              ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-              ...(typeof maxSteps === 'number' ? { maxSteps } : {}),
-            },
-            context,
-          ) as unknown as Promise<PluginSubagentRunResult>,
+          callHost<PluginSubagentRunResult>('subagent.run', {
+            ...(providerId ? { providerId } : {}),
+            ...(modelId ? { modelId } : {}),
+            ...(system ? { system } : {}),
+            messages: toHostJsonValue(messages),
+            ...(toolNames ? { toolNames: toHostJsonValue(toolNames) } : {}),
+            ...(variant ? { variant } : {}),
+            ...(providerOptions ? { providerOptions } : {}),
+            ...(headers ? { headers: toHostJsonValue(headers) } : {}),
+            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+            ...(typeof maxSteps === 'number' ? { maxSteps } : {}),
+          }),
         startSubagentTask: ({
           providerId,
           modelId,
@@ -1593,7 +1540,7 @@ export class PluginClient {
           writeBack,
         }) => {
           const startTaskParams: JsonObject = {
-            messages: messages as never,
+            messages: toHostJsonValue(messages),
           };
           if (providerId) {
             startTaskParams.providerId = providerId;
@@ -1605,7 +1552,7 @@ export class PluginClient {
             startTaskParams.system = system;
           }
           if (toolNames) {
-            startTaskParams.toolNames = toolNames as never;
+            startTaskParams.toolNames = toHostJsonValue(toolNames);
           }
           if (variant) {
             startTaskParams.variant = variant;
@@ -1614,7 +1561,7 @@ export class PluginClient {
             startTaskParams.providerOptions = providerOptions;
           }
           if (headers) {
-            startTaskParams.headers = headers as never;
+            startTaskParams.headers = toHostJsonValue(headers);
           }
           if (typeof maxOutputTokens === 'number') {
             startTaskParams.maxOutputTokens = maxOutputTokens;
@@ -1623,29 +1570,20 @@ export class PluginClient {
             startTaskParams.maxSteps = maxSteps;
           }
           if (writeBack) {
-            startTaskParams.writeBack = writeBack as never;
+            startTaskParams.writeBack = toHostJsonValue(writeBack);
           }
 
-          return this.sendHostCall(
+          return callHost<PluginSubagentTaskSummary>(
             'subagent.task.start',
             startTaskParams,
-            context,
-          ) as unknown as Promise<PluginSubagentTaskSummary>;
+          );
         },
         listSubagentTasks: () =>
-          this.sendHostCall(
-            'subagent.task.list',
-            {},
-            context,
-          ) as unknown as Promise<PluginSubagentTaskSummary[]>,
+          callHost<PluginSubagentTaskSummary[]>('subagent.task.list'),
         getSubagentTask: (taskId) =>
-          this.sendHostCall(
-            'subagent.task.get',
-            {
-              taskId,
-            },
-            context,
-          ) as unknown as Promise<PluginSubagentTaskDetail>,
+          callHost<PluginSubagentTaskDetail>('subagent.task.get', {
+            taskId,
+          }),
         generateText: ({
           prompt,
           system,
@@ -1656,20 +1594,16 @@ export class PluginClient {
           providerOptions,
           headers,
         }) =>
-          this.sendHostCall(
-            'llm.generate-text',
-            {
-              prompt,
-              ...(system ? { system } : {}),
-              ...(providerId ? { providerId } : {}),
-              ...(modelId ? { modelId } : {}),
-              ...(variant ? { variant } : {}),
-              ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-              ...(providerOptions ? { providerOptions } : {}),
-              ...(headers ? { headers } : {}),
-            },
-            context,
-          ),
+          call('llm.generate-text', {
+            prompt,
+            ...(system ? { system } : {}),
+            ...(providerId ? { providerId } : {}),
+            ...(modelId ? { modelId } : {}),
+            ...(variant ? { variant } : {}),
+            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+            ...(providerOptions ? { providerOptions } : {}),
+            ...(headers ? { headers } : {}),
+          }),
       },
     };
   }
@@ -1876,7 +1810,7 @@ export class PluginClient {
     const sessionWaiterResult = await this.runSessionWaiter(currentPayload, context);
     if (sessionWaiterResult) {
       if (sessionWaiterResult.action === 'short-circuit') {
-        return sessionWaiterResult as unknown as JsonValue;
+        return toHostJsonValue(sessionWaiterResult);
       }
       if (sessionWaiterResult.action === 'mutate') {
         currentPayload = applyMessageReceivedMutation(currentPayload, sessionWaiterResult);
@@ -1890,7 +1824,7 @@ export class PluginClient {
         continue;
       }
       if (normalizedResult.action === 'short-circuit') {
-        return normalizedResult as unknown as JsonValue;
+        return toHostJsonValue(normalizedResult);
       }
 
       currentPayload = applyMessageReceivedMutation(currentPayload, normalizedResult);
@@ -1898,10 +1832,10 @@ export class PluginClient {
     }
 
     if (hasMutation) {
-      return buildMessageReceivedMutationResult(
+      return toHostJsonValue(buildMessageReceivedMutationResult(
         originalPayload,
         currentPayload,
-      ) as unknown as JsonValue;
+      ));
     }
 
     const fallbackHandler = this.hookHandlers.get('message:received');
@@ -1912,7 +1846,7 @@ export class PluginClient {
     }
 
     const rawResult = await fallbackHandler(
-      cloneJsonValue(payload) as unknown as JsonValue,
+      toHostJsonValue(cloneJsonValue(payload)),
       context,
     );
 
@@ -1959,7 +1893,10 @@ export class PluginClient {
     context: PluginCallContext,
   ): InternalConversationSessionController {
     let currentSession: PluginConversationSessionInfo | null = null;
-    const sendHostCall = this.sendHostCall.bind(this);
+    const callHost = <T>(
+      method: HostCallPayload['method'],
+      params: JsonObject = {},
+    ): Promise<T> => this.callHost<T>(method, params, context);
 
     const setSession = (session: PluginConversationSessionInfo | null) => {
       currentSession = session ? cloneConversationSessionInfo(session) : null;
@@ -1986,21 +1923,18 @@ export class PluginClient {
         params.metadata = input.metadata;
       }
 
-      const session = await sendHostCall(
+      const session = await callHost<PluginConversationSessionInfo>(
         'conversation.session.start',
         params,
-        context,
-      ) as unknown as PluginConversationSessionInfo;
+      );
       setSession(session);
       return cloneConversationSessionInfo(session);
     };
     const getSession = async (): Promise<PluginConversationSessionInfo | null> => {
       const previousConversationId = currentSession?.conversationId ?? context.conversationId;
-      const session = await sendHostCall(
+      const session = await callHost<PluginConversationSessionInfo | null>(
         'conversation.session.get',
-        {},
-        context,
-      ) as unknown as PluginConversationSessionInfo | null;
+      );
       setSession(session);
       if (!session) {
         clearLocalWaiter(previousConversationId);
@@ -2018,11 +1952,10 @@ export class PluginClient {
         params.resetTimeout = input.resetTimeout;
       }
 
-      const session = await sendHostCall(
+      const session = await callHost<PluginConversationSessionInfo | null>(
         'conversation.session.keep',
         params,
-        context,
-      ) as unknown as PluginConversationSessionInfo | null;
+      );
       setSession(session);
       if (!session) {
         clearLocalWaiter(previousConversationId);
@@ -2031,11 +1964,7 @@ export class PluginClient {
     };
     const finishSession = async (): Promise<boolean> => {
       const previousConversationId = currentSession?.conversationId ?? context.conversationId;
-      const finished = await sendHostCall(
-        'conversation.session.finish',
-        {},
-        context,
-      ) as unknown as boolean;
+      const finished = await callHost<boolean>('conversation.session.finish');
       clearLocalWaiter(previousConversationId);
       setSession(null);
       return finished;
@@ -2192,6 +2121,21 @@ export class PluginClient {
   }
 
   /**
+   * 发起一次带类型收口的 Host API 调用。
+   * @param method Host API 方法名
+   * @param params JSON 参数
+   * @param context 调用上下文
+   * @returns 收口后的结构化结果
+   */
+  private callHost<T>(
+    method: HostCallPayload['method'],
+    params: JsonObject = {},
+    context: PluginCallContext,
+  ): Promise<T> {
+    return this.sendHostCall(method, params, context) as Promise<T>;
+  }
+
+  /**
    * 解析当前插件应发送的 manifest。
    * @returns 完整 manifest
    */
@@ -2206,7 +2150,7 @@ export class PluginClient {
       runtime: 'remote',
       description: this.options.manifest.description,
       permissions: this.options.manifest.permissions ?? [],
-      tools: this.options.manifest.tools ?? this.options.capabilities,
+      tools: this.options.manifest.tools ?? [],
       ...(commands.length > 0 ? { commands } : {}),
       hooks,
       config: this.options.manifest.config,
@@ -2508,7 +2452,426 @@ function formatCommandTreeLine(
  * @returns 深拷贝后的值
  */
 function cloneJsonValue<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  return structuredClone(value);
+}
+
+const PLUGIN_INVOCATION_SOURCES: PluginCallContext['source'][] = [
+  'chat-tool',
+  'chat-hook',
+  'cron',
+  'automation',
+  'http-route',
+  'subagent',
+  'plugin',
+];
+
+const PLUGIN_ROUTE_METHODS: PluginRouteRequest['method'][] = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+];
+
+const PLUGIN_HOOK_NAMES: PluginHookName[] = [
+  'message:received',
+  'chat:before-model',
+  'chat:waiting-model',
+  'chat:after-model',
+  'conversation:created',
+  'message:created',
+  'message:updated',
+  'message:deleted',
+  'automation:before-run',
+  'automation:after-run',
+  'subagent:before-run',
+  'subagent:after-run',
+  'tool:before-call',
+  'tool:after-call',
+  'response:before-send',
+  'response:after-send',
+  'plugin:loaded',
+  'plugin:unloaded',
+  'plugin:error',
+  'cron:tick',
+];
+
+const CHAT_MESSAGE_STATUSES: Array<NonNullable<PluginMessageHookInfo['status']>> = [
+  'pending',
+  'streaming',
+  'completed',
+  'stopped',
+  'error',
+];
+
+function isOneOf<T extends string>(value: unknown, options: readonly T[]): value is T {
+  return typeof value === 'string' && options.some((option) => option === value);
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((item) => isJsonValue(item));
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return Object.values(value).every((item) => isJsonValue(item));
+}
+
+function isJsonObjectValue(value: unknown): value is JsonObject {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && Object.values(value).every((item) => isJsonValue(item));
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isJsonObjectValue(value)
+    && Object.values(value).every((item) => typeof item === 'string');
+}
+
+function isChatMessageStatus(value: unknown): value is NonNullable<PluginMessageHookInfo['status']> {
+  return isOneOf(value, CHAT_MESSAGE_STATUSES);
+}
+
+function isChatMessagePartArray(
+  value: unknown,
+): value is NonNullable<PluginMessageHookInfo['parts']> {
+  return Array.isArray(value)
+    && value.every((part) => {
+      if (!isJsonObjectValue(part) || typeof part.type !== 'string') {
+        return false;
+      }
+      if (part.type === 'text') {
+        return typeof part.text === 'string';
+      }
+      if (part.type === 'image') {
+        return typeof part.image === 'string'
+          && (!('mimeType' in part) || typeof part.mimeType === 'string');
+      }
+      return false;
+    });
+}
+
+function isPluginLlmMessageArray(
+  value: unknown,
+): value is MessageReceivedHookPayload['modelMessages'] {
+  return Array.isArray(value)
+    && value.every((message) => {
+      if (
+        !isJsonObjectValue(message)
+        || !isOneOf(message.role, ['user', 'assistant', 'system', 'tool'])
+      ) {
+        return false;
+      }
+
+      return typeof message.content === 'string'
+        || isChatMessagePartArray(message.content);
+    });
+}
+
+function isPluginCallContext(value: unknown): value is PluginCallContext {
+  if (!isJsonObjectValue(value) || !isOneOf(value.source, PLUGIN_INVOCATION_SOURCES)) {
+    return false;
+  }
+
+  return (!('userId' in value) || typeof value.userId === 'string')
+    && (!('conversationId' in value) || typeof value.conversationId === 'string')
+    && (!('automationId' in value) || typeof value.automationId === 'string')
+    && (!('cronJobId' in value) || typeof value.cronJobId === 'string')
+    && (!('activeProviderId' in value) || typeof value.activeProviderId === 'string')
+    && (!('activeModelId' in value) || typeof value.activeModelId === 'string')
+    && (!('activePersonaId' in value) || typeof value.activePersonaId === 'string')
+    && (!('metadata' in value) || isJsonObjectValue(value.metadata));
+}
+
+function isPluginMessageHookInfo(value: unknown): value is PluginMessageHookInfo {
+  if (
+    !isJsonObjectValue(value)
+    || typeof value.role !== 'string'
+    || (value.content !== null && typeof value.content !== 'string')
+    || !isChatMessagePartArray(value.parts)
+  ) {
+    return false;
+  }
+
+  return (!('id' in value) || typeof value.id === 'string')
+    && (!('provider' in value) || value.provider === null || typeof value.provider === 'string')
+    && (!('model' in value) || value.model === null || typeof value.model === 'string')
+    && (!('status' in value) || typeof value.status === 'undefined' || isChatMessageStatus(value.status));
+}
+
+function isPluginConversationSessionInfo(
+  value: unknown,
+): value is PluginConversationSessionInfo {
+  if (
+    !isJsonObjectValue(value)
+    || typeof value.pluginId !== 'string'
+    || typeof value.conversationId !== 'string'
+    || typeof value.timeoutMs !== 'number'
+    || typeof value.startedAt !== 'string'
+    || typeof value.expiresAt !== 'string'
+    || (value.lastMatchedAt !== null && typeof value.lastMatchedAt !== 'string')
+    || typeof value.captureHistory !== 'boolean'
+    || !Array.isArray(value.historyMessages)
+    || !value.historyMessages.every((message) => isPluginMessageHookInfo(message))
+  ) {
+    return false;
+  }
+
+  return !('metadata' in value) || isJsonValue(value.metadata);
+}
+
+function isPluginRouteMethod(value: unknown): value is PluginRouteRequest['method'] {
+  return isOneOf(value, PLUGIN_ROUTE_METHODS);
+}
+
+function isPluginRouteRequest(value: unknown): value is PluginRouteRequest {
+  return isJsonObjectValue(value)
+    && typeof value.path === 'string'
+    && isPluginRouteMethod(value.method)
+    && isStringRecord(value.headers)
+    && isJsonObjectValue(value.query)
+    && Object.prototype.hasOwnProperty.call(value, 'body')
+    && (value.body === null || isJsonValue(value.body));
+}
+
+function isPluginHookName(value: unknown): value is PluginHookName {
+  return isOneOf(value, PLUGIN_HOOK_NAMES);
+}
+
+function readJsonObjectPayload(payload: PluginClientPayload | JsonValue, label: string): JsonObject {
+  if (!isJsonObjectValue(payload)) {
+    throw new Error(`Invalid ${label} payload: expected JSON object`);
+  }
+
+  return payload;
+}
+
+/**
+ * 读取 Hook 调用负载。
+ * @param payload 原始消息负载
+ * @returns 结构化 Hook 调用负载
+ */
+function readHookInvokePayload(payload: PluginClientPayload): HookInvokePayload {
+  const jsonPayload = readJsonObjectPayload(payload, 'hook invoke');
+
+  if (!isPluginHookName(jsonPayload.hookName)) {
+    throw new Error('Invalid hook invoke payload: hookName');
+  }
+  if (!isPluginCallContext(jsonPayload.context)) {
+    throw new Error('Invalid hook invoke payload: context');
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(jsonPayload, 'payload')
+    || !isJsonValue(jsonPayload.payload)
+  ) {
+    throw new Error('Invalid hook invoke payload: payload');
+  }
+
+  return {
+    hookName: jsonPayload.hookName,
+    context: jsonPayload.context,
+    payload: jsonPayload.payload,
+  };
+}
+
+/**
+ * 读取工具执行负载。
+ * @param payload 原始消息负载
+ * @returns 结构化执行负载
+ */
+function readExecutePayload(payload: PluginClientPayload): ExecutePayload {
+  const jsonPayload = readJsonObjectPayload(payload, 'execute');
+
+  if (
+    'toolName' in jsonPayload
+    && typeof jsonPayload.toolName !== 'undefined'
+    && typeof jsonPayload.toolName !== 'string'
+  ) {
+    throw new Error('Invalid execute payload: toolName');
+  }
+  if (
+    'capability' in jsonPayload
+    && typeof jsonPayload.capability !== 'undefined'
+    && typeof jsonPayload.capability !== 'string'
+  ) {
+    throw new Error('Invalid execute payload: capability');
+  }
+  if (!isJsonObjectValue(jsonPayload.params)) {
+    throw new Error('Invalid execute payload: params');
+  }
+  if (
+    'context' in jsonPayload
+    && typeof jsonPayload.context !== 'undefined'
+    && !isPluginCallContext(jsonPayload.context)
+  ) {
+    throw new Error('Invalid execute payload: context');
+  }
+
+  return {
+    ...(typeof jsonPayload.toolName === 'string' ? { toolName: jsonPayload.toolName } : {}),
+    ...(typeof jsonPayload.capability === 'string' ? { capability: jsonPayload.capability } : {}),
+    params: jsonPayload.params,
+    ...(isPluginCallContext(jsonPayload.context) ? { context: jsonPayload.context } : {}),
+  };
+}
+
+/**
+ * 读取 Host API 返回负载。
+ * @param payload 原始消息负载
+ * @returns 结构化 Host 返回负载
+ */
+function readHostResultPayload(payload: PluginClientPayload): HostResultPayload {
+  const jsonPayload = readJsonObjectPayload(payload, 'host result');
+
+  if (
+    !Object.prototype.hasOwnProperty.call(jsonPayload, 'data')
+    || !isJsonValue(jsonPayload.data)
+  ) {
+    throw new Error('Invalid host result payload: data');
+  }
+
+  return {
+    data: jsonPayload.data,
+  };
+}
+
+/**
+ * 读取 Route 调用负载。
+ * @param payload 原始消息负载
+ * @returns 结构化 Route 调用负载
+ */
+function readRouteInvokePayload(payload: PluginClientPayload): RouteInvokePayload {
+  const jsonPayload = readJsonObjectPayload(payload, 'route invoke');
+
+  if (!isPluginRouteRequest(jsonPayload.request)) {
+    throw new Error('Invalid route invoke payload: request');
+  }
+  if (!isPluginCallContext(jsonPayload.context)) {
+    throw new Error('Invalid route invoke payload: context');
+  }
+
+  return {
+    request: jsonPayload.request,
+    context: jsonPayload.context,
+  };
+}
+
+/**
+ * 读取收到消息 Hook 负载。
+ * @param payload 原始 Hook 负载
+ * @returns 结构化收到消息 Hook 负载
+ */
+function readMessageReceivedHookPayload(
+  payload: JsonValue,
+): MessageReceivedHookPayload {
+  const jsonPayload = readJsonObjectPayload(payload, 'message:received');
+
+  if (!isPluginCallContext(jsonPayload.context)) {
+    throw new Error('Invalid message:received payload: context');
+  }
+  if (typeof jsonPayload.conversationId !== 'string') {
+    throw new Error('Invalid message:received payload: conversationId');
+  }
+  if (typeof jsonPayload.providerId !== 'string') {
+    throw new Error('Invalid message:received payload: providerId');
+  }
+  if (typeof jsonPayload.modelId !== 'string') {
+    throw new Error('Invalid message:received payload: modelId');
+  }
+  if (!isPluginMessageHookInfo(jsonPayload.message)) {
+    throw new Error('Invalid message:received payload: message');
+  }
+  if (!isPluginLlmMessageArray(jsonPayload.modelMessages)) {
+    throw new Error('Invalid message:received payload: modelMessages');
+  }
+  if (
+    typeof jsonPayload.session !== 'undefined'
+    && jsonPayload.session !== null
+    && !isPluginConversationSessionInfo(jsonPayload.session)
+  ) {
+    throw new Error('Invalid message:received payload: session');
+  }
+
+  return {
+    context: jsonPayload.context,
+    conversationId: jsonPayload.conversationId,
+    providerId: jsonPayload.providerId,
+    modelId: jsonPayload.modelId,
+    ...(typeof jsonPayload.session !== 'undefined' ? { session: jsonPayload.session } : {}),
+    message: jsonPayload.message,
+    modelMessages: jsonPayload.modelMessages,
+  };
+}
+
+/**
+ * 将 Host API 参数归一化为 JSON，并跳过显式 undefined 字段。
+ * @param value 原始值
+ * @returns 适合 Host API 的 JSON 值
+ */
+function toHostJsonValue(value: unknown): JsonValue {
+  if (
+    value === null
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const result: JsonValue[] = [];
+    for (const item of value) {
+      if (typeof item === 'undefined') {
+        continue;
+      }
+      result.push(toHostJsonValue(item));
+    }
+    return result;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (isPlainObject(value)) {
+    const result: JsonObject = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (typeof entry === 'undefined') {
+        continue;
+      }
+      result[key] = toHostJsonValue(entry);
+    }
+    return result;
+  }
+
+  return String(value);
+}
+
+/**
+ * 判断值是否为普通对象。
+ * @param value 待判断值
+ * @returns 是否为普通对象
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /**
@@ -2819,12 +3182,11 @@ function normalizeMessageListenerResult(
     return null;
   }
   if (
-    typeof result === 'object'
-    && result !== null
+    isJsonObjectValue(result)
     && 'action' in result
     && typeof result.action === 'string'
   ) {
-    return result as MessageReceivedHookResult;
+    return readMessageListenerHookResult(result);
   }
   if (typeof result === 'string') {
     return {
@@ -2841,6 +3203,112 @@ function normalizeMessageListenerResult(
   }
 
   throw new Error('SDK message handler 必须返回 string、{ content } 或标准 Hook 结果');
+}
+
+function readMessageListenerHookResult(
+  value: Record<string, unknown>,
+): MessageReceivedHookResult {
+  switch (value.action) {
+    case 'pass':
+      return {
+        action: 'pass',
+      };
+    case 'mutate': {
+      const result: MessageReceivedHookResult = {
+        action: 'mutate',
+      };
+
+      if ('providerId' in value) {
+        if (value.providerId !== undefined && typeof value.providerId !== 'string') {
+          throw new Error('Invalid hook action "mutate": providerId');
+        }
+        if (typeof value.providerId === 'string') {
+          result.providerId = value.providerId;
+        }
+      }
+      if ('modelId' in value) {
+        if (value.modelId !== undefined && typeof value.modelId !== 'string') {
+          throw new Error('Invalid hook action "mutate": modelId');
+        }
+        if (typeof value.modelId === 'string') {
+          result.modelId = value.modelId;
+        }
+      }
+      if ('content' in value) {
+        if (value.content !== null && value.content !== undefined && typeof value.content !== 'string') {
+          throw new Error('Invalid hook action "mutate": content');
+        }
+        result.content = value.content ?? null;
+      }
+      if ('parts' in value) {
+        if (value.parts !== null && value.parts !== undefined && !isChatMessagePartArray(value.parts)) {
+          throw new Error('Invalid hook action "mutate": parts');
+        }
+        result.parts = value.parts ?? null;
+      }
+      if ('modelMessages' in value) {
+        if (
+          value.modelMessages !== undefined
+          && !isPluginLlmMessageArray(value.modelMessages)
+        ) {
+          throw new Error('Invalid hook action "mutate": modelMessages');
+        }
+        if (value.modelMessages !== undefined) {
+          result.modelMessages = value.modelMessages;
+        }
+      }
+      return result;
+    }
+    case 'short-circuit': {
+      if (typeof value.assistantContent !== 'string') {
+        throw new Error('Invalid hook action "short-circuit": assistantContent');
+      }
+
+      const result: MessageReceivedHookResult = {
+        action: 'short-circuit',
+        assistantContent: value.assistantContent,
+      };
+
+      if ('assistantParts' in value) {
+        if (
+          value.assistantParts !== null
+          && value.assistantParts !== undefined
+          && !isChatMessagePartArray(value.assistantParts)
+        ) {
+          throw new Error('Invalid hook action "short-circuit": assistantParts');
+        }
+        result.assistantParts = value.assistantParts ?? null;
+      }
+      if ('providerId' in value) {
+        if (value.providerId !== undefined && typeof value.providerId !== 'string') {
+          throw new Error('Invalid hook action "short-circuit": providerId');
+        }
+        if (typeof value.providerId === 'string') {
+          result.providerId = value.providerId;
+        }
+      }
+      if ('modelId' in value) {
+        if (value.modelId !== undefined && typeof value.modelId !== 'string') {
+          throw new Error('Invalid hook action "short-circuit": modelId');
+        }
+        if (typeof value.modelId === 'string') {
+          result.modelId = value.modelId;
+        }
+      }
+      if ('reason' in value) {
+        if (value.reason !== undefined && typeof value.reason !== 'string') {
+          throw new Error('Invalid hook action "short-circuit": reason');
+        }
+        if (typeof value.reason === 'string') {
+          result.reason = value.reason;
+        }
+      }
+
+      return result;
+    }
+    default:
+      throw new Error(`Invalid hook action: ${value.action}`);
+  }
 }
 
 /**

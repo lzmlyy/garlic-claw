@@ -10,13 +10,13 @@ import {
   type HostResultPayload,
   type JsonValue,
   type PluginCallContext,
-  type PluginCapability,
   type PluginManifest,
   type PluginRouteResponse,
   type RegisterPayload,
   type RouteInvokePayload,
   type RouteResultPayload,
   WS_ACTION,
+  DeviceType,
   WS_TYPE,
   type WsMessage,
 } from '@garlic-claw/shared';
@@ -32,6 +32,8 @@ import { JwtService } from '@nestjs/jwt';
 import type { IncomingMessage } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { JsonObject } from '../common/types/json-value';
+import { toJsonValue } from '../common/utils/json-value';
+import { normalizePluginManifestCandidate } from './plugin-manifest.persistence';
 import { PluginRuntimeService, type PluginTransport } from './plugin-runtime.service';
 
 /**
@@ -43,6 +45,63 @@ const HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
  * 远程插件连接失活阈值。
  */
 const HEARTBEAT_TIMEOUT_MS = 90_000;
+
+/**
+ * 协议错误消息 action。
+ */
+const PROTOCOL_ERROR_ACTION = 'protocol_error';
+
+/**
+ * 当前支持的 Host API 方法集合。
+ */
+const PLUGIN_HOST_METHODS: PluginHostMethod[] = [
+  'automation.create',
+  'automation.event.emit',
+  'automation.list',
+  'automation.run',
+  'automation.toggle',
+  'config.get',
+  'cron.delete',
+  'cron.list',
+  'cron.register',
+  'conversation.get',
+  'conversation.session.finish',
+  'conversation.session.get',
+  'conversation.session.keep',
+  'conversation.session.start',
+  'conversation.messages.list',
+  'conversation.title.set',
+  'kb.get',
+  'kb.list',
+  'kb.search',
+  'llm.generate',
+  'llm.generate-text',
+  'log.write',
+  'message.send',
+  'message.target.current.get',
+  'memory.search',
+  'memory.save',
+  'persona.activate',
+  'persona.current.get',
+  'persona.get',
+  'persona.list',
+  'plugin.self.get',
+  'provider.current.get',
+  'provider.get',
+  'provider.list',
+  'provider.model.get',
+  'storage.delete',
+  'storage.get',
+  'storage.list',
+  'storage.set',
+  'subagent.run',
+  'subagent.task.get',
+  'subagent.task.list',
+  'subagent.task.start',
+  'state.get',
+  'state.set',
+  'user.get',
+];
 
 /**
  * 允许远程插件在无运行时上下文时直接调用的 Host API。
@@ -114,6 +173,16 @@ interface ActiveRequestContext {
   context: PluginCallContext;
 }
 
+interface ValidatedRegisterPayload {
+  manifest: Record<string, unknown>;
+}
+
+interface ValidatedHostCallPayload {
+  method: PluginHostMethod;
+  params: JsonObject;
+  context?: PluginCallContext;
+}
+
 /**
  * 网关消息负载联合。
  */
@@ -132,6 +201,7 @@ type PluginGatewayPayload =
   | JsonValue;
 
 type PluginGatewayMessage = WsMessage<PluginGatewayPayload>;
+type PluginGatewayInboundMessage = WsMessage<unknown>;
 
 /**
  * 插件 WebSocket 网关。
@@ -225,28 +295,6 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 获取指定远程插件的工具列表。
-   * @param pluginId 插件 ID
-   * @returns 该插件的工具描述列表
-   */
-  getPluginCapabilities(pluginId: string): PluginCapability[] {
-    return this.connectionByPluginId.get(pluginId)?.manifest?.tools ?? [];
-  }
-
-  /**
-   * 获取所有在线远程插件的工具列表。
-   * @returns 插件 ID 到工具列表的映射
-   */
-  getAllCapabilities(): Map<string, PluginCapability[]> {
-    const capabilities = new Map<string, PluginCapability[]>();
-    for (const [pluginId, connection] of this.connectionByPluginId) {
-      capabilities.set(pluginId, connection.manifest?.tools ?? []);
-    }
-
-    return capabilities;
-  }
-
-  /**
    * 主动断开指定远程插件连接。
    * @param pluginId 插件 ID
    * @returns 无返回值
@@ -322,12 +370,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     }, 10000);
 
     ws.on('message', (raw: Buffer) => {
-      try {
-        const message = JSON.parse(raw.toString()) as PluginGatewayMessage;
-        void this.handleMessage(ws, connection, message);
-      } catch {
-        this.send(ws, WS_TYPE.ERROR, 'parse_error', { error: '无效的 JSON' });
-      }
+      void this.handleIncomingMessage(ws, connection, raw);
     });
 
     ws.on('close', () => {
@@ -341,6 +384,42 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 解析并处理一条原始 websocket 消息。
+   * @param ws WebSocket 连接
+   * @param conn 当前连接
+   * @param raw 原始消息内容
+   */
+  private async handleIncomingMessage(
+    ws: WebSocket,
+    conn: PluginConnection,
+    raw: Buffer,
+  ): Promise<void> {
+    const rawText = raw.toString();
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      this.send(ws, WS_TYPE.ERROR, 'parse_error', { error: '无效的 JSON' });
+      return;
+    }
+
+    const message = readPluginGatewayMessage(parsed);
+    if (!message) {
+      this.sendProtocolError(ws, '无效的插件协议消息');
+      return;
+    }
+
+    try {
+      await this.handleMessage(ws, conn, message);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`插件协议消息处理失败: ${messageText}`);
+      this.sendProtocolError(ws, '插件协议消息处理失败');
+    }
+  }
+
+  /**
    * 处理一条来自远程插件的消息。
    * @param ws WebSocket 连接
    * @param conn 当前连接
@@ -350,7 +429,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private async handleMessage(
     ws: WebSocket,
     conn: PluginConnection,
-    msg: PluginGatewayMessage,
+    msg: PluginGatewayInboundMessage,
   ): Promise<void> {
     if (!conn.authenticated && !(msg.type === WS_TYPE.AUTH && msg.action === WS_ACTION.AUTHENTICATE)) {
       this.send(ws, WS_TYPE.ERROR, WS_ACTION.AUTH_FAIL, { error: '未认证' });
@@ -363,7 +442,12 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     switch (msg.type) {
       case WS_TYPE.AUTH:
         if (msg.action === WS_ACTION.AUTHENTICATE) {
-          await this.handleAuth(ws, conn, msg.payload as AuthPayload);
+          const payload = readAuthPayload(msg.payload);
+          if (!payload) {
+            this.sendProtocolError(ws, '无效的认证负载');
+            return;
+          }
+          await this.handleAuth(ws, conn, payload);
         }
         return;
 
@@ -399,36 +483,66 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private async handlePluginMessage(
     ws: WebSocket,
     conn: PluginConnection,
-    msg: PluginGatewayMessage,
+    msg: PluginGatewayInboundMessage,
   ): Promise<void> {
     switch (msg.action) {
-      case WS_ACTION.REGISTER:
-        await this.handleRegister(ws, conn, msg.payload as RegisterPayload);
+      case WS_ACTION.REGISTER: {
+        const payload = readRegisterPayload(msg.payload);
+        if (!payload) {
+          this.sendProtocolError(ws, '无效的插件注册负载');
+          return;
+        }
+        await this.handleRegister(ws, conn, payload);
         return;
-      case WS_ACTION.HOOK_RESULT:
+      }
+      case WS_ACTION.HOOK_RESULT: {
+        const payload = readDataPayload(msg.payload);
+        if (!payload) {
+          this.rejectPendingRequest(this.readRequestId(msg), '无效的 Hook 返回负载');
+          return;
+        }
         this.resolvePendingRequest(
           this.readRequestId(msg),
-          (msg.payload as HookResultPayload).data,
+          payload.data,
         );
         return;
-      case WS_ACTION.HOOK_ERROR:
+      }
+      case WS_ACTION.HOOK_ERROR: {
+        const payload = readErrorPayload(msg.payload);
+        if (!payload) {
+          this.rejectPendingRequest(this.readRequestId(msg), '无效的 Hook 错误负载');
+          return;
+        }
         this.rejectPendingRequest(
           this.readRequestId(msg),
-          (msg.payload as ExecuteErrorPayload).error,
+          payload.error,
         );
         return;
-      case WS_ACTION.ROUTE_RESULT:
+      }
+      case WS_ACTION.ROUTE_RESULT: {
+        const payload = readRouteResultPayload(msg.payload);
+        if (!payload) {
+          this.rejectPendingRequest(this.readRequestId(msg), '无效的插件 Route 返回负载');
+          return;
+        }
         this.resolvePendingRequest(
           this.readRequestId(msg),
-          (msg.payload as RouteResultPayload).data as unknown as JsonValue,
+          toJsonValue(payload.data),
         );
         return;
-      case WS_ACTION.ROUTE_ERROR:
+      }
+      case WS_ACTION.ROUTE_ERROR: {
+        const payload = readErrorPayload(msg.payload);
+        if (!payload) {
+          this.rejectPendingRequest(this.readRequestId(msg), '无效的插件 Route 错误负载');
+          return;
+        }
         this.rejectPendingRequest(
           this.readRequestId(msg),
-          (msg.payload as ExecuteErrorPayload).error,
+          payload.error,
         );
         return;
+      }
       case WS_ACTION.HOST_CALL:
         await this.handleHostCall(ws, conn, msg);
         return;
@@ -443,21 +557,33 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
    * @returns 无返回值
    */
   private async handleCommandMessage(
-    msg: PluginGatewayMessage,
+    msg: PluginGatewayInboundMessage,
   ): Promise<void> {
     switch (msg.action) {
-      case WS_ACTION.EXECUTE_RESULT:
+      case WS_ACTION.EXECUTE_RESULT: {
+        const payload = readDataPayload(msg.payload);
+        if (!payload) {
+          this.rejectPendingRequest(this.readRequestId(msg), '无效的远程命令返回负载');
+          return;
+        }
         this.resolvePendingRequest(
           this.readRequestId(msg),
-          (msg.payload as ExecuteResultPayload).data,
+          payload.data,
         );
         return;
-      case WS_ACTION.EXECUTE_ERROR:
+      }
+      case WS_ACTION.EXECUTE_ERROR: {
+        const payload = readErrorPayload(msg.payload);
+        if (!payload) {
+          this.rejectPendingRequest(this.readRequestId(msg), '无效的远程命令错误负载');
+          return;
+        }
         this.rejectPendingRequest(
           this.readRequestId(msg),
-          (msg.payload as ExecuteErrorPayload).error,
+          payload.error,
         );
         return;
+      }
       default:
         return;
     }
@@ -510,7 +636,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private async handleRegister(
     ws: WebSocket,
     conn: PluginConnection,
-    payload: RegisterPayload,
+    payload: ValidatedRegisterPayload,
   ): Promise<void> {
     const manifest = this.resolveManifest(conn, payload);
     conn.manifest = manifest;
@@ -535,14 +661,25 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private async handleHostCall(
     ws: WebSocket,
     conn: PluginConnection,
-    msg: PluginGatewayMessage,
+    msg: PluginGatewayInboundMessage,
   ): Promise<void> {
     const requestId = this.readRequestId(msg);
     if (!requestId) {
       return;
     }
 
-    const payload = msg.payload as HostCallPayload;
+    const payload = readHostCallPayload(msg.payload);
+    if (!payload) {
+      this.send(
+        ws,
+        WS_TYPE.PLUGIN,
+        WS_ACTION.HOST_ERROR,
+        { error: '无效的 Host API 调用负载' },
+        requestId,
+      );
+      return;
+    }
+
     try {
       const context = this.resolveHostCallContext(
         conn,
@@ -621,7 +758,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
           this.readTimeoutMs(context, 10000),
         ),
       invokeRoute: ({ request, context }) =>
-        this.sendRequest(
+        this.sendTypedRequest<PluginRouteResponse>(
           conn.ws,
           WS_TYPE.PLUGIN,
           WS_ACTION.ROUTE_INVOKE,
@@ -630,7 +767,8 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
             context,
           },
           this.readTimeoutMs(context, 15000),
-        ) as unknown as Promise<PluginRouteResponse>,
+          readPluginRouteResponseOrThrow,
+        ),
       reload: () => this.disconnectPlugin(conn.pluginName),
       reconnect: () => this.disconnectPlugin(conn.pluginName),
       checkHealth: () => this.checkPluginHealth(conn.pluginName),
@@ -679,6 +817,28 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 发送一条带类型收口的远程请求。
+   * @param ws WebSocket 连接
+   * @param type 消息 type
+   * @param action 消息 action
+   * @param payload 请求负载
+   * @param timeoutMs 超时时间
+   * @returns 收口后的结果
+   */
+  private sendTypedRequest<T>(
+    ws: WebSocket,
+    type: string,
+    action: string,
+    payload: PluginGatewayPayload,
+    timeoutMs = 30000,
+    readResult: (value: JsonValue) => T,
+  ): Promise<T> {
+    return this.sendRequest(ws, type, action, payload, timeoutMs).then((value) =>
+      readResult(value),
+    );
+  }
+
+  /**
    * 从调用上下文读取超时参数。
    * @param context 插件调用上下文
    * @param fallback 默认超时
@@ -697,32 +857,25 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 根据注册负载解析 manifest；旧插件只传 capabilities 时自动补默认 manifest。
+   * 根据注册负载解析 manifest。
    * @param conn 当前连接
    * @param payload 注册负载
    * @returns 规范化后的 manifest
    */
   private resolveManifest(
     conn: PluginConnection,
-    payload: RegisterPayload,
+    payload: ValidatedRegisterPayload,
   ): PluginManifest {
-    if (payload.manifest) {
-      return {
-        ...payload.manifest,
-        id: conn.pluginName,
-        runtime: 'remote',
-      };
+    if (!payload.manifest) {
+      throw new Error('插件注册负载缺少 manifest');
     }
 
-    return {
+    return normalizePluginManifestCandidate(payload.manifest, {
       id: conn.pluginName,
-      name: conn.pluginName,
+      displayName: conn.pluginName,
       version: '0.0.0',
-      runtime: 'remote',
-      permissions: [],
-      tools: payload.capabilities ?? [],
-      hooks: [],
-    };
+      runtimeKind: 'remote',
+    });
   }
 
   /**
@@ -730,8 +883,8 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
    * @param msg 插件消息
    * @returns requestId；缺失时返回 null
    */
-  private readRequestId(msg: PluginGatewayMessage): string | null {
-    if (msg.requestId) {
+  private readRequestId(msg: PluginGatewayInboundMessage): string | null {
+    if (typeof msg.requestId === 'string' && msg.requestId.length > 0) {
       return msg.requestId;
     }
 
@@ -824,7 +977,7 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
       return approvedContext;
     }
 
-    if (CONNECTION_SCOPED_HOST_METHODS.has(method)) {
+    if (isConnectionScopedHostMethod(method)) {
       return {
         source: 'plugin',
       };
@@ -891,6 +1044,15 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 发送一条协议错误消息。
+   * @param ws WebSocket 连接
+   * @param error 错误描述
+   */
+  private sendProtocolError(ws: WebSocket, error: string): void {
+    this.send(ws, WS_TYPE.ERROR, PROTOCOL_ERROR_ACTION, { error });
+  }
+
+  /**
    * 扫描远程插件连接，并摘除超时未活跃的连接。
    */
   private checkHeartbeats() {
@@ -916,7 +1078,260 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-export { DeviceType } from '@garlic-claw/shared';
+export { DeviceType };
+
+const PLUGIN_INVOCATION_SOURCES: PluginCallContext['source'][] = [
+  'chat-tool',
+  'chat-hook',
+  'cron',
+  'automation',
+  'http-route',
+  'subagent',
+  'plugin',
+];
+
+function isJsonObjectValue(value: unknown): value is JsonObject {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every((entry) => isJsonValue(entry));
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((entry) => isJsonValue(entry));
+  }
+
+  return isJsonObjectValue(value);
+}
+
+function readUnknownObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readPluginGatewayMessage(value: unknown): PluginGatewayInboundMessage | null {
+  const record = readUnknownObject(value);
+  if (!record || typeof record.type !== 'string' || typeof record.action !== 'string' || !('payload' in record)) {
+    return null;
+  }
+  if ('requestId' in record && record.requestId !== undefined && typeof record.requestId !== 'string') {
+    return null;
+  }
+
+  return {
+    type: record.type,
+    action: record.action,
+    payload: record.payload,
+    ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
+  };
+}
+
+function readAuthPayload(payload: unknown): AuthPayload | null {
+  const record = readUnknownObject(payload);
+  if (
+    !record
+    || typeof record.token !== 'string'
+    || typeof record.pluginName !== 'string'
+    || typeof record.deviceType !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    token: record.token,
+    pluginName: record.pluginName,
+    deviceType: record.deviceType as DeviceType,
+  };
+}
+
+function readRegisterPayload(payload: unknown): ValidatedRegisterPayload | null {
+  const record = readUnknownObject(payload);
+  const manifest = record && 'manifest' in record
+    ? readUnknownObject(record.manifest)
+    : null;
+  if (!record || !manifest) {
+    return null;
+  }
+
+  return {
+    manifest,
+  };
+}
+
+function readDataPayload(
+  payload: unknown,
+): HostResultPayload | null {
+  const record = readUnknownObject(payload);
+  if (!record || !('data' in record) || !isJsonValue(record.data)) {
+    return null;
+  }
+
+  return {
+    data: record.data,
+  };
+}
+
+function readErrorPayload(
+  payload: unknown,
+): ExecuteErrorPayload | null {
+  const record = readUnknownObject(payload);
+  if (!record || typeof record.error !== 'string') {
+    return null;
+  }
+
+  return {
+    error: record.error,
+  };
+}
+
+function readRouteResultPayload(payload: unknown): RouteResultPayload | null {
+  const record = readUnknownObject(payload);
+  if (!record) {
+    return null;
+  }
+
+  const data = readPluginRouteResponse(record.data);
+  if (!data) {
+    return null;
+  }
+
+  return {
+    data,
+  };
+}
+
+function readHostCallPayload(payload: unknown): ValidatedHostCallPayload | null {
+  const record = readUnknownObject(payload);
+  const method = readPluginHostMethod(record?.method);
+  if (
+    !record
+    || !method
+    || !isJsonObjectValue(record.params)
+  ) {
+    return null;
+  }
+
+  const context = 'context' in record && record.context !== undefined
+    ? readPluginCallContext(record.context)
+    : undefined;
+  if ('context' in record && record.context !== undefined && !context) {
+    return null;
+  }
+
+  return {
+    method,
+    params: record.params,
+    ...(context ? { context } : {}),
+  };
+}
+
+function readPluginCallContext(value: unknown): PluginCallContext | null {
+  const record = readUnknownObject(value);
+  if (!record || !isPluginInvocationSource(record.source)) {
+    return null;
+  }
+
+  const context: PluginCallContext = {
+    source: record.source,
+  };
+  const stringKeys = [
+    'userId',
+    'conversationId',
+    'automationId',
+    'cronJobId',
+    'activeProviderId',
+    'activeModelId',
+    'activePersonaId',
+  ] as const;
+
+  for (const key of stringKeys) {
+    if (!(key in record) || record[key] === undefined) {
+      continue;
+    }
+    if (typeof record[key] !== 'string') {
+      return null;
+    }
+    context[key] = record[key];
+  }
+
+  if ('metadata' in record && record.metadata !== undefined) {
+    if (!isJsonObjectValue(record.metadata)) {
+      return null;
+    }
+    context.metadata = record.metadata;
+  }
+
+  return context;
+}
+
+function readPluginRouteResponse(value: unknown): PluginRouteResponse | null {
+  const record = readUnknownObject(value);
+  if (
+    !record
+    || typeof record.status !== 'number'
+    || !Number.isFinite(record.status)
+    || !('body' in record)
+    || !isJsonValue(record.body)
+  ) {
+    return null;
+  }
+
+  if ('headers' in record && record.headers !== undefined && !isStringRecord(record.headers)) {
+    return null;
+  }
+
+  return {
+    status: record.status,
+    body: record.body,
+    ...(isStringRecord(record.headers) ? { headers: record.headers } : {}),
+  };
+}
+
+function readPluginRouteResponseOrThrow(value: JsonValue): PluginRouteResponse {
+  const response = readPluginRouteResponse(value);
+  if (!response) {
+    throw new Error('无效的插件 Route 返回负载');
+  }
+
+  return response;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  const record = readUnknownObject(value);
+  return !!record && Object.values(record).every((entry) => typeof entry === 'string');
+}
+
+function isPluginInvocationSource(value: unknown): value is PluginCallContext['source'] {
+  return typeof value === 'string'
+    && (PLUGIN_INVOCATION_SOURCES as string[]).includes(value);
+}
+
+function isConnectionScopedHostMethod(method: string): method is PluginHostMethod {
+  return isPluginHostMethod(method) && CONNECTION_SCOPED_HOST_METHODS.has(method);
+}
+
+function readPluginHostMethod(value: unknown): PluginHostMethod | null {
+  return isPluginHostMethod(value) ? value : null;
+}
+
+function isPluginHostMethod(value: unknown): value is PluginHostMethod {
+  return typeof value === 'string'
+    && PLUGIN_HOST_METHODS.includes(value as PluginHostMethod);
+}
 
 /**
  * 从远程请求负载中提取插件调用上下文。
@@ -926,22 +1341,12 @@ export { DeviceType } from '@garlic-claw/shared';
 function extractPluginCallContext(
   payload: PluginGatewayPayload,
 ): PluginCallContext | undefined {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return undefined;
-  }
-  if (!('context' in payload)) {
-    return undefined;
-  }
-
-  const context = (payload as { context?: unknown }).context;
-  if (!context || typeof context !== 'object' || Array.isArray(context)) {
-    return undefined;
-  }
-  if (typeof (context as { source?: unknown }).source !== 'string') {
+  const record = readUnknownObject(payload);
+  if (!record || !('context' in record)) {
     return undefined;
   }
 
-  return context as PluginCallContext;
+  return readPluginCallContext(record.context) ?? undefined;
 }
 
 /**

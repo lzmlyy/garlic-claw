@@ -267,4 +267,68 @@ describe('PluginSubagentTaskService', () => {
       service.getTaskForPlugin('builtin.other-plugin', startedTask.id),
     ).rejects.toThrow(NotFoundException);
   });
+
+  it('falls back safely when persisted task json snapshots are malformed', async () => {
+    records.push({
+      id: 'subagent-task-bad-json',
+      pluginId: 'builtin.subagent-delegate',
+      pluginDisplayName: '子代理委派',
+      runtimeKind: 'builtin',
+      userId: 'user-1',
+      conversationId: 'conversation-1',
+      status: 'completed',
+      requestJson: JSON.stringify({
+        messages: 'bad-messages',
+        maxSteps: 'oops',
+      }),
+      contextJson: JSON.stringify({
+        source: 42,
+        userId: 9,
+      }),
+      resultJson: JSON.stringify({
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+        text: 123,
+      }),
+      error: null,
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      writeBackTargetJson: JSON.stringify({
+        type: 'invalid',
+        id: 9,
+      }),
+      writeBackStatus: 'sent',
+      writeBackError: null,
+      writeBackMessageId: 'assistant-message-1',
+      requestedAt: new Date('2026-03-30T12:00:09.000Z'),
+      startedAt: new Date('2026-03-30T12:00:10.000Z'),
+      finishedAt: new Date('2026-03-30T12:00:11.000Z'),
+      createdAt: new Date('2026-03-30T12:00:09.000Z'),
+      updatedAt: new Date('2026-03-30T12:00:11.000Z'),
+    });
+
+    await expect(service.listOverview()).resolves.toEqual({
+      tasks: [
+        expect.not.objectContaining({
+          writeBackTarget: expect.anything(),
+        }),
+      ],
+    });
+
+    await expect(service.getTaskOrThrow('subagent-task-bad-json')).resolves.toEqual(
+      expect.objectContaining({
+        id: 'subagent-task-bad-json',
+        request: {
+          messages: [],
+          maxSteps: 4,
+        },
+        context: {
+          source: 'plugin',
+        },
+      }),
+    );
+
+    const detail = await service.getTaskOrThrow('subagent-task-bad-json');
+    expect(detail.result).toBeUndefined();
+  });
 });

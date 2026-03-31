@@ -84,7 +84,10 @@ describe('PluginGateway', () => {
 
     expect(pluginRuntime.registerPlugin).toHaveBeenCalledWith(
       expect.objectContaining({
-        manifest: remoteManifest,
+        manifest: {
+          ...remoteManifest,
+          routes: [],
+        },
         runtimeKind: 'remote',
         transport: expect.any(Object),
       }),
@@ -103,6 +106,102 @@ describe('PluginGateway', () => {
       'reload',
       'reconnect',
     ]);
+  });
+
+  it('normalizes malformed manifest entries during remote plugin registration', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+      authenticated: true,
+      manifest: null,
+    };
+
+    await (gateway as any).handleMessage(
+      ws,
+      conn,
+      {
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.REGISTER,
+        payload: {
+          manifest: {
+            ...remoteManifest,
+            permissions: [
+              'conversation:read',
+              42,
+            ],
+            tools: [
+              remoteManifest.tools[0],
+              {
+                name: 9,
+              },
+            ],
+            hooks: [
+              {
+                name: 'chat:before-model',
+              },
+              {
+                name: 7,
+              },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(pluginRuntime.registerPlugin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: {
+          id: 'remote.pc-host',
+          name: '电脑助手',
+          version: '1.0.0',
+          runtime: 'remote',
+          permissions: ['conversation:read'],
+          tools: [
+            remoteManifest.tools[0],
+          ],
+          hooks: [
+            {
+              name: 'chat:before-model',
+            },
+          ],
+          routes: [],
+        },
+      }),
+    );
+  });
+
+  it('rejects malformed register payloads without throwing from the plugin message handler', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+      authenticated: true,
+      manifest: null,
+    };
+
+    await expect(
+      (gateway as any).handlePluginMessage(
+        ws,
+        conn,
+        {
+          type: WS_TYPE.PLUGIN,
+          action: WS_ACTION.REGISTER,
+          payload: null,
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(pluginRuntime.registerPlugin).not.toHaveBeenCalled();
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}')).toEqual({
+      type: WS_TYPE.ERROR,
+      action: 'protocol_error',
+      payload: {
+        error: '无效的插件注册负载',
+      },
+    });
   });
 
   it('handles host api calls from remote plugins and returns the result over websocket', async () => {
@@ -173,6 +272,86 @@ describe('PluginGateway', () => {
             content: '用户喜欢咖啡',
           },
         ],
+      },
+    });
+  });
+
+  it('rejects malformed host api payloads before they reach the runtime', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+      authenticated: true,
+      manifest: remoteManifest,
+    };
+
+    await (gateway as any).handleMessage(
+      ws,
+      conn,
+      {
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_CALL,
+        requestId: 'request-bad-host',
+        payload: {
+          method: 'plugin.self.get',
+          params: 'bad-params',
+        },
+      },
+    );
+
+    expect(pluginRuntime.callHost).not.toHaveBeenCalled();
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}')).toEqual({
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.HOST_ERROR,
+      requestId: 'request-bad-host',
+      payload: {
+        error: '无效的 Host API 调用负载',
+      },
+    });
+  });
+
+  it('rejects unknown host api method names before they reach the runtime', async () => {
+    const ws = createSocketStub();
+    const conn = {
+      ws,
+      pluginName: 'remote.pc-host',
+      deviceType: 'pc',
+      authenticated: true,
+      manifest: remoteManifest,
+    };
+    const approvedContext = {
+      source: 'chat-tool',
+      userId: 'user-1',
+      conversationId: 'conversation-1',
+    };
+    (gateway as any).activeRequestContexts.set('runtime-request-invalid-method', {
+      ws,
+      context: approvedContext,
+    });
+
+    await (gateway as any).handleMessage(
+      ws,
+      conn,
+      {
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_CALL,
+        requestId: 'request-invalid-method',
+        payload: {
+          method: 'host.not-real',
+          context: approvedContext,
+          params: {},
+        },
+      },
+    );
+
+    expect(pluginRuntime.callHost).not.toHaveBeenCalled();
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}')).toEqual({
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.HOST_ERROR,
+      requestId: 'request-invalid-method',
+      payload: {
+        error: '无效的 Host API 调用负载',
       },
     });
   });
