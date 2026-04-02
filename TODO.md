@@ -265,6 +265,11 @@
     - tool set 构建
     - fullStream 结果采集
   - `plugin-runtime.service.ts` 主文件行数已从 `1520` 继续降到 `1432`
+  - `PluginRuntimeSubagentFacade` 已继续承接：
+    - `runSubagentBeforeRunHooks(...)`
+    - `runSubagentAfterRunHooks(...)`
+    让 subagent 专用 hook 控制流也不再留在 runtime 主类里
+  - `plugin-runtime.service.ts` 主文件行数已从 `1432` 继续降到 `1411`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口

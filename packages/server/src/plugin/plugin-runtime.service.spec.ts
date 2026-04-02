@@ -203,7 +203,6 @@ describe('PluginRuntimeService', () => {
     service = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
-      cronService as never,
       aiModelExecution as never,
       runtimeGovernanceFacade as never,
       runtimeHostFacade as never,

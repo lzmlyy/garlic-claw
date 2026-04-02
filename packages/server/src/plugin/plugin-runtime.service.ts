@@ -42,7 +42,6 @@ import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { PluginHostService } from './plugin-host.service';
-import { PluginCronService } from './plugin-cron.service';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
@@ -56,8 +55,6 @@ import {
   cloneMessageReceivedHookPayload,
   cloneMessageUpdatedHookPayload,
   cloneResponseBeforeSendHookPayload,
-  cloneSubagentAfterRunPayload,
-  cloneSubagentBeforeRunPayload,
   cloneToolAfterCallHookPayload,
   cloneToolBeforeCallHookPayload,
 } from './plugin-runtime-clone.helpers';
@@ -78,8 +75,6 @@ import {
   applyMessageReceivedHookResult,
   applyMessageUpdatedMutation,
   applyResponseBeforeSendMutation,
-  applySubagentAfterRunMutation,
-  applySubagentBeforeRunMutation,
   applyToolAfterCallMutation,
   applyToolBeforeCallMutation,
 } from './plugin-runtime-hook-mutation.helpers';
@@ -96,8 +91,6 @@ import {
   normalizeMessageReceivedHookResult,
   normalizeMessageUpdatedHookResult,
   normalizeResponseBeforeSendHookResult,
-  normalizeSubagentAfterRunHookResult,
-  normalizeSubagentBeforeRunHookResult,
   normalizeToolAfterCallHookResult,
   normalizeToolBeforeCallHookResult,
 } from './plugin-runtime-hook-result.helpers';
@@ -112,7 +105,6 @@ import {
   findManifestToolOrThrow,
 } from './plugin-runtime-manifest.helpers';
 import {
-  buildResolvedSubagentRunResult,
 } from './plugin-runtime-subagent.helpers';
 import { runPromiseWithTimeout } from './plugin-runtime-timeout.helpers';
 import {
@@ -423,7 +415,6 @@ export class PluginRuntimeService {
   constructor(
     private readonly pluginService: PluginService,
     private readonly hostService: PluginHostService,
-    private readonly cronService: PluginCronService,
     private readonly aiModelExecution: AiModelExecutionService,
     private readonly runtimeGovernanceFacade: PluginRuntimeGovernanceFacade,
     private readonly runtimeHostFacade: PluginRuntimeHostFacade,
@@ -1260,35 +1251,14 @@ export class PluginRuntimeService {
     | { action: 'continue'; payload: SubagentBeforeRunHookPayload }
     | { action: 'short-circuit'; result: PluginSubagentRunResult }
   > {
-    return runShortCircuitingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'subagent:before-run',
-        context: input.context,
-      }),
-      hookName: 'subagent:before-run',
+    return this.runtimeSubagentFacade.runBeforeHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneSubagentBeforeRunPayload(input.payload),
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeSubagentBeforeRunHookResult,
-      applyMutation: applySubagentBeforeRunMutation,
-      buildShortCircuitReturn: ({ payload, result }) => {
-        const modelConfig = this.aiModelExecution.resolveModelConfig(
-          result.providerId ?? payload.request.providerId,
-          result.modelId ?? payload.request.modelId,
-        );
-
-        return {
-          action: 'short-circuit',
-          result: buildResolvedSubagentRunResult({
-            modelConfig,
-            text: result.text,
-            finishReason: result.finishReason,
-            toolCalls: result.toolCalls,
-            toolResults: result.toolResults,
-          }),
-        };
-      },
+      payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook({
+        ...hookInput,
+        payload: hookInput.payload as JsonValue,
+      }),
     });
   }
 
@@ -1301,18 +1271,14 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: SubagentAfterRunHookPayload;
   }): Promise<SubagentAfterRunHookPayload> {
-    return runMutatingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'subagent:after-run',
-        context: input.context,
-      }),
-      hookName: 'subagent:after-run',
+    return this.runtimeSubagentFacade.runAfterHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneSubagentAfterRunPayload(input.payload),
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeSubagentAfterRunHookResult,
-      applyMutation: applySubagentAfterRunMutation,
+      payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook({
+        ...hookInput,
+        payload: hookInput.payload as JsonValue,
+      }),
     });
   }
 
@@ -1442,11 +1408,23 @@ export class PluginRuntimeService {
     request: PluginSubagentRequest;
   }): Promise<PluginSubagentRunResult> {
     return this.runtimeSubagentFacade.executeRequest({
+      records: this.records.values(),
       pluginId: input.pluginId,
       context: input.context,
       request: input.request,
-      runBeforeHooks: (beforeInput) => this.runSubagentBeforeRunHooks(beforeInput),
-      runAfterHooks: (afterInput) => this.runSubagentAfterRunHooks(afterInput),
+      invokeHook: (hookInput) => this.invokePluginHook({
+        ...hookInput,
+        payload: hookInput.payload as JsonValue,
+      }),
+      runAfterHooks: (afterInput) => this.runtimeSubagentFacade.runAfterHooks({
+        records: this.records.values(),
+        context: afterInput.context,
+        payload: afterInput.payload,
+        invokeHook: (hookInput) => this.invokePluginHook({
+          ...hookInput,
+          payload: hookInput.payload as JsonValue,
+        }),
+      }),
     });
   }
 
