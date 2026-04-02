@@ -537,6 +537,12 @@
     - `tools/test-city-coordinates.ts`
     让 MCP core 回到“server runtime + tool snapshot + callTool”这一条主职责
   - 已新增：
+    - `packages/server/src/tool/tool-registry.helpers.ts`
+    继续把工具层的 ID/callName/description/source-key 归一化样板从 `ToolRegistryService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/tool/tool-registry.helpers.spec.ts`
+    直接给工具层 helper 补 toolId/callName/description/summary 回归
+  - 已新增：
     - `packages/server/src/plugin/plugin-record-view.helpers.ts`
     继续把 persisted manifest 驱动的 config snapshot/resolved config/self info 视图样板从 `PluginService` 主类中拆出
   - 已新增：

@@ -13,6 +13,12 @@ import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { McpToolProvider } from './mcp-tool.provider';
 import { PluginToolProvider } from './plugin-tool.provider';
 import { SkillToolProvider } from './skill-tool.provider';
+import {
+  buildAvailableToolSummary,
+  buildToolSourceKey,
+  compareToolKeys,
+  normalizeToolRecord,
+} from './tool-registry.helpers';
 import { ToolSettingsService } from './tool-settings.service';
 import type {
   ResolvedToolRecord,
@@ -124,7 +130,7 @@ export class ToolRegistryService {
     for (const { sources } of providedState) {
       for (const source of sources) {
         const normalized = this.applySourceOverrides(source);
-        sourceInfos.set(this.buildSourceKey(normalized.kind, normalized.id), {
+        sourceInfos.set(buildToolSourceKey(normalized.kind, normalized.id), {
           kind: normalized.kind,
           id: normalized.id,
           label: normalized.label,
@@ -147,7 +153,7 @@ export class ToolRegistryService {
       tools.map((raw) => this.toResolvedToolRecord(provider, raw)),
     )) {
       const { record } = entry;
-      const key = this.buildSourceKey(entry.record.source.kind, entry.record.source.id);
+      const key = buildToolSourceKey(entry.record.source.kind, entry.record.source.id);
       const existing = sourceInfos.get(key);
       if (existing) {
         existing.totalTools += 1;
@@ -190,11 +196,11 @@ export class ToolRegistryService {
 
     return {
       sources: [...sourceInfos.values()].sort((left, right) =>
-        this.compareKeys(
-          `${left.kind}:${left.id}`,
-          `${right.kind}:${right.id}`,
+        compareToolKeys(
+          buildToolSourceKey(left.kind, left.id),
+          buildToolSourceKey(right.kind, right.id),
         )),
-      tools: tools.sort((left, right) => this.compareKeys(left.toolId, right.toolId)),
+      tools: tools.sort((left, right) => compareToolKeys(left.toolId, right.toolId)),
     };
   }
 
@@ -220,7 +226,7 @@ export class ToolRegistryService {
     const resolvedTools = await this.resolveTools(input);
 
     return {
-      availableTools: resolvedTools.map((entry) => this.toAvailableToolSummary(entry.record)),
+      availableTools: resolvedTools.map((entry) => buildAvailableToolSummary(entry.record)),
       buildToolSet: (options) => this.buildAiToolSetFromResolvedTools(
         resolvedTools,
         options.context,
@@ -337,7 +343,7 @@ export class ToolRegistryService {
     provider: ToolProvider,
     raw: ToolProviderTool,
   ): ResolvedToolRecord {
-    const normalized = this.normalizeTool(raw);
+    const normalized = normalizeToolRecord(raw);
     const sourceEnabled = this.settings.getSourceEnabled(
       normalized.source.kind,
       normalized.source.id,
@@ -445,82 +451,6 @@ export class ToolRegistryService {
       ...this.buildBeforeCallPayload(entry, params, context),
       output,
     };
-  }
-
-  private buildSourceKey(kind: ToolSourceDescriptor['kind'], id: string): string {
-    return `${kind}:${id}`;
-  }
-
-  private compareKeys(left: string, right: string): number {
-    return left.localeCompare(right, 'zh-CN');
-  }
-
-  private normalizeTool(input: ToolProviderTool): ToolRecord {
-    const sourceEnabled = input.source.enabled ?? true;
-
-    return {
-      toolId: this.buildToolId(input),
-      toolName: input.name,
-      callName: this.buildCallName(input),
-      description: this.buildDescription(input),
-      parameters: input.parameters,
-      enabled: input.enabled ?? sourceEnabled,
-      source: {
-        kind: input.source.kind,
-        id: input.source.id,
-        label: input.source.label,
-        enabled: sourceEnabled,
-        health: input.source.health ?? 'unknown',
-        lastError: input.source.lastError ?? null,
-        lastCheckedAt: input.source.lastCheckedAt ?? null,
-      },
-      ...(input.pluginId ? { pluginId: input.pluginId } : {}),
-      ...(input.runtimeKind ? { runtimeKind: input.runtimeKind } : {}),
-    };
-  }
-
-  private toAvailableToolSummary(record: ToolRecord): PluginAvailableToolSummary {
-    return {
-      name: record.callName,
-      callName: record.callName,
-      toolId: record.toolId,
-      description: record.description,
-      parameters: record.parameters,
-      sourceKind: record.source.kind,
-      sourceId: record.source.id,
-      ...(record.pluginId ? { pluginId: record.pluginId } : {}),
-      ...(record.runtimeKind ? { runtimeKind: record.runtimeKind } : {}),
-    };
-  }
-
-  private buildToolId(input: ToolProviderTool): string {
-    return `${input.source.kind}:${input.source.id}:${input.name}`;
-  }
-
-  private buildCallName(input: ToolProviderTool): string {
-    if (input.source.kind === 'plugin') {
-      return input.runtimeKind === 'builtin'
-        ? input.name
-        : `${input.source.id}__${input.name}`;
-    }
-    if (input.source.kind === 'skill') {
-      return `skill__${input.name.replace(/\./g, '__')}`;
-    }
-
-    return `mcp__${input.source.id}__${input.name}`;
-  }
-
-  private buildDescription(input: ToolProviderTool): string {
-    if (input.source.kind === 'plugin') {
-      return input.runtimeKind === 'builtin'
-        ? input.description
-        : `[插件：${input.source.id}] ${input.description}`;
-    }
-    if (input.source.kind === 'skill') {
-      return `[Skill] ${input.description}`;
-    }
-
-    return `[MCP：${input.source.id}] ${input.description}`;
   }
 
   private paramSchemaToZod(params: Record<string, ToolParameterSchema>) {
