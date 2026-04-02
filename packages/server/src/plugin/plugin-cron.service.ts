@@ -1,7 +1,6 @@
 import type {
   PluginCronDescriptor,
   PluginCronJobSummary,
-  PluginCronSource,
   PluginCronTickPayload,
 } from '@garlic-claw/shared';
 import {
@@ -14,6 +13,12 @@ import { ModuleRef } from '@nestjs/core';
 import type { JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  normalizePluginCronJobRecord,
+  parsePluginCronInterval,
+  serializePluginCronJob,
+  type PluginCronJobRecord,
+} from './plugin-cron.helpers';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginService } from './plugin.service';
 
@@ -27,25 +32,6 @@ interface ScheduledCronEntry {
   job: PluginCronJobRecord;
   /** 定时器句柄。 */
   timer: ReturnType<typeof setInterval>;
-}
-
-/**
- * plugin cron job 的最小记录形状。
- */
-interface PluginCronJobRecord {
-  id: string;
-  pluginName: string;
-  name: string;
-  cron: string;
-  description: string | null;
-  source: string;
-  enabled: boolean;
-  dataJson: string | null;
-  lastRunAt: Date | null;
-  lastError: string | null;
-  lastErrorAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 /**
@@ -157,14 +143,14 @@ export class PluginCronService implements OnModuleDestroy {
       },
     });
 
-    const normalized = this.normalizeRecord(record);
+    const normalized = normalizePluginCronJobRecord(record);
     if (normalized.enabled) {
       this.scheduleJob(normalized);
     } else {
       this.unscheduleJob(normalized.id);
     }
 
-    return this.serializeJob(normalized);
+    return serializePluginCronJob(normalized, (message) => this.logger.warn(message));
   }
 
   /**
@@ -187,7 +173,8 @@ export class PluginCronService implements OnModuleDestroy {
       ],
     });
 
-    return records.map((record) => this.serializeJob(this.normalizeRecord(record)));
+    return records.map((record) =>
+      serializePluginCronJob(normalizePluginCronJobRecord(record), (message) => this.logger.warn(message)));
   }
 
   /**
@@ -207,7 +194,7 @@ export class PluginCronService implements OnModuleDestroy {
       return false;
     }
 
-    const normalized = this.normalizeRecord(record);
+    const normalized = normalizePluginCronJobRecord(record);
     if (normalized.source !== 'host') {
       throw new BadRequestException('manifest cron 不能通过 cron.delete 删除');
     }
@@ -236,7 +223,7 @@ export class PluginCronService implements OnModuleDestroy {
         pluginName: pluginId,
         source: 'manifest',
       },
-    })).map((record) => this.normalizeRecord(record));
+    })).map((record) => normalizePluginCronJobRecord(record));
     const desiredNames = new Set(manifestCrons.map((cron) => cron.name));
     const removed = existing.filter((record) => !desiredNames.has(record.name));
 
@@ -306,7 +293,7 @@ export class PluginCronService implements OnModuleDestroy {
     });
 
     for (const record of records) {
-      this.scheduleJob(this.normalizeRecord(record));
+      this.scheduleJob(normalizePluginCronJobRecord(record));
     }
   }
 
@@ -318,7 +305,7 @@ export class PluginCronService implements OnModuleDestroy {
   private scheduleJob(job: PluginCronJobRecord): void {
     this.unscheduleJob(job.id);
 
-    const intervalMs = this.parseCronInterval(job.cron);
+    const intervalMs = parsePluginCronInterval(job.cron);
     if (!intervalMs) {
       this.logger.warn(`插件 ${job.pluginName} 的 cron 表达式无效：${job.cron}`);
       return;
@@ -382,7 +369,7 @@ export class PluginCronService implements OnModuleDestroy {
   private async executeJob(entry: ScheduledCronEntry): Promise<void> {
     const now = new Date();
     const payload: PluginCronTickPayload = {
-      job: this.serializeJob(entry.job),
+      job: serializePluginCronJob(entry.job, (message) => this.logger.warn(message)),
       tickedAt: now.toISOString(),
     };
 
@@ -412,7 +399,7 @@ export class PluginCronService implements OnModuleDestroy {
           lastErrorAt: null,
         },
       });
-      entry.job = this.normalizeRecord(updated);
+      entry.job = normalizePluginCronJobRecord(updated);
       await this.pluginService.recordPluginSuccess(entry.job.pluginName, {
         type: 'cron:tick',
         message: `Cron job "${entry.job.name}" executed`,
@@ -435,7 +422,7 @@ export class PluginCronService implements OnModuleDestroy {
           lastErrorAt: now,
         },
       });
-      entry.job = this.normalizeRecord(updated);
+      entry.job = normalizePluginCronJobRecord(updated);
       await this.pluginService.recordPluginFailure(entry.job.pluginName, {
         type: 'cron:error',
         message,
@@ -465,133 +452,10 @@ export class PluginCronService implements OnModuleDestroy {
    * @returns 无返回值；非法时抛错
    */
   private assertCronExpression(cronExpr: string, method: string): void {
-    if (this.parseCronInterval(cronExpr)) {
+    if (parsePluginCronInterval(cronExpr)) {
       return;
     }
 
     throw new BadRequestException(`${method} 的 cron 表达式无效`);
   }
-
-  /**
-   * 将数据库记录收敛为内部强类型对象。
-   * @param record 原始数据库记录
-   * @returns 归一化后的 job 记录
-   */
-  private normalizeRecord(record: Record<string, unknown>): PluginCronJobRecord {
-    return {
-      id: String(record.id),
-      pluginName: String(record.pluginName),
-      name: String(record.name),
-      cron: String(record.cron),
-      description: typeof record.description === 'string' ? record.description : null,
-      source: String(record.source),
-      enabled: Boolean(record.enabled),
-      dataJson: typeof record.dataJson === 'string' ? record.dataJson : null,
-      lastRunAt: record.lastRunAt instanceof Date ? record.lastRunAt : null,
-      lastError: typeof record.lastError === 'string' ? record.lastError : null,
-      lastErrorAt: record.lastErrorAt instanceof Date ? record.lastErrorAt : null,
-      createdAt: record.createdAt instanceof Date
-        ? record.createdAt
-        : new Date(),
-      updatedAt: record.updatedAt instanceof Date
-        ? record.updatedAt
-        : new Date(),
-    };
-  }
-
-  /**
-   * 将内部记录序列化为共享 job 摘要。
-   * @param record 内部 job 记录
-   * @returns 面向外部的 job 摘要
-   */
-  private serializeJob(record: PluginCronJobRecord): PluginCronJobSummary {
-    return {
-      id: record.id,
-      pluginId: record.pluginName,
-      name: record.name,
-      cron: record.cron,
-      description: record.description ?? undefined,
-      source: this.parseCronSource(record.source),
-      enabled: record.enabled,
-      data: this.parseData(record.dataJson),
-      lastRunAt: record.lastRunAt?.toISOString() ?? null,
-      lastError: record.lastError,
-      lastErrorAt: record.lastErrorAt?.toISOString() ?? null,
-      createdAt: record.createdAt.toISOString(),
-      updatedAt: record.updatedAt.toISOString(),
-    };
-  }
-
-  /**
-   * 解析 job 附加数据。
-   * @param raw 原始 JSON 字符串
-   * @returns JSON 值；无值时返回 undefined
-   */
-  private parseData(raw: string | null): JsonValue | undefined {
-    if (!raw) {
-      return undefined;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      return isJsonValue(parsed) ? parsed : undefined;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`插件 cron data JSON 无效，已回退为空值: ${message}`);
-      return undefined;
-    }
-  }
-
-  /**
-   * 解析 cron 来源枚举。
-   * @param raw 原始来源
-   * @returns 归一化后的来源
-   */
-  private parseCronSource(raw: string): PluginCronSource {
-    return raw === 'host' ? 'host' : 'manifest';
-  }
-
-  /**
-   * 解析简单时间间隔表达式。
-   * @param expr 原始表达式
-   * @returns 间隔毫秒数；无效时返回 null
-   */
-  private parseCronInterval(expr: string): number | null {
-    const match = expr.trim().match(/^(\d+)\s*(s|m|h)$/i);
-    if (!match) {
-      return null;
-    }
-
-    const value = Number.parseInt(match[1], 10);
-    const unit = match[2].toLowerCase();
-    const factor = unit === 'h'
-      ? 60 * 60 * 1000
-      : unit === 'm'
-        ? 60 * 1000
-        : 1000;
-    const interval = value * factor;
-
-    return interval >= 10000 ? interval : null;
-  }
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean'
-  ) {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isJsonValue(entry));
-  }
-
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  return Object.values(value).every((entry) => isJsonValue(entry));
 }

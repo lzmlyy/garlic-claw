@@ -410,6 +410,17 @@
     - request/result preview 规则
     - JSON clone 样板
   - `plugin-subagent-task.service.ts` 主文件行数已从 `668` 继续降到 `223`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-cron.helpers.ts`
+    继续把 cron job 记录归一化、summary 序列化和 data/interval 纯解析规则从服务主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-cron.helpers.spec.ts`
+    直接给 cron helper 补记录归一化、data JSON 回退和 interval/source 解析回归
+  - `PluginCronService` 已不再直接承载：
+    - cron job record normalize
+    - cron summary serialize
+    - cron data/source/interval 纯解析规则
+  - `plugin-cron.service.ts` 主文件行数已从 `548` 继续降到 `425`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
