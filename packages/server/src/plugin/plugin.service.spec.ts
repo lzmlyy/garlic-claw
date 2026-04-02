@@ -574,6 +574,62 @@ describe('PluginService', () => {
     });
   });
 
+  it('records successful health checks as info events and healthy snapshots', async () => {
+    prisma.plugin.findUnique.mockResolvedValue(
+      createPluginRecord({
+        id: 'plugin-1',
+        name: 'builtin.memory-context',
+        status: 'online',
+        healthStatus: 'degraded',
+        failureCount: 2,
+        consecutiveFailures: 2,
+      }),
+    );
+    prisma.plugin.update.mockResolvedValue(
+      createPluginRecord({
+        id: 'plugin-1',
+        name: 'builtin.memory-context',
+        status: 'online',
+        healthStatus: 'healthy',
+        failureCount: 2,
+        consecutiveFailures: 0,
+      }),
+    );
+
+    await expect(
+      service.recordHealthCheck('builtin.memory-context', {
+        ok: true,
+        message: 'gateway ping ok',
+        metadata: {
+          source: 'gateway',
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(prisma.plugin.update).toHaveBeenCalledWith({
+      where: {
+        name: 'builtin.memory-context',
+      },
+      data: expect.objectContaining({
+        healthStatus: 'healthy',
+        consecutiveFailures: 0,
+        lastSuccessAt: expect.any(Date),
+        lastCheckedAt: expect.any(Date),
+      }),
+    });
+    expect(prisma.pluginEvent.create).toHaveBeenCalledWith({
+      data: {
+        pluginId: 'plugin-1',
+        type: 'health:ok',
+        level: 'info',
+        message: 'gateway ping ok',
+        metadataJson: JSON.stringify({
+          source: 'gateway',
+        }),
+      },
+    });
+  });
+
   it('filters and paginates plugin event logs on the server side', async () => {
     prisma.plugin.findUnique.mockResolvedValue(
       createPluginRecord({

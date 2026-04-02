@@ -603,6 +603,13 @@
     - event findMany 的 where/orderBy/take 组装
     - cursor-aware 查询参数组合
   - `plugin.service.ts` 主文件行数已从 `614` 继续降到 `608`
+  - 已扩展：
+    - `packages/server/src/plugin/plugin-health.helpers.ts`
+    继续把 success/failure 的 event level、persistEvent 策略与 health-check bridge 输入从 `PluginService` 主类中拆出
+  - `PluginService` 已不再直接承载：
+    - success/failure 的事件级别与可选持久化策略组装
+    - `health:ok` / `health:error` 的桥接输入映射
+  - `plugin.service.ts` 主文件行数已从 `646` 继续降到 `643`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口

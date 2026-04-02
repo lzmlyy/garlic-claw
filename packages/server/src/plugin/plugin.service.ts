@@ -35,8 +35,9 @@ import {
 import { preparePluginConfigUpdate } from './plugin-config-write.helpers';
 import { preparePluginScopeUpdate } from './plugin-scope-write.helpers';
 import {
-  buildPluginFailureUpdate,
-  buildPluginSuccessUpdate,
+  buildPluginHealthCheckRecordInput,
+  preparePluginFailurePersistence,
+  preparePluginSuccessPersistence,
 } from './plugin-health.helpers';
 import {
   buildPluginHeartbeatMutation,
@@ -44,8 +45,15 @@ import {
   buildPluginOfflineMutation,
   buildPluginOnlineMutation,
 } from './plugin-lifecycle.helpers';
-import { buildPluginRegistrationEvent, buildPluginRegistrationUpsertData } from './plugin-register.helpers';
-import { buildPluginConfigSnapshot, buildPluginSelfInfo, buildResolvedPluginConfig } from './plugin-record-view.helpers';
+import {
+  buildPluginRegistrationEvent,
+  buildPluginRegistrationUpsertData,
+} from './plugin-register.helpers';
+import {
+  buildPluginConfigSnapshot,
+  buildPluginSelfInfo,
+  buildResolvedPluginConfig,
+} from './plugin-record-view.helpers';
 import {
   buildPluginStorageEntries,
   buildPluginStorageKey,
@@ -541,24 +549,24 @@ export class PluginService {
   ): Promise<void> {
     const plugin = await this.findByNameOrThrow(name);
     const now = new Date();
+    const prepared = preparePluginSuccessPersistence({
+      plugin,
+      event: input,
+      checked: input.checked,
+      persistEvent: input.persistEvent,
+      now,
+    });
     await this.prisma.plugin.update({
       where: {
         name,
       },
-      data: buildPluginSuccessUpdate({
-        plugin,
-        checked: input.checked,
-        now,
-      }),
+      data: prepared.updateData,
     });
-    if (input.persistEvent !== false) {
+    if (prepared.event) {
       await createPluginEvent({
         prisma: this.prisma,
         pluginId: plugin.id,
-        type: input.type,
-        level: 'info',
-        message: input.message,
-        metadata: input.metadata,
+        ...prepared.event,
       });
     }
   }
@@ -577,24 +585,22 @@ export class PluginService {
   ): Promise<void> {
     const plugin = await this.findByNameOrThrow(name);
     const now = new Date();
+    const prepared = preparePluginFailurePersistence({
+      plugin,
+      event: input,
+      checked: input.checked,
+      now,
+    });
     await this.prisma.plugin.update({
       where: {
         name,
       },
-      data: buildPluginFailureUpdate({
-        plugin,
-        message: input.message,
-        checked: input.checked,
-        now,
-      }),
+      data: prepared.updateData,
     });
     await createPluginEvent({
       prisma: this.prisma,
       pluginId: plugin.id,
-      type: input.type,
-      level: 'error',
-      message: input.message,
-      metadata: input.metadata,
+      ...prepared.event,
     });
   }
 
@@ -612,22 +618,13 @@ export class PluginService {
       metadata?: JsonObject;
     },
   ): Promise<void> {
+    const healthCheckInput = buildPluginHealthCheckRecordInput(input);
     if (input.ok) {
-      await this.recordPluginSuccess(name, {
-        type: 'health:ok',
-        message: input.message,
-        metadata: input.metadata,
-        checked: true,
-      });
+      await this.recordPluginSuccess(name, healthCheckInput);
       return;
     }
 
-    await this.recordPluginFailure(name, {
-      type: 'health:error',
-      message: input.message,
-      metadata: input.metadata,
-      checked: true,
-    });
+    await this.recordPluginFailure(name, healthCheckInput);
   }
 
   /**
