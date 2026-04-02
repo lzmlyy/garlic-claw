@@ -14,6 +14,7 @@ import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade'
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { createResponseRecorderPlugin } from './builtin/response-recorder.plugin';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeMessageHooksFacade } from './plugin-runtime-message-hooks.facade';
 import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import { createToolAuditPlugin } from './builtin/tool-audit.plugin';
@@ -124,6 +125,7 @@ describe('PluginRuntimeService', () => {
   let runtimeBroadcastFacade: PluginRuntimeBroadcastFacade;
   let runtimeGovernanceFacade: PluginRuntimeGovernanceFacade;
   let runtimeHostFacade: PluginRuntimeHostFacade;
+  let runtimeMessageHooksFacade: PluginRuntimeMessageHooksFacade;
   let runtimeOperationHooksFacade: PluginRuntimeOperationHooksFacade;
   let runtimeSubagentFacade: PluginRuntimeSubagentFacade;
 
@@ -201,6 +203,7 @@ describe('PluginRuntimeService', () => {
       cronService as never,
       moduleRef as never,
     );
+    runtimeMessageHooksFacade = new PluginRuntimeMessageHooksFacade();
     runtimeOperationHooksFacade = new PluginRuntimeOperationHooksFacade();
     runtimeSubagentFacade = new PluginRuntimeSubagentFacade(
       aiModelExecution as never,
@@ -213,6 +216,7 @@ describe('PluginRuntimeService', () => {
       runtimeBroadcastFacade as never,
       runtimeGovernanceFacade as never,
       runtimeHostFacade as never,
+      runtimeMessageHooksFacade as never,
       runtimeOperationHooksFacade as never,
       runtimeSubagentFacade as never,
     );

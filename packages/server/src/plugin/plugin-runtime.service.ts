@@ -45,14 +45,12 @@ import { PluginHostService } from './plugin-host.service';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeMessageHooksFacade } from './plugin-runtime-message-hooks.facade';
 import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import {
-  cloneChatAfterModelPayload,
   cloneChatBeforeModelRequest,
-  cloneMessageCreatedHookPayload,
   cloneMessageReceivedHookPayload,
-  cloneMessageUpdatedHookPayload,
 } from './plugin-runtime-clone.helpers';
 import {
   assertRuntimeRecordEnabled,
@@ -60,24 +58,17 @@ import {
   listDispatchableHookRecords,
 } from './plugin-runtime-dispatch.helpers';
 import {
-  applyChatAfterModelMutation,
   applyChatBeforeModelMutation,
   applyChatBeforeModelHookResult,
-  applyMessageCreatedMutation,
   applyMessageReceivedMutation,
   applyMessageReceivedHookResult,
-  applyMessageUpdatedMutation,
 } from './plugin-runtime-hook-mutation.helpers';
 import {
-  runMutatingHookChain,
   runShortCircuitingHookChain,
 } from './plugin-runtime-hook-runner.helpers';
 import {
-  normalizeChatAfterModelHookResult,
   normalizeChatBeforeModelHookResult,
-  normalizeMessageCreatedHookResult,
   normalizeMessageReceivedHookResult,
-  normalizeMessageUpdatedHookResult,
 } from './plugin-runtime-hook-result.helpers';
 import { recordRuntimePluginFailureAndDispatch } from './plugin-runtime-failure.helpers';
 import {
@@ -404,6 +395,7 @@ export class PluginRuntimeService {
     private readonly runtimeBroadcastFacade: PluginRuntimeBroadcastFacade,
     private readonly runtimeGovernanceFacade: PluginRuntimeGovernanceFacade,
     private readonly runtimeHostFacade: PluginRuntimeHostFacade,
+    private readonly runtimeMessageHooksFacade: PluginRuntimeMessageHooksFacade,
     private readonly runtimeOperationHooksFacade: PluginRuntimeOperationHooksFacade,
     private readonly runtimeSubagentFacade: PluginRuntimeSubagentFacade,
   ) {}
@@ -988,18 +980,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ChatAfterModelHookPayload;
   }): Promise<ChatAfterModelHookPayload> {
-    return runMutatingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'chat:after-model',
-        context: input.context,
-      }),
-      hookName: 'chat:after-model',
+    return this.runtimeMessageHooksFacade.runChatAfterModelHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneChatAfterModelPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeChatAfterModelHookResult,
-      applyMutation: applyChatAfterModelMutation,
     });
   }
 
@@ -1030,18 +1015,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: MessageCreatedHookPayload;
   }): Promise<MessageCreatedHookPayload> {
-    return runMutatingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'message:created',
-        context: input.context,
-      }),
-      hookName: 'message:created',
+    return this.runtimeMessageHooksFacade.runMessageCreatedHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneMessageCreatedHookPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeMessageCreatedHookResult,
-      applyMutation: applyMessageCreatedMutation,
     });
   }
 
@@ -1054,18 +1032,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: MessageUpdatedHookPayload;
   }): Promise<MessageUpdatedHookPayload> {
-    return runMutatingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'message:updated',
-        context: input.context,
-      }),
-      hookName: 'message:updated',
+    return this.runtimeMessageHooksFacade.runMessageUpdatedHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneMessageUpdatedHookPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeMessageUpdatedHookResult,
-      applyMutation: applyMessageUpdatedMutation,
     });
   }
 

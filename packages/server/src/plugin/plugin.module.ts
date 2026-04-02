@@ -19,6 +19,7 @@ import { PluginRouteController } from './plugin-route.controller';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeMessageHooksFacade } from './plugin-runtime-message-hooks.facade';
 import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
@@ -47,6 +48,7 @@ import { PluginService } from './plugin.service';
     PluginRuntimeBroadcastFacade,
     PluginRuntimeGovernanceFacade,
     PluginRuntimeHostFacade,
+    PluginRuntimeMessageHooksFacade,
     PluginRuntimeOperationHooksFacade,
     PluginRuntimeSubagentFacade,
     PluginCronService,
@@ -77,6 +79,7 @@ import { PluginService } from './plugin.service';
     PluginRuntimeBroadcastFacade,
     PluginRuntimeGovernanceFacade,
     PluginRuntimeHostFacade,
+    PluginRuntimeMessageHooksFacade,
     PluginRuntimeOperationHooksFacade,
     PluginRuntimeSubagentFacade,
     PluginCronService,

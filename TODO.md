@@ -293,6 +293,14 @@
     - `tool:after-call`
     - `response:before-send`
   - `plugin-runtime.service.ts` 主文件行数已从 `1402` 继续降到 `1344`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-runtime-message-hooks.facade.ts`
+    把 chat/message 里纯 mutate 的 hook 路径继续拆出
+  - `PluginRuntimeService` 已改为通过 message hooks facade 承接：
+    - `chat:after-model`
+    - `message:created`
+    - `message:updated`
+  - `plugin-runtime.service.ts` 主文件行数已从 `1344` 继续降到 `1315`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
