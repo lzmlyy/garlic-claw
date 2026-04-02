@@ -33,11 +33,11 @@ import {
   registerPluginGatewayConnection,
 } from './plugin-gateway-lifecycle.helpers';
 import {
-  readAuthPayload,
   type PluginGatewayInboundMessage,
   type ValidatedRegisterPayload,
 } from './plugin-gateway-payload.helpers';
 import {
+  handlePluginGatewayMessageEnvelope,
   handlePluginGatewayCommandMessage,
   handlePluginGatewayPluginMessage,
 } from './plugin-gateway-router.helpers';
@@ -49,7 +49,6 @@ import {
 import {
   rejectPluginGatewayPendingRequestsForSocket,
   sendPluginGatewayMessage,
-  sendPluginGatewayProtocolError,
   type ActiveRequestContext,
   type PendingRequest,
 } from './plugin-gateway-transport.helpers';
@@ -272,60 +271,26 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     conn: PluginConnection,
     msg: PluginGatewayInboundMessage,
   ): Promise<void> {
-    if (!conn.authenticated && !(msg.type === WS_TYPE.AUTH && msg.action === WS_ACTION.AUTHENTICATE)) {
-      sendPluginGatewayMessage({
-        ws,
-        type: WS_TYPE.ERROR,
-        action: WS_ACTION.AUTH_FAIL,
-        payload: { error: '未认证' },
-      });
-      return;
-    }
-    if (conn.authenticated) {
-      conn.lastHeartbeatAt = Date.now();
-    }
-
-    switch (msg.type) {
-      case WS_TYPE.AUTH:
-        if (msg.action === WS_ACTION.AUTHENTICATE) {
-          const payload = readAuthPayload(msg.payload);
-          if (!payload) {
-            sendPluginGatewayProtocolError({
-              ws,
-              error: '无效的认证负载',
-              protocolErrorAction: PROTOCOL_ERROR_ACTION,
-            });
-            return;
-          }
-          await this.handleAuth(ws, conn, payload);
+    await handlePluginGatewayMessageEnvelope({
+      ws,
+      connection: conn,
+      msg,
+      protocolErrorAction: PROTOCOL_ERROR_ACTION,
+      onAuth: (payload) => this.handleAuth(ws, conn, payload),
+      onPluginMessage: (message) => this.handlePluginMessage(ws, conn, message),
+      onCommandMessage: (message) => this.handleCommandMessage(message),
+      onHeartbeatPing: async () => {
+        if (conn.manifest) {
+          await this.pluginRuntimeOrchestrator.touchPluginHeartbeat(conn.pluginName);
         }
-        return;
-
-      case WS_TYPE.PLUGIN:
-        await this.handlePluginMessage(ws, conn, msg);
-        return;
-
-      case WS_TYPE.COMMAND:
-        await this.handleCommandMessage(msg);
-        return;
-
-      case WS_TYPE.HEARTBEAT:
-        if (msg.action === WS_ACTION.PING) {
-          if (conn.manifest) {
-            await this.pluginRuntimeOrchestrator.touchPluginHeartbeat(conn.pluginName);
-          }
-          sendPluginGatewayMessage({
-            ws,
-            type: WS_TYPE.HEARTBEAT,
-            action: WS_ACTION.PONG,
-            payload: {},
-          });
-        }
-        return;
-
-      default:
-        return;
-    }
+        sendPluginGatewayMessage({
+          ws,
+          type: WS_TYPE.HEARTBEAT,
+          action: WS_ACTION.PONG,
+          payload: {},
+        });
+      },
+    });
   }
 
   /**

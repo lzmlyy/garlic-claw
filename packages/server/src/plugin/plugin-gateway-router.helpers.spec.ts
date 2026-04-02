@@ -1,11 +1,111 @@
 import { WS_ACTION, WS_TYPE } from '@garlic-claw/shared';
 import { WebSocket } from 'ws';
 import {
+  handlePluginGatewayMessageEnvelope,
   handlePluginGatewayCommandMessage,
   handlePluginGatewayPluginMessage,
 } from './plugin-gateway-router.helpers';
 
 describe('plugin-gateway-router.helpers', () => {
+  it('rejects unauthenticated non-auth envelopes before routing', async () => {
+    const ws = createSocketStub();
+    const onPluginMessage = jest.fn();
+
+    await handlePluginGatewayMessageEnvelope({
+      ws,
+      connection: {
+        authenticated: false,
+        manifest: null,
+        lastHeartbeatAt: 0,
+      },
+      msg: {
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.REGISTER,
+        payload: {},
+      },
+      protocolErrorAction: 'protocol_error',
+      onAuth: jest.fn(),
+      onPluginMessage,
+      onCommandMessage: jest.fn(),
+      onHeartbeatPing: jest.fn(),
+    });
+
+    expect(onPluginMessage).not.toHaveBeenCalled();
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}')).toEqual({
+      type: 'error',
+      action: 'auth_fail',
+      payload: { error: '未认证' },
+    });
+  });
+
+  it('rejects malformed auth payloads before auth handlers run', async () => {
+    const ws = createSocketStub();
+    const onAuth = jest.fn();
+
+    await handlePluginGatewayMessageEnvelope({
+      ws,
+      connection: {
+        authenticated: false,
+        manifest: null,
+        lastHeartbeatAt: 0,
+      },
+      msg: {
+        type: WS_TYPE.AUTH,
+        action: WS_ACTION.AUTHENTICATE,
+        payload: null,
+      },
+      protocolErrorAction: 'protocol_error',
+      onAuth,
+      onPluginMessage: jest.fn(),
+      onCommandMessage: jest.fn(),
+      onHeartbeatPing: jest.fn(),
+    });
+
+    expect(onAuth).not.toHaveBeenCalled();
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}')).toEqual({
+      type: 'error',
+      action: 'protocol_error',
+      payload: { error: '无效的认证负载' },
+    });
+  });
+
+  it('refreshes heartbeat timestamps and routes ping envelopes', async () => {
+    const onHeartbeatPing = jest.fn().mockResolvedValue(undefined);
+    const connection = {
+      authenticated: true,
+      manifest: {
+        id: 'plugin-a',
+        name: 'Plugin A',
+        version: '1.0.0',
+        runtime: 'remote',
+        permissions: [],
+        tools: [],
+        hooks: [],
+        routes: [],
+      } as never,
+      lastHeartbeatAt: 1,
+    };
+
+    await handlePluginGatewayMessageEnvelope({
+      ws: createSocketStub(),
+      connection,
+      msg: {
+        type: WS_TYPE.HEARTBEAT,
+        action: WS_ACTION.PING,
+        payload: {},
+      },
+      protocolErrorAction: 'protocol_error',
+      onAuth: jest.fn(),
+      onPluginMessage: jest.fn(),
+      onCommandMessage: jest.fn(),
+      onHeartbeatPing,
+      now: () => 123456,
+    });
+
+    expect(connection.lastHeartbeatAt).toBe(123456);
+    expect(onHeartbeatPing).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects malformed register payloads before register handlers run', async () => {
     const ws = createSocketStub();
     const onRegister = jest.fn();

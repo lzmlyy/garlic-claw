@@ -524,6 +524,13 @@
     - hook/route/command result-error 到 shared pending-request helper 的路由
     - host call / register 分支委派的统一入口
   - `plugin.gateway.ts` 主文件行数已从 `556` 继续降到 `470`
+  - 已扩展：
+    - `packages/server/src/plugin/plugin-gateway-router.helpers.ts`
+    继续把 websocket 顶层 envelope 的 auth guard、auth payload reader 与 heartbeat ping 路由从网关主类中拆出
+  - `PluginGateway` 已不再直接承载：
+    - 未认证消息的统一 AUTH_FAIL 返回
+    - auth envelope 的 payload 读取与 protocol_error 返回
+    - heartbeat ping 的顶层路由样板
   - 已新增：
     - `packages/server/src/plugin/plugin-record-view.helpers.ts`
     继续把 persisted manifest 驱动的 config snapshot/resolved config/self info 视图样板从 `PluginService` 主类中拆出

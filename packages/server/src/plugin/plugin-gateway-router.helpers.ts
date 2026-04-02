@@ -1,4 +1,4 @@
-import { WS_ACTION } from '@garlic-claw/shared';
+import { WS_ACTION, WS_TYPE, type AuthPayload, type PluginManifest } from '@garlic-claw/shared';
 import type { WebSocket } from 'ws';
 import { toJsonValue } from '../common/utils/json-value';
 import {
@@ -6,6 +6,7 @@ import {
   handlePluginGatewayResultMessage,
 } from './plugin-gateway-dispatch.helpers';
 import {
+  readAuthPayload,
   readDataPayload,
   readErrorPayload,
   readRegisterPayload,
@@ -15,9 +16,81 @@ import {
 } from './plugin-gateway-payload.helpers';
 import {
   sendPluginGatewayProtocolError,
+  sendPluginGatewayMessage,
   type ActiveRequestContext,
   type PendingRequest,
 } from './plugin-gateway-transport.helpers';
+
+export interface PluginGatewayRoutedConnection {
+  authenticated: boolean;
+  manifest: PluginManifest | null;
+  lastHeartbeatAt: number;
+}
+
+export async function handlePluginGatewayMessageEnvelope(input: {
+  ws: WebSocket;
+  connection: PluginGatewayRoutedConnection;
+  msg: PluginGatewayInboundMessage;
+  protocolErrorAction: string;
+  onAuth: (payload: AuthPayload) => Promise<void>;
+  onPluginMessage: (msg: PluginGatewayInboundMessage) => Promise<void>;
+  onCommandMessage: (msg: PluginGatewayInboundMessage) => Promise<void>;
+  onHeartbeatPing: () => Promise<void>;
+  now?: () => number;
+  sendMessage?: typeof sendPluginGatewayMessage;
+  sendProtocolError?: typeof sendPluginGatewayProtocolError;
+}): Promise<void> {
+  const sendMessage = input.sendMessage ?? sendPluginGatewayMessage;
+  const sendProtocolError = input.sendProtocolError ?? sendPluginGatewayProtocolError;
+
+  if (
+    !input.connection.authenticated
+    && !(input.msg.type === WS_TYPE.AUTH && input.msg.action === WS_ACTION.AUTHENTICATE)
+  ) {
+    sendMessage({
+      ws: input.ws,
+      type: WS_TYPE.ERROR,
+      action: WS_ACTION.AUTH_FAIL,
+      payload: { error: '未认证' },
+    });
+    return;
+  }
+  if (input.connection.authenticated) {
+    input.connection.lastHeartbeatAt = (input.now ?? Date.now)();
+  }
+
+  switch (input.msg.type) {
+    case WS_TYPE.AUTH: {
+      if (input.msg.action !== WS_ACTION.AUTHENTICATE) {
+        return;
+      }
+      const payload = readAuthPayload(input.msg.payload);
+      if (!payload) {
+        sendProtocolError({
+          ws: input.ws,
+          error: '无效的认证负载',
+          protocolErrorAction: input.protocolErrorAction,
+        });
+        return;
+      }
+      await input.onAuth(payload);
+      return;
+    }
+    case WS_TYPE.PLUGIN:
+      await input.onPluginMessage(input.msg);
+      return;
+    case WS_TYPE.COMMAND:
+      await input.onCommandMessage(input.msg);
+      return;
+    case WS_TYPE.HEARTBEAT:
+      if (input.msg.action === WS_ACTION.PING) {
+        await input.onHeartbeatPing();
+      }
+      return;
+    default:
+      return;
+  }
+}
 
 export async function handlePluginGatewayPluginMessage(input: {
   ws: WebSocket;
