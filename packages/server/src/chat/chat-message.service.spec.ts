@@ -3,6 +3,7 @@ import { ChatMessageGenerationService } from './chat-message-generation.service'
 import { ChatMessageMutationService } from './chat-message-mutation.service';
 import { ChatMessageOrchestrationService } from './chat-message-orchestration.service';
 import { ChatMessagePluginTargetService } from './chat-message-plugin-target.service';
+import { ChatMessageResponseHooksService } from './chat-message-response-hooks.service';
 import { ChatMessageService } from './chat-message.service';
 
 describe('ChatMessageService', () => {
@@ -147,12 +148,16 @@ describe('ChatMessageService', () => {
         }),
       }),
     );
+    const responseHooks = new ChatMessageResponseHooksService(
+      pluginRuntime as never,
+    );
     const orchestration = new ChatMessageOrchestrationService(
       aiProvider as never,
       pluginRuntime as never,
       toolRegistry as never,
       modelInvocation as never,
       skillSession as never,
+      responseHooks as never,
     );
     const completionService = new ChatMessageCompletionService(
       prisma as never,

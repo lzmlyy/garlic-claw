@@ -802,6 +802,13 @@
     - `stopMessageGeneration`
   - `chat-message.service.ts` 主文件行数已从 `1030` 继续降到 `65`
   - `chat-message-generation.service.ts` 主文件行数已从 `503` 继续降到 `463`
+  - 已新增：
+    - `packages/server/src/chat/chat-message-response-hooks.service.ts`
+    把 `ChatMessageOrchestrationService` 里的 `chat:after-model / response:*` 后处理子域移出
+  - `ChatMessageOrchestrationService` 已改为通过 `ChatMessageResponseHooksService` 委派：
+    - `applyFinalResponseHooks`
+    - `runResponseAfterSendHooks`
+  - `chat-message-orchestration.service.ts` 主文件行数已从 `359` 继续降到 `242`
   - `ChatTaskService` 已改为通过 `ChatTaskPersistenceService` 委派：
     - `persistMessageState`
     - `buildCompletedTaskResult`

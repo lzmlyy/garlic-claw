@@ -1,4 +1,5 @@
 import { ChatMessageOrchestrationService } from './chat-message-orchestration.service';
+import { ChatMessageResponseHooksService } from './chat-message-response-hooks.service';
 
 describe('ChatMessageOrchestrationService', () => {
   const aiProvider = {
@@ -73,12 +74,16 @@ describe('ChatMessageOrchestrationService', () => {
       allowedToolNames: null,
       deniedToolNames: [],
     });
+    const responseHooks = new ChatMessageResponseHooksService(
+      pluginRuntime as never,
+    );
     service = new ChatMessageOrchestrationService(
       aiProvider as never,
       pluginRuntime as never,
       toolRegistry as never,
       modelInvocation as never,
       skillSession as never,
+      responseHooks as never,
     );
   });
 
