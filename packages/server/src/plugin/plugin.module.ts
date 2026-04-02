@@ -27,6 +27,7 @@ import { PluginRuntimeTransportFacade } from './plugin-runtime-transport.facade'
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginStateService } from './plugin-state.service';
+import { PluginStorageService } from './plugin-storage.service';
 import { PluginSubagentTaskController } from './plugin-subagent-task.controller';
 import { PluginSubagentTaskService } from './plugin-subagent-task.service';
 import { PluginService } from './plugin.service';
@@ -41,6 +42,7 @@ import { PluginService } from './plugin.service';
   ],
   providers: [
     PluginService,
+    PluginStorageService,
     PluginGateway,
     PluginStateService,
     PluginHostAiFacade,
@@ -75,6 +77,7 @@ import { PluginService } from './plugin.service';
   ],
   exports: [
     PluginService,
+    PluginStorageService,
     PluginGateway,
     PluginHostService,
     PluginHostAiFacade,

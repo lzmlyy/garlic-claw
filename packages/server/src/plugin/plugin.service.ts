@@ -54,13 +54,7 @@ import {
   buildPluginSelfInfo,
   buildResolvedPluginConfig,
 } from './plugin-record-view.helpers';
-import {
-  buildPluginStorageEntries,
-  buildPluginStorageKey,
-  buildPluginStorageListWhere,
-  buildPluginStorageUpsertData,
-  readPluginStorageValue,
-} from './plugin-storage.helpers';
+import { PluginStorageService } from './plugin-storage.service';
 
 /**
  * 运行时可直接消费的插件治理快照。
@@ -106,7 +100,10 @@ interface PluginEventInput {
 export class PluginService {
   private readonly logger = new Logger(PluginService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pluginStorageService: PluginStorageService,
+  ) {}
 
   /**
    * 注册或刷新一个插件，并返回治理快照。
@@ -305,20 +302,7 @@ export class PluginService {
    * @returns JSON 值；不存在时返回 null
    */
   async getPluginStorage(name: string, key: string): Promise<JsonValue | null> {
-    const plugin = await this.findByNameOrThrow(name);
-    const entry = await this.prisma.pluginStorage.findUnique({
-      where: buildPluginStorageKey(plugin.id, key),
-    });
-    if (!entry) {
-      return null;
-    }
-
-    return readPluginStorageValue({
-      pluginName: name,
-      key,
-      raw: entry.valueJson,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginStorageService.getPluginStorage(name, key);
   }
 
   /**
@@ -333,16 +317,7 @@ export class PluginService {
     key: string,
     value: JsonValue,
   ): Promise<JsonValue> {
-    const plugin = await this.findByNameOrThrow(name);
-    await this.prisma.pluginStorage.upsert(
-      buildPluginStorageUpsertData({
-        pluginId: plugin.id,
-        key,
-        value,
-      }),
-    );
-
-    return value;
+    return this.pluginStorageService.setPluginStorage(name, key, value);
   }
 
   /**
@@ -352,15 +327,7 @@ export class PluginService {
    * @returns 是否删除成功
    */
   async deletePluginStorage(name: string, key: string): Promise<boolean> {
-    const plugin = await this.findByNameOrThrow(name);
-    const deleted = await this.prisma.pluginStorage.deleteMany({
-      where: {
-        pluginId: plugin.id,
-        key,
-      },
-    });
-
-    return deleted.count > 0;
+    return this.pluginStorageService.deletePluginStorage(name, key);
   }
 
   /**
@@ -373,22 +340,7 @@ export class PluginService {
     name: string,
     prefix?: string,
   ): Promise<Array<{ key: string; value: JsonValue }>> {
-    const plugin = await this.findByNameOrThrow(name);
-    const entries = await this.prisma.pluginStorage.findMany({
-      where: buildPluginStorageListWhere({
-        pluginId: plugin.id,
-        prefix,
-      }),
-      orderBy: {
-        key: 'asc',
-      },
-    });
-
-    return buildPluginStorageEntries({
-      pluginName: name,
-      entries,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginStorageService.listPluginStorage(name, prefix);
   }
 
   /**

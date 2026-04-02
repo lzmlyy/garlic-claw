@@ -4,6 +4,7 @@ import type {
   PluginManifest,
 } from '@garlic-claw/shared';
 import { serializePersistedPluginManifest } from './plugin-manifest.persistence';
+import { PluginStorageService } from './plugin-storage.service';
 import { PluginService } from './plugin.service';
 
 describe('PluginService', () => {
@@ -71,7 +72,11 @@ describe('PluginService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new PluginService(prisma as never);
+    const pluginStorageService = new PluginStorageService(prisma as never);
+    service = new PluginService(
+      prisma as never,
+      pluginStorageService as never,
+    );
   });
 
   it('persists manifest governance metadata during plugin registration', async () => {
