@@ -4,7 +4,6 @@ import { z } from 'zod';
 import type {
   PluginAvailableToolSummary,
   PluginCallContext,
-  ToolInfo,
   ToolOverview,
   ToolSourceInfo,
 } from '@garlic-claw/shared';
@@ -15,8 +14,7 @@ import { PluginToolProvider } from './plugin-tool.provider';
 import { SkillToolProvider } from './skill-tool.provider';
 import {
   buildAvailableToolSummary,
-  buildToolSourceKey,
-  compareToolKeys,
+  buildToolOverview,
   normalizeToolRecord,
 } from './tool-registry.helpers';
 import { ToolSettingsService } from './tool-settings.service';
@@ -124,84 +122,12 @@ export class ToolRegistryService {
     sources: ToolProviderState['sources'];
     tools: ToolProviderState['tools'];
   }>): ToolOverview {
-    const sourceInfos = new Map<string, ToolSourceInfo>();
-    const tools: ToolInfo[] = [];
-
-    for (const { sources } of providedState) {
-      for (const source of sources) {
-        const normalized = this.applySourceOverrides(source);
-        sourceInfos.set(buildToolSourceKey(normalized.kind, normalized.id), {
-          kind: normalized.kind,
-          id: normalized.id,
-          label: normalized.label,
-          enabled: normalized.enabled ?? true,
-          health: normalized.health ?? 'unknown',
-          lastError: normalized.lastError ?? null,
-          lastCheckedAt: normalized.lastCheckedAt ?? null,
-          totalTools: 0,
-          enabledTools: 0,
-          ...(normalized.pluginId ? { pluginId: normalized.pluginId } : {}),
-          ...(normalized.runtimeKind ? { runtimeKind: normalized.runtimeKind } : {}),
-          ...(normalized.supportedActions
-            ? { supportedActions: normalized.supportedActions }
-            : {}),
-        });
-      }
-    }
-
-    for (const entry of providedState.flatMap(({ provider, tools }) =>
-      tools.map((raw) => this.toResolvedToolRecord(provider, raw)),
-    )) {
-      const { record } = entry;
-      const key = buildToolSourceKey(entry.record.source.kind, entry.record.source.id);
-      const existing = sourceInfos.get(key);
-      if (existing) {
-        existing.totalTools += 1;
-        if (record.enabled) {
-          existing.enabledTools += 1;
-        }
-      } else {
-        sourceInfos.set(key, {
-          kind: record.source.kind,
-          id: record.source.id,
-          label: record.source.label,
-          enabled: record.source.enabled,
-          health: record.source.health,
-          lastError: record.source.lastError,
-          lastCheckedAt: record.source.lastCheckedAt,
-          totalTools: 1,
-          enabledTools: record.enabled ? 1 : 0,
-          ...(record.pluginId ? { pluginId: record.pluginId } : {}),
-          ...(record.runtimeKind ? { runtimeKind: record.runtimeKind } : {}),
-        });
-      }
-
-      tools.push({
-        toolId: record.toolId,
-        name: record.toolName,
-        callName: record.callName,
-        description: record.description,
-        parameters: record.parameters,
-        enabled: record.enabled,
-        sourceKind: record.source.kind,
-        sourceId: record.source.id,
-        sourceLabel: record.source.label,
-        health: record.source.health,
-        lastError: record.source.lastError,
-        lastCheckedAt: record.source.lastCheckedAt,
-        ...(record.pluginId ? { pluginId: record.pluginId } : {}),
-        ...(record.runtimeKind ? { runtimeKind: record.runtimeKind } : {}),
-      });
-    }
-
-    return {
-      sources: [...sourceInfos.values()].sort((left, right) =>
-        compareToolKeys(
-          buildToolSourceKey(left.kind, left.id),
-          buildToolSourceKey(right.kind, right.id),
-        )),
-      tools: tools.sort((left, right) => compareToolKeys(left.toolId, right.toolId)),
-    };
+    return buildToolOverview({
+      sources: providedState.flatMap(({ sources }) =>
+        sources.map((source) => this.applySourceOverrides(source))),
+      tools: providedState.flatMap(({ provider, tools }) =>
+        tools.map((raw) => this.toResolvedToolRecord(provider, raw).record)),
+    });
   }
 
   async buildToolSet(input: ToolFilterInput): Promise<Record<string, Tool> | undefined> {

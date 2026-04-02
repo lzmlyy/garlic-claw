@@ -539,9 +539,18 @@
   - 已新增：
     - `packages/server/src/tool/tool-registry.helpers.ts`
     继续把工具层的 ID/callName/description/source-key 归一化样板从 `ToolRegistryService` 主类中拆出
+  - `tool-registry.helpers.ts` 已继续补齐：
+    - `buildToolOverview(...)`
+    继续把 source/tool 总览投影、计数统计和 fallback source row 样板从 `ToolRegistryService` 主类中拆出
   - 已新增：
     - `packages/server/src/tool/tool-registry.helpers.spec.ts`
     直接给工具层 helper 补 toolId/callName/description/summary 回归
+  - `ToolRegistryService` 已不再直接承载：
+    - source overview 投影
+    - tool overview 投影
+    - enabled/total 计数统计
+    - 缺少 source descriptor 时的 fallback source row 组装
+  - `tool-registry.service.ts` 主文件行数已从 `487` 继续降到 `413`
   - 已新增：
     - `packages/server/src/plugin/plugin-manifest-normalize.helpers.ts`
     继续把 persisted manifest 的 fallback/normalize/parser 纯规则从 `plugin-manifest.persistence.ts` 主文件中拆出
