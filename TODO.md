@@ -90,6 +90,21 @@
     - `state.list`
     - `state.delete`
     让作者侧糖衣继续建立在统一 Host API 之上
+  - 已新增：
+    - `packages/server/src/plugin/builtin/builtin-plugin-host-params.helpers.ts`
+    - `packages/server/src/plugin/builtin/builtin-plugin-host-facade.helpers.ts`
+    继续把 builtin transport 里的 Host API 参数构造、JSON normalize 和 host facade 装配样板从主文件中拆出
+  - 已新增：
+    - `packages/server/src/plugin/builtin/builtin-plugin-host-params.helpers.spec.ts`
+    - `packages/server/src/plugin/builtin/builtin-plugin-host-facade.helpers.spec.ts`
+    直接给 builtin host helper 补参数构造与 facade 路由回归
+  - `builtin-plugin.transport.ts` 已不再直接承载：
+    - `message.send` / `conversation.session.*` 参数构造
+    - `cron.*` / `automation.*` Host API 参数构造
+    - `storage.*` / `state.*` scoped params 组装
+    - `llm.generate` / `subagent.run` / `subagent.task.start` 参数构造
+    - Host facade 大对象装配
+  - `builtin-plugin.transport.ts` 主文件行数已从 `1069` 继续降到 `784`
   - `plugin-host.service.ts` / `plugin-runtime.service.ts` 已共享 `plugin-llm-payload.helpers.ts`，删除两处重复的 LLM message / part 解析逻辑
   - `plugin-host.service.ts` 已继续外提到：
     - `plugin-host.helpers.ts`

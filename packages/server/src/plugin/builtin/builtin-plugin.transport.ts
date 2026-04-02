@@ -37,14 +37,17 @@ import type {
   PluginSubagentTaskSummary,
   PluginRouteRequest,
   PluginRouteResponse,
-  PluginScopedStateScope,
   PluginSelfInfo,
   TriggerConfig,
 } from '@garlic-claw/shared';
 import { BadRequestException } from '@nestjs/common';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
-import { toJsonValue } from '../../common/utils/json-value';
 import type { PluginTransport } from '../plugin-runtime.types';
+import { createBuiltinPluginHostFacade } from './builtin-plugin-host-facade.helpers';
+import {
+  type BuiltinPluginGenerateTextParams,
+  type BuiltinPluginScopedStateOptions,
+} from './builtin-plugin-host-params.helpers';
 import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
@@ -85,10 +88,6 @@ interface BuiltinPluginGovernanceHandlers {
    * @returns 健康检查结果
    */
   checkHealth?: () => Promise<{ ok: boolean }> | { ok: boolean };
-}
-
-interface BuiltinPluginScopedStateOptions {
-  scope?: PluginScopedStateScope;
 }
 
 /**
@@ -486,16 +485,7 @@ interface BuiltinPluginHostFacade {
    * @param params 提示词与可选模型参数
    * @returns 文本生成结果
    */
-  generateText(params: {
-    prompt: string;
-    system?: string;
-    providerId?: string;
-    modelId?: string;
-    variant?: string;
-    maxOutputTokens?: number;
-    providerOptions?: JsonObject;
-    headers?: Record<string, string>;
-  }): Promise<JsonValue>;
+  generateText(params: BuiltinPluginGenerateTextParams): Promise<JsonValue>;
 }
 
 /**
@@ -734,321 +724,13 @@ export class BuiltinPluginTransport implements PluginTransport {
   private createHostFacade(
     context: PluginCallContext,
   ): BuiltinPluginHostFacade {
-    const call: BuiltinPluginHostFacade['call'] = (method, params) =>
-      this.invokeHost(context, method, params);
-    const callHost = <T>(
-      method: HostCallPayload['method'],
-      params: JsonObject = {},
-    ): Promise<T> => this.callHost<T>(context, method, params);
-
-    return {
-      call,
-      getCurrentProvider: () =>
-        callHost<PluginProviderCurrentInfo>('provider.current.get'),
-      listProviders: () => callHost<PluginProviderSummary[]>('provider.list'),
-      getProvider: (providerId) =>
-        callHost<PluginProviderSummary>('provider.get', {
-          providerId,
-        }),
-      getProviderModel: (providerId, modelId) =>
-        callHost<PluginProviderModelSummary>('provider.model.get', {
-          providerId,
-          modelId,
-        }),
-      searchMemories: (query, limit = 10) =>
-        call('memory.search', {
-          query,
-          limit,
-        }),
-      getConversation: () => call('conversation.get', {}),
-      getCurrentMessageTarget: () =>
-        callHost<PluginMessageTargetInfo | null>('message.target.current.get'),
-      sendMessage: ({
-        target,
-        content,
-        parts,
-        provider,
-        model,
-      }) =>
-        callHost<PluginMessageSendInfo>('message.send', {
-          ...(target ? { target: toHostJsonValue(target) } : {}),
-          ...(typeof content === 'string' ? { content } : {}),
-          ...(parts ? { parts: toHostJsonValue(parts) } : {}),
-          ...(typeof provider === 'string' ? { provider } : {}),
-          ...(typeof model === 'string' ? { model } : {}),
-        }),
-      startConversationSession: ({
-        timeoutMs,
-        captureHistory,
-        metadata,
-      }) =>
-        callHost<PluginConversationSessionInfo>('conversation.session.start', {
-          timeoutMs,
-          ...(typeof captureHistory === 'boolean' ? { captureHistory } : {}),
-          ...(typeof metadata !== 'undefined' ? { metadata } : {}),
-        }),
-      getConversationSession: () =>
-        callHost<PluginConversationSessionInfo | null>('conversation.session.get'),
-      keepConversationSession: ({
-        timeoutMs,
-        resetTimeout,
-      }) =>
-        callHost<PluginConversationSessionInfo | null>('conversation.session.keep', {
-          timeoutMs,
-          ...(typeof resetTimeout === 'boolean' ? { resetTimeout } : {}),
-        }),
-      finishConversationSession: () =>
-        callHost<boolean>('conversation.session.finish'),
-      listKnowledgeBaseEntries: (limit) =>
-        callHost<PluginKbEntrySummary[]>(
-          'kb.list',
-          typeof limit === 'number' ? { limit } : {},
-        ),
-      searchKnowledgeBase: (query, limit = 5) =>
-        callHost<PluginKbEntryDetail[]>('kb.search', {
-          query,
-          limit,
-        }),
-      getKnowledgeBaseEntry: (entryId) =>
-        callHost<PluginKbEntryDetail>('kb.get', {
-          entryId,
-        }),
-      getCurrentPersona: () =>
-        callHost<PluginPersonaCurrentInfo>('persona.current.get'),
-      listPersonas: () => callHost<PluginPersonaSummary[]>('persona.list'),
-      getPersona: (personaId) =>
-        callHost<PluginPersonaSummary>('persona.get', {
-          personaId,
-        }),
-      activatePersona: (personaId) =>
-        callHost<PluginPersonaCurrentInfo>('persona.activate', {
-          personaId,
-        }),
-      registerCron: (descriptor) =>
-        callHost<PluginCronJobSummary>('cron.register', {
-          name: descriptor.name,
-          cron: descriptor.cron,
-          ...(descriptor.description ? { description: descriptor.description } : {}),
-          ...(typeof descriptor.enabled === 'boolean' ? { enabled: descriptor.enabled } : {}),
-          ...(typeof descriptor.data !== 'undefined' ? { data: descriptor.data } : {}),
-        }),
-      listCrons: () => callHost<PluginCronJobSummary[]>('cron.list'),
-      deleteCron: (jobId) =>
-        callHost<boolean>('cron.delete', {
-          jobId,
-        }),
-      createAutomation: ({ name, trigger, actions }) =>
-        callHost<AutomationInfo>('automation.create', {
-          name,
-          trigger: toHostJsonValue(trigger),
-          actions: toHostJsonValue(actions),
-        }),
-      listAutomations: () => callHost<AutomationInfo[]>('automation.list'),
-      toggleAutomation: (automationId) =>
-        callHost<{ id: string; enabled: boolean } | null>('automation.toggle', {
-          automationId,
-        }),
-      runAutomation: (automationId) =>
-        callHost<{ status: string; results: JsonValue[] } | null>('automation.run', {
-          automationId,
-        }),
-      emitAutomationEvent: (event) =>
-        callHost<AutomationEventDispatchInfo>('automation.event.emit', {
-          event,
-        }),
-      getPluginSelf: () =>
-        callHost<PluginSelfInfo>('plugin.self.get'),
-      listLogs: (query = {}) =>
-        callHost<PluginEventListResult>('log.list', {
-          ...query,
-        }),
-      writeLog: ({ level, message, type, metadata }) =>
-        callHost<boolean>('log.write', {
-          level,
-          message,
-          ...(type ? { type } : {}),
-          ...(metadata ? { metadata } : {}),
-        }),
-      listConversationMessages: () =>
-        call('conversation.messages.list', {}),
-      getStorage: (key, options) =>
-        call('storage.get', {
-          key,
-          ...toScopedStateParams(options),
-        }),
-      setStorage: (key, value, options) =>
-        call('storage.set', {
-          key,
-          value,
-          ...toScopedStateParams(options),
-        }),
-      deleteStorage: (key, options) =>
-        call('storage.delete', {
-          key,
-          ...toScopedStateParams(options),
-        }),
-      listStorage: (prefix, options) =>
-        call('storage.list', {
-          ...(prefix ? { prefix } : {}),
-          ...toScopedStateParams(options),
-        }),
-      getState: (key, options) =>
-        call('state.get', {
-          key,
-          ...toScopedStateParams(options),
-        }),
-      setState: (key, value, options) =>
-        call('state.set', {
-          key,
-          value,
-          ...toScopedStateParams(options),
-        }),
-      deleteState: (key, options) =>
-        call('state.delete', {
-          key,
-          ...toScopedStateParams(options),
-        }),
-      listState: (prefix, options) =>
-        call('state.list', {
-          ...(prefix ? { prefix } : {}),
-          ...toScopedStateParams(options),
-        }),
-      saveMemory: ({ content, category, keywords }) =>
-        call('memory.save', {
-          content,
-          ...(category ? { category } : {}),
-          ...(keywords ? { keywords } : {}),
-        }),
-      getConfig: (key) =>
-        call('config.get', key ? { key } : {}),
-      getUser: () => call('user.get', {}),
-      setConversationTitle: (title) =>
-        call('conversation.title.set', {
-          title,
-        }),
-      generate: ({
-        providerId,
-        modelId,
-        system,
-        messages,
-        variant,
-        providerOptions,
-        headers,
-        maxOutputTokens,
-      }) =>
-        callHost<PluginLlmGenerateResult>('llm.generate', {
-          ...(providerId ? { providerId } : {}),
-          ...(modelId ? { modelId } : {}),
-          ...(system ? { system } : {}),
-          messages: toHostJsonValue(messages),
-          ...(variant ? { variant } : {}),
-          ...(providerOptions ? { providerOptions } : {}),
-          ...(headers ? { headers } : {}),
-          ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-        }),
-      runSubagent: ({
-        providerId,
-        modelId,
-        system,
-        messages,
-        toolNames,
-        variant,
-        providerOptions,
-        headers,
-        maxOutputTokens,
-        maxSteps,
-      }) =>
-        callHost<PluginSubagentRunResult>('subagent.run', {
-          ...(providerId ? { providerId } : {}),
-          ...(modelId ? { modelId } : {}),
-          ...(system ? { system } : {}),
-          messages: toHostJsonValue(messages),
-          ...(toolNames ? { toolNames: toHostJsonValue(toolNames) } : {}),
-          ...(variant ? { variant } : {}),
-          ...(providerOptions ? { providerOptions } : {}),
-          ...(headers ? { headers: toHostJsonValue(headers) } : {}),
-          ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-          ...(typeof maxSteps === 'number' ? { maxSteps } : {}),
-        }),
-      startSubagentTask: ({
-        providerId,
-        modelId,
-        system,
-        messages,
-        toolNames,
-        variant,
-        providerOptions,
-        headers,
-        maxOutputTokens,
-        maxSteps,
-        writeBack,
-      }) => {
-        const startTaskParams: JsonObject = {
-          messages: toHostJsonValue(messages),
-        };
-        if (providerId) {
-          startTaskParams.providerId = providerId;
-        }
-        if (modelId) {
-          startTaskParams.modelId = modelId;
-        }
-        if (system) {
-          startTaskParams.system = system;
-        }
-        if (toolNames) {
-          startTaskParams.toolNames = toHostJsonValue(toolNames);
-        }
-        if (variant) {
-          startTaskParams.variant = variant;
-        }
-        if (providerOptions) {
-          startTaskParams.providerOptions = providerOptions;
-        }
-        if (headers) {
-          startTaskParams.headers = toHostJsonValue(headers);
-        }
-        if (typeof maxOutputTokens === 'number') {
-          startTaskParams.maxOutputTokens = maxOutputTokens;
-        }
-        if (typeof maxSteps === 'number') {
-          startTaskParams.maxSteps = maxSteps;
-        }
-        if (writeBack) {
-          startTaskParams.writeBack = toHostJsonValue(writeBack);
-        }
-
-        return callHost<PluginSubagentTaskSummary>(
-          'subagent.task.start',
-          startTaskParams,
-        );
-      },
-      listSubagentTasks: () =>
-        callHost<PluginSubagentTaskSummary[]>('subagent.task.list'),
-      getSubagentTask: (taskId) =>
-        callHost<PluginSubagentTaskDetail>('subagent.task.get', {
-          taskId,
-        }),
-      generateText: ({
-        prompt,
-        system,
-        providerId,
-        modelId,
-        variant,
-        maxOutputTokens,
-        providerOptions,
-        headers,
-      }) =>
-        call('llm.generate-text', {
-          prompt,
-          ...(system ? { system } : {}),
-          ...(providerId ? { providerId } : {}),
-          ...(modelId ? { modelId } : {}),
-          ...(variant ? { variant } : {}),
-          ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-          ...(providerOptions ? { providerOptions } : {}),
-          ...(headers ? { headers } : {}),
-        }),
-    };
+    return createBuiltinPluginHostFacade({
+      call: (method, params) => this.invokeHost(context, method, params),
+      callHost: <T>(
+        method: HostCallPayload['method'],
+        params: JsonObject = {},
+      ) => this.callHost<T>(context, method, params),
+    });
   }
 }
 
@@ -1099,72 +781,4 @@ export function createChatBeforeModelHookResult(
  */
 function normalizeBuiltinRoutePath(path: string): string {
   return path.trim().replace(/^\/+|\/+$/g, '');
-}
-
-/**
- * 将宿主调用参数归一化为 JSON，并跳过显式 undefined 字段。
- * @param value 原始值
- * @returns 适合 Host API 的 JSON 值
- */
-function toHostJsonValue(value: unknown): JsonValue {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean'
-  ) {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    const result: JsonValue[] = [];
-    for (const item of value) {
-      if (typeof item === 'undefined') {
-        continue;
-      }
-      result.push(toHostJsonValue(item));
-    }
-    return result;
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-
-  if (isPlainObject(value)) {
-    const result: JsonObject = {};
-    for (const [key, entry] of Object.entries(value)) {
-      if (typeof entry === 'undefined') {
-        continue;
-      }
-      result[key] = toHostJsonValue(entry);
-    }
-    return result;
-  }
-
-  return toJsonValue(value);
-}
-
-function toScopedStateParams(
-  options?: BuiltinPluginScopedStateOptions,
-): JsonObject {
-  return options?.scope
-    ? {
-        scope: options.scope,
-      }
-    : {};
-}
-
-/**
- * 判断值是否为普通对象。
- * @param value 待判断值
- * @returns 是否为普通对象
- */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
