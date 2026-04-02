@@ -42,6 +42,7 @@ import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { PluginHostService } from './plugin-host.service';
+import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
@@ -61,7 +62,6 @@ import {
 import {
   assertRuntimeRecordEnabled,
   getRuntimeRecordOrThrow,
-  invokeDispatchableHooks,
   listDispatchableHookRecords,
 } from './plugin-runtime-dispatch.helpers';
 import {
@@ -416,6 +416,7 @@ export class PluginRuntimeService {
     private readonly pluginService: PluginService,
     private readonly hostService: PluginHostService,
     private readonly aiModelExecution: AiModelExecutionService,
+    private readonly runtimeBroadcastFacade: PluginRuntimeBroadcastFacade,
     private readonly runtimeGovernanceFacade: PluginRuntimeGovernanceFacade,
     private readonly runtimeHostFacade: PluginRuntimeHostFacade,
     private readonly runtimeSubagentFacade: PluginRuntimeSubagentFacade,
@@ -983,10 +984,12 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ChatWaitingModelHookPayload;
   }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
+    await this.runtimeBroadcastFacade.dispatchVoidHook({
+      records: this.records.values(),
       hookName: 'chat:waiting-model',
       context: input.context,
       payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
   }
 
@@ -1023,10 +1026,12 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ConversationCreatedHookPayload;
   }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
+    await this.runtimeBroadcastFacade.dispatchVoidHook({
+      records: this.records.values(),
       hookName: 'conversation:created',
       context: input.context,
       payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
   }
 
@@ -1087,10 +1092,12 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: MessageDeletedHookPayload;
   }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
+    await this.runtimeBroadcastFacade.dispatchVoidHook({
+      records: this.records.values(),
       hookName: 'message:deleted',
       context: input.context,
       payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
   }
 
@@ -1232,10 +1239,12 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ResponseAfterSendHookPayload;
   }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
+    await this.runtimeBroadcastFacade.dispatchVoidHook({
+      records: this.records.values(),
       hookName: 'response:after-send',
       context: input.context,
       payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
   }
 
@@ -1291,10 +1300,12 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: PluginLoadedHookPayload;
   }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
+    await this.runtimeBroadcastFacade.dispatchVoidHook({
+      records: this.records.values(),
       hookName: 'plugin:loaded',
       context: input.context,
       payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
   }
 
@@ -1307,10 +1318,12 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: PluginUnloadedHookPayload;
   }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
+    await this.runtimeBroadcastFacade.dispatchVoidHook({
+      records: this.records.values(),
       hookName: 'plugin:unloaded',
       context: input.context,
       payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
   }
 
@@ -1323,10 +1336,12 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: PluginErrorHookPayload;
   }): Promise<void> {
-    await this.invokeHookAcrossPlugins({
+    await this.runtimeBroadcastFacade.dispatchVoidHook({
+      records: this.records.values(),
       hookName: 'plugin:error',
       context: input.context,
       payload: input.payload,
+      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
   }
 
@@ -1369,31 +1384,6 @@ export class PluginRuntimeService {
           payload,
         });
       },
-    });
-  }
-
-  /**
-   * 对当前作用域内支持指定 Hook 的插件执行统一调度。
-   * @param input Hook 名称、调用上下文与 JSON 载荷
-   * @returns 所有插件 Hook 的返回值
-   */
-  private async invokeHookAcrossPlugins(input: {
-    hookName: PluginHookName;
-    context: PluginCallContext;
-    payload: unknown;
-  }): Promise<Array<JsonValue | null | undefined>> {
-    return invokeDispatchableHooks({
-      records: this.records.values(),
-      hookName: input.hookName,
-      context: input.context,
-      payload: input.payload,
-      invoke: (record, payload) =>
-        this.invokePluginHook({
-          pluginId: record.manifest.id,
-          hookName: input.hookName,
-          context: input.context,
-          payload,
-        }),
     });
   }
 

@@ -270,6 +270,19 @@
     - `runSubagentAfterRunHooks(...)`
     让 subagent 专用 hook 控制流也不再留在 runtime 主类里
   - `plugin-runtime.service.ts` 主文件行数已从 `1432` 继续降到 `1411`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-runtime-broadcast.facade.ts`
+    把纯广播型 hook 调度从 runtime 主类中继续拆出
+  - `PluginRuntimeService` 已改为通过 broadcast facade 承接：
+    - `chat:waiting-model`
+    - `conversation:created`
+    - `message:deleted`
+    - `response:after-send`
+    - `plugin:loaded`
+    - `plugin:unloaded`
+    - `plugin:error`
+    这一组广播型 hook 的统一分发
+  - `plugin-runtime.service.ts` 主文件行数已从 `1411` 继续降到 `1402`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
