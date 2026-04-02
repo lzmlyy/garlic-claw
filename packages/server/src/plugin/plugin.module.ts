@@ -9,6 +9,7 @@ import { PluginAdminService } from './plugin-admin.service';
 import { PluginCommandController } from './plugin-command.controller';
 import { PluginCommandService } from './plugin-command.service';
 import { PluginCronService } from './plugin-cron.service';
+import { PluginCronSchedulerService } from './plugin-cron-scheduler.service';
 import { PluginController } from './plugin.controller';
 import { PluginEventWriteService } from './plugin-event-write.service';
 import { PluginGateway } from './plugin.gateway';
@@ -67,6 +68,7 @@ import { PluginService } from './plugin.service';
     PluginRuntimeOperationHooksFacade,
     PluginRuntimeSubagentFacade,
     PluginRuntimeTransportFacade,
+    PluginCronSchedulerService,
     PluginCronService,
     PluginRuntimeService,
     PluginRuntimeOrchestratorService,
@@ -106,6 +108,7 @@ import { PluginService } from './plugin.service';
     PluginRuntimeOperationHooksFacade,
     PluginRuntimeSubagentFacade,
     PluginRuntimeTransportFacade,
+    PluginCronSchedulerService,
     PluginCronService,
     PluginRuntimeService,
     PluginRuntimeOrchestratorService,

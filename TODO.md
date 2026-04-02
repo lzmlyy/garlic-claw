@@ -473,6 +473,9 @@
   - `plugin-subagent-task.service.ts` 主文件行数已从 `668` 继续降到 `223`
   - `plugin-subagent-task.helpers.ts` 主文件行数已从 `460` 继续降到 `9`
   - 已新增：
+    - `packages/server/src/plugin/plugin-cron-scheduler.service.ts`
+    把 `PluginCronService` 里的调度、cron tick 执行和成功/失败回写移出
+  - 已新增：
     - `packages/server/src/plugin/plugin-cron.helpers.ts`
     继续把 cron job 记录归一化、summary 序列化和 data/interval 纯解析规则从服务主类中拆出
   - 已新增：
@@ -481,8 +484,11 @@
   - `PluginCronService` 已不再直接承载：
     - cron job record normalize
     - cron summary serialize
+    - 定时调度与 `jobs` map 生命周期
+    - `cron:tick` 执行与成功/失败回写
     - cron data/source/interval 纯解析规则
   - `plugin-cron.service.ts` 主文件行数已从 `548` 继续降到 `425`
+  - `plugin-cron.service.ts` 主文件行数已从 `425` 继续降到 `245`
   - 已新增：
     - `packages/server/src/plugin/plugin-governance.helpers.ts`
     继续把持久化 manifest 读取和 governance snapshot 构建从持久化主类中拆出

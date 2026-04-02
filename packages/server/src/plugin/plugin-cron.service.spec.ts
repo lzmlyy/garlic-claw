@@ -1,3 +1,4 @@
+import { PluginCronSchedulerService } from './plugin-cron-scheduler.service';
 import { PluginCronService } from './plugin-cron.service';
 
 describe('PluginCronService', () => {
@@ -26,18 +27,23 @@ describe('PluginCronService', () => {
   };
 
   let service: PluginCronService;
+  let scheduler: PluginCronSchedulerService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     moduleRef.get.mockReturnValue(runtime);
     prisma.pluginCronJob.deleteMany.mockResolvedValue({ count: 0 });
+    scheduler = new PluginCronSchedulerService(
+      prisma as never,
+      pluginService as never,
+      moduleRef as never,
+    );
     service = new (PluginCronService as unknown as new (
       ...args: unknown[]
     ) => PluginCronService)(
       prisma as never,
-      pluginService as never,
-      moduleRef as never,
+      scheduler as never,
     );
   });
 
@@ -328,6 +334,28 @@ describe('PluginCronService', () => {
         lastErrorAt: expect.any(Date),
       }),
     });
+  });
+
+  it('stops scheduled jobs after plugin unregisters', async () => {
+    const jobRecord = createCronJobRecord({
+      id: 'cron-job-4',
+      pluginName: 'builtin.cron-heartbeat',
+      name: 'stopped-heartbeat',
+      cron: '10s',
+      source: 'host',
+    });
+
+    prisma.pluginCronJob.upsert.mockResolvedValue(jobRecord);
+
+    await service.registerCron('builtin.cron-heartbeat', {
+      name: 'stopped-heartbeat',
+      cron: '10s',
+    });
+    service.onPluginUnregistered('builtin.cron-heartbeat');
+
+    await jest.advanceTimersByTimeAsync(10000);
+
+    expect(runtime.invokePluginHook).not.toHaveBeenCalled();
   });
 });
 
