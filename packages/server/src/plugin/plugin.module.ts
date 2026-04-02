@@ -16,6 +16,8 @@ import { PluginHostService } from './plugin-host.service';
 import { PluginHostAiFacade } from './plugin-host-ai.facade';
 import { PluginHostConversationFacade } from './plugin-host-conversation.facade';
 import { PluginHostStateFacade } from './plugin-host-state.facade';
+import { PluginLifecycleWriteService } from './plugin-lifecycle-write.service';
+import { PluginReadService } from './plugin-read.service';
 import { PluginRouteController } from './plugin-route.controller';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
@@ -44,6 +46,8 @@ import { PluginService } from './plugin.service';
   providers: [
     PluginService,
     PluginEventWriteService,
+    PluginLifecycleWriteService,
+    PluginReadService,
     PluginStorageService,
     PluginGateway,
     PluginStateService,
@@ -80,6 +84,8 @@ import { PluginService } from './plugin.service';
   exports: [
     PluginService,
     PluginEventWriteService,
+    PluginLifecycleWriteService,
+    PluginReadService,
     PluginStorageService,
     PluginGateway,
     PluginHostService,

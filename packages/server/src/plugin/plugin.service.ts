@@ -3,7 +3,6 @@ import type {
   PluginEventListResult,
   JsonObject,
   JsonValue,
-  PluginConfigSchema,
   PluginConfigSnapshot,
   PluginHealthSnapshot,
   PluginManifest,
@@ -11,55 +10,22 @@ import type {
   PluginSelfInfo,
 } from '@garlic-claw/shared';
 import {
-  BadRequestException,
   Injectable,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  buildPluginEventFindManyInput,
-  buildPluginEventListResult,
-  buildPluginHealthSnapshot,
-  createPluginEvent,
-  normalizePluginEventOptions,
-  resolvePluginEventCursor,
-  type ListPluginEventOptions,
-} from './plugin-event.helpers';
+import { type ListPluginEventOptions } from './plugin-event.helpers';
 import { PluginEventWriteService } from './plugin-event-write.service';
-import {
-  buildPluginGovernanceSnapshot,
-} from './plugin-governance.helpers';
-import {
-  parsePluginScope,
-} from './plugin-persistence.helpers';
+import { PluginReadService } from './plugin-read.service';
 import { preparePluginConfigUpdate } from './plugin-config-write.helpers';
 import { preparePluginScopeUpdate } from './plugin-scope-write.helpers';
 import {
-  buildPluginHeartbeatMutation,
-  buildPluginLifecycleEvent,
-  buildPluginOfflineMutation,
-  buildPluginOnlineMutation,
-} from './plugin-lifecycle.helpers';
-import {
-  buildPluginRegistrationEvent,
-  buildPluginRegistrationUpsertData,
-} from './plugin-register.helpers';
-import {
-  buildPluginConfigSnapshot,
-  buildPluginSelfInfo,
-  buildResolvedPluginConfig,
-} from './plugin-record-view.helpers';
+  type PluginGovernanceSnapshot,
+  PluginLifecycleWriteService,
+} from './plugin-lifecycle-write.service';
 import { PluginStorageService } from './plugin-storage.service';
 
-/**
- * 运行时可直接消费的插件治理快照。
- */
-export interface PluginGovernanceSnapshot {
-  configSchema: PluginConfigSchema | null;
-  resolvedConfig: JsonObject;
-  scope: PluginScopeSettings;
-}
+export type { PluginGovernanceSnapshot } from './plugin-lifecycle-write.service';
 
 /**
  * 记录插件事件时使用的输入参数。
@@ -99,6 +65,8 @@ export class PluginService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pluginEventWriteService: PluginEventWriteService,
+    private readonly pluginLifecycleWriteService: PluginLifecycleWriteService,
+    private readonly pluginReadService: PluginReadService,
     private readonly pluginStorageService: PluginStorageService,
   ) {}
 
@@ -114,41 +82,7 @@ export class PluginService {
     deviceType: string,
     manifest: PluginManifest,
   ): Promise<PluginGovernanceSnapshot> {
-    const existing = await this.prisma.plugin.findUnique({
-      where: { name },
-      select: {
-        id: true,
-      },
-    });
-    const now = new Date();
-    const plugin = await this.prisma.plugin.upsert({
-      where: { name },
-      ...buildPluginRegistrationUpsertData({
-        name,
-        deviceType,
-        manifest,
-        now,
-      }),
-    });
-    const registrationEvent = buildPluginRegistrationEvent({
-      existing: Boolean(existing),
-    });
-    await createPluginEvent({
-      prisma: this.prisma,
-      pluginId: plugin.id,
-      type: registrationEvent.type,
-      level: 'info',
-      message: registrationEvent.message,
-    });
-    if (existing) {
-      this.logger.log(`插件 "${name}" 已重新接入运行时，包含 ${(manifest.tools ?? []).length} 个能力`);
-    } else {
-      this.logger.log(`插件 "${name}" 已注册，包含 ${(manifest.tools ?? []).length} 个能力`);
-    }
-    return buildPluginGovernanceSnapshot({
-      plugin,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginLifecycleWriteService.registerPlugin(name, deviceType, manifest);
   }
 
   /**
@@ -157,11 +91,7 @@ export class PluginService {
    * @returns 配置 schema、解析后的配置值和作用域规则
    */
   async getGovernanceSnapshot(name: string): Promise<PluginGovernanceSnapshot> {
-    const plugin = await this.findByNameOrThrow(name);
-    return buildPluginGovernanceSnapshot({
-      plugin,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginReadService.getGovernanceSnapshot(name);
   }
 
   /**
@@ -170,22 +100,7 @@ export class PluginService {
    * @returns 更新后的数据库记录
    */
   async setOnline(name: string) {
-    const now = new Date();
-    const updated = await this.prisma.plugin.update({
-      where: { name },
-      data: buildPluginOnlineMutation(now),
-    });
-    const lifecycleEvent = buildPluginLifecycleEvent({
-      status: 'online',
-    });
-    await createPluginEvent({
-      prisma: this.prisma,
-      pluginId: updated.id,
-      type: lifecycleEvent.type,
-      level: lifecycleEvent.level,
-      message: lifecycleEvent.message,
-    });
-    return updated;
+    return this.pluginLifecycleWriteService.setOnline(name);
   }
 
   /**
@@ -194,21 +109,7 @@ export class PluginService {
    * @returns 更新后的数据库记录
    */
   async setOffline(name: string) {
-    const updated = await this.prisma.plugin.update({
-      where: { name },
-      data: buildPluginOfflineMutation(),
-    });
-    const lifecycleEvent = buildPluginLifecycleEvent({
-      status: 'offline',
-    });
-    await createPluginEvent({
-      prisma: this.prisma,
-      pluginId: updated.id,
-      type: lifecycleEvent.type,
-      level: lifecycleEvent.level,
-      message: lifecycleEvent.message,
-    });
-    return updated;
+    return this.pluginLifecycleWriteService.setOffline(name);
   }
 
   /**
@@ -217,11 +118,7 @@ export class PluginService {
    * @returns 更新后的数据库记录
    */
   async heartbeat(name: string) {
-    const now = new Date();
-    return this.prisma.plugin.update({
-      where: { name },
-      data: buildPluginHeartbeatMutation(now),
-    });
+    return this.pluginLifecycleWriteService.heartbeat(name);
   }
 
   /**
@@ -229,7 +126,7 @@ export class PluginService {
    * @returns 按名称排序的插件列表
    */
   async findAll() {
-    return this.prisma.plugin.findMany({ orderBy: { name: 'asc' } });
+    return this.pluginReadService.findAll();
   }
 
   /**
@@ -237,10 +134,7 @@ export class PluginService {
    * @returns 在线插件列表
    */
   async findOnline() {
-    return this.prisma.plugin.findMany({
-      where: { status: 'online' },
-      orderBy: { name: 'asc' },
-    });
+    return this.pluginReadService.findOnline();
   }
 
   /**
@@ -249,7 +143,7 @@ export class PluginService {
    * @returns 数据库记录；不存在时返回 null
    */
   async findByName(name: string) {
-    return this.prisma.plugin.findUnique({ where: { name } });
+    return this.pluginReadService.findByName(name);
   }
 
   /**
@@ -258,12 +152,7 @@ export class PluginService {
    * @returns 删除结果
    */
   async deletePlugin(name: string) {
-    const plugin = await this.findByNameOrThrow(name);
-    if (plugin.status === 'online') {
-      throw new BadRequestException(`插件 ${name} 当前在线，不能直接删除`);
-    }
-
-    return this.prisma.plugin.delete({ where: { name } });
+    return this.pluginLifecycleWriteService.deletePlugin(name);
   }
 
   /**
@@ -272,11 +161,7 @@ export class PluginService {
    * @returns schema 与解析后的配置值
    */
   async getPluginConfig(name: string): Promise<PluginConfigSnapshot> {
-    const plugin = await this.findByNameOrThrow(name);
-    return buildPluginConfigSnapshot({
-      plugin,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginReadService.getPluginConfig(name);
   }
 
   /**
@@ -285,11 +170,7 @@ export class PluginService {
    * @returns 默认值与持久化值合并后的结果
    */
   async getResolvedConfig(name: string): Promise<JsonObject> {
-    const plugin = await this.findByNameOrThrow(name);
-    return buildResolvedPluginConfig({
-      plugin,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginReadService.getResolvedConfig(name);
   }
 
   /**
@@ -346,11 +227,7 @@ export class PluginService {
    * @returns 当前插件的自省信息
    */
   async getPluginSelfInfo(name: string): Promise<PluginSelfInfo> {
-    const plugin = await this.findByNameOrThrow(name);
-    return buildPluginSelfInfo({
-      plugin,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginReadService.getPluginSelfInfo(name);
   }
 
   /**
@@ -363,7 +240,7 @@ export class PluginService {
     name: string,
     values: JsonObject,
   ): Promise<PluginConfigSnapshot> {
-    const plugin = await this.findByNameOrThrow(name);
+    const plugin = await this.pluginReadService.findByNameOrThrow(name);
     const prepared = preparePluginConfigUpdate({
       name,
       plugin,
@@ -385,11 +262,7 @@ export class PluginService {
    * @returns 作用域设置
    */
   async getPluginScope(name: string): Promise<PluginScopeSettings> {
-    const plugin = await this.findByNameOrThrow(name);
-    return parsePluginScope({
-      plugin,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginReadService.getPluginScope(name);
   }
 
   /**
@@ -402,7 +275,7 @@ export class PluginService {
     name: string,
     scope: PluginScopeSettings,
   ): Promise<PluginScopeSettings> {
-    const plugin = await this.findByNameOrThrow(name);
+    const plugin = await this.pluginReadService.findByNameOrThrow(name);
     const prepared = preparePluginScopeUpdate({
       plugin,
       scope,
@@ -421,10 +294,7 @@ export class PluginService {
    * @returns 健康摘要
    */
   async getPluginHealth(name: string): Promise<PluginHealthSnapshot> {
-    const plugin = await this.findByNameOrThrow(name);
-    return buildPluginHealthSnapshot({
-      plugin,
-    });
+    return this.pluginReadService.getPluginHealth(name);
   }
 
   /**
@@ -437,27 +307,7 @@ export class PluginService {
     name: string,
     options: ListPluginEventOptions = {},
   ): Promise<PluginEventListResult> {
-    const plugin = await this.findByNameOrThrow(name);
-    const normalized = normalizePluginEventOptions(options);
-    const cursorEvent = normalized.cursor
-      ? await resolvePluginEventCursor({
-        prisma: this.prisma,
-        pluginId: plugin.id,
-        cursor: normalized.cursor,
-      })
-      : null;
-    const events = await this.prisma.pluginEvent.findMany({
-      ...buildPluginEventFindManyInput({
-        pluginId: plugin.id,
-        options: normalized,
-        cursorEvent,
-      }),
-    });
-    return buildPluginEventListResult({
-      events,
-      limit: normalized.limit,
-      onWarn: (message) => this.logger.warn(message),
-    });
+    return this.pluginReadService.listPluginEvents(name, options);
   }
 
   /**
@@ -521,19 +371,5 @@ export class PluginService {
     },
   ): Promise<void> {
     await this.pluginEventWriteService.recordHealthCheck(name, input);
-  }
-
-  /**
-   * 读取一条插件记录；不存在时抛出 404。
-   * @param name 插件 ID
-   * @returns 原始数据库记录
-   */
-  private async findByNameOrThrow(name: string) {
-    const plugin = await this.findByName(name);
-    if (!plugin) {
-      throw new NotFoundException(`Plugin not found: ${name}`);
-    }
-
-    return plugin;
   }
 }

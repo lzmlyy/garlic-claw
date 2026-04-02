@@ -707,6 +707,14 @@
     - `packages/server/src/plugin/plugin-event-write.service.ts`
     - `packages/server/src/plugin/plugin-event-write.service.spec.ts`
     把插件事件写入、成功/失败健康状态更新和 health-check 写回从 `PluginService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-lifecycle-write.service.ts`
+    - `packages/server/src/plugin/plugin-lifecycle-write.service.spec.ts`
+    把插件注册、上线/下线、心跳和删除从 `PluginService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-read.service.ts`
+    - `packages/server/src/plugin/plugin-read.service.spec.ts`
+    把插件治理快照、列表查询、配置/作用域/健康/事件等只读入口从 `PluginService` 主类中拆出
   - `ChatMessageService` 已改为通过 `ChatMessagePluginTargetService` 委派：
     - `message.target.current.get`
     - `message.send`
@@ -730,7 +738,17 @@
     - `health.success`
     - `health.failure`
     - `health.check`
-  - `plugin.service.ts` 主文件行数已从 `605` 继续降到 `506`
+  - `PluginService` 已改为通过 `PluginLifecycleWriteService` 委派：
+    - `register`
+    - `online`
+    - `offline`
+    - `heartbeat`
+    - `delete`
+  - `PluginService` 已改为通过 `PluginReadService` 委派：
+    - `governance snapshot`
+    - `findAll / findOnline / findByName`
+    - `config / resolved config / self info / scope / health / events`
+  - `plugin.service.ts` 主文件行数已从 `605` 继续降到 `345`
   - 已删除多厂商 SDK runtime / stub 残留，当前 runtime 与 type stub 都已收敛到三种协议族
   - 已把 provider catalog 收口为 `core + preset + protocol`，preset 不再绑定独立 SDK
   - 已删除一批 AI 模块薄壳：
