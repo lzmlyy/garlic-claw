@@ -31,6 +31,7 @@ import {
   handlePluginGatewayResultMessage,
 } from './plugin-gateway-dispatch.helpers';
 import { handlePluginGatewayHostCall } from './plugin-gateway-host.helpers';
+import { handlePluginGatewayInboundRawMessage } from './plugin-gateway-inbound.helpers';
 import {
   authenticatePluginGatewayConnection,
   disconnectPluginGatewayConnection,
@@ -40,7 +41,6 @@ import {
   readAuthPayload,
   readDataPayload,
   readErrorPayload,
-  readPluginGatewayMessage,
   readRegisterPayload,
   readRouteResultPayload,
   type PluginGatewayInboundMessage,
@@ -256,42 +256,13 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     conn: PluginConnection,
     raw: Buffer,
   ): Promise<void> {
-    const rawText = raw.toString();
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      sendPluginGatewayMessage({
-        ws,
-        type: WS_TYPE.ERROR,
-        action: 'parse_error',
-        payload: { error: '无效的 JSON' },
-      });
-      return;
-    }
-
-    const message = readPluginGatewayMessage(parsed);
-    if (!message) {
-      sendPluginGatewayProtocolError({
-        ws,
-        error: '无效的插件协议消息',
-        protocolErrorAction: PROTOCOL_ERROR_ACTION,
-      });
-      return;
-    }
-
-    try {
-      await this.handleMessage(ws, conn, message);
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`插件协议消息处理失败: ${messageText}`);
-      sendPluginGatewayProtocolError({
-        ws,
-        error: '插件协议消息处理失败',
-        protocolErrorAction: PROTOCOL_ERROR_ACTION,
-      });
-    }
+    await handlePluginGatewayInboundRawMessage({
+      ws,
+      raw,
+      protocolErrorAction: PROTOCOL_ERROR_ACTION,
+      handleMessage: (message) => this.handleMessage(ws, conn, message),
+      logWarn: (message) => this.logger.warn(message),
+    });
   }
 
   /**

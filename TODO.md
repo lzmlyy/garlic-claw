@@ -487,6 +487,17 @@
     - auth timeout 到期后的统一 AUTH_FAIL 回包
     - message/close/error socket handler 装配
   - `plugin.gateway.ts` 主文件行数已从 `593` 继续降到 `582`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-gateway-inbound.helpers.ts`
+    继续把原始 websocket message 的 parse/protocol error/handler failure 样板从网关主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-gateway-inbound.helpers.spec.ts`
+    直接给 gateway inbound helper 补 parse_error、protocol_error 与下游 failure 包装回归
+  - `PluginGateway` 已不再直接承载：
+    - 原始 JSON parse 与 parse_error 返回
+    - protocol envelope 校验失败时的统一 protocol_error 返回
+    - 下游 handler 抛错时的 warn + protocol_error 返回
+  - `plugin.gateway.ts` 主文件行数已从 `582` 继续降到 `556`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
