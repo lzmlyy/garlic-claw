@@ -28,6 +28,7 @@ import {
 import {
   ChatMessageOrchestrationService,
 } from './chat-message-orchestration.service';
+import { ChatMessageCompletionService } from './chat-message-completion.service';
 import { ChatMessagePluginTargetService } from './chat-message-plugin-target.service';
 import { ChatModelInvocationService } from './chat-model-invocation.service';
 import type { ChatRuntimeMessage } from './chat-message-session';
@@ -35,35 +36,10 @@ import { prepareSendMessagePayload } from './chat-message-session';
 import { ChatService } from './chat.service';
 import { type RetryMessageDto, type SendMessageDto, type UpdateMessageDto } from './dto/chat.dto';
 import { normalizeConversationHostServices } from './chat-host-services';
-import {
-  deserializeMessageParts,
-  normalizeAssistantMessageOutput,
-  normalizeUserMessageInput,
-  serializeMessageParts,
-} from './message-parts';
+import { deserializeMessageParts, normalizeUserMessageInput, serializeMessageParts } from './message-parts';
 import {
   ChatTaskService,
 } from './chat-task.service';
-
-type MessageRecordWithMetadata = {
-  id: string;
-  metadataJson?: string | null;
-} & Record<string, unknown>;
-
-interface ChatMessageMetadataValue {
-  visionFallback?: {
-    state: 'transcribing' | 'completed';
-    entries: Array<{
-      text: string;
-      source: 'cache' | 'generated';
-    }>;
-  };
-}
-
-interface ChatVisionFallbackMetadataEntry {
-  text: string;
-  source: 'cache' | 'generated';
-}
 
 @Injectable()
 export class ChatMessageService {
@@ -77,6 +53,7 @@ export class ChatMessageService {
     private readonly modelInvocation: ChatModelInvocationService,
     private readonly orchestration: ChatMessageOrchestrationService,
     private readonly chatTaskService: ChatTaskService,
+    private readonly completionService: ChatMessageCompletionService,
     private readonly pluginTargetService: ChatMessagePluginTargetService,
     private readonly skillCommands: SkillCommandService,
   ) {}
@@ -182,7 +159,7 @@ export class ChatMessageService {
 
     try {
       if (receivedMessageResult.action === 'short-circuit') {
-        const completedAssistantMessage = await this.completeShortCircuitedAssistant({
+        const completedAssistantMessage = await this.completionService.completeShortCircuitedAssistant({
           assistantMessageId: assistantMessage.id,
           userId,
           conversationId,
@@ -207,7 +184,7 @@ export class ChatMessageService {
         messages: createdMessagePayload.modelMessages as ChatRuntimeMessage[],
       });
       if (beforeModelResult.action === 'short-circuit') {
-        const completedAssistantMessage = await this.completeShortCircuitedAssistant({
+        const completedAssistantMessage = await this.completionService.completeShortCircuitedAssistant({
           assistantMessageId: assistantMessage.id,
           userId,
           conversationId,
@@ -231,7 +208,7 @@ export class ChatMessageService {
       const {
         userMessage: userMessageWithMetadata,
         assistantMessage: assistantMessageWithMetadata,
-      } = await this.applyVisionFallbackMetadata({
+      } = await this.completionService.applyVisionFallbackMetadata({
         userMessage,
         assistantMessage,
         visionFallbackEntries:
@@ -372,7 +349,7 @@ export class ChatMessageService {
         messages: runtimeMessages,
       });
       if (beforeModelResult.action === 'short-circuit') {
-        return this.completeShortCircuitedAssistant({
+        return this.completionService.completeShortCircuitedAssistant({
           assistantMessageId: messageId,
           userId,
           conversationId,
@@ -390,7 +367,7 @@ export class ChatMessageService {
         messages: beforeModelResult.request.messages,
       });
       const assistantMessageWithMetadata =
-        await this.applyVisionFallbackMetadataToAssistant({
+        await this.completionService.applyVisionFallbackMetadataToAssistant({
           assistantMessage,
           visionFallbackEntries:
             preparedInvocation.transformResult?.visionFallback?.entries ?? [],
@@ -664,175 +641,4 @@ export class ChatMessageService {
       status: message.status as 'pending' | 'streaming' | 'completed' | 'stopped' | 'error',
     };
   }
-
-  /**
-   * 将短路结果直接写回 assistant 消息，并触发模型后 Hook。
-   * @param input assistant 消息、上下文和最终回复
-   * @returns 已更新完成态的 assistant 消息
-   */
-  private async completeShortCircuitedAssistant(input: {
-    assistantMessageId: string;
-    userId: string;
-    conversationId: string;
-    providerId: string;
-    modelId: string;
-    activePersonaId: string;
-    assistantContent: string;
-    assistantParts?: ChatMessagePart[];
-  }) {
-    const normalizedAssistant = normalizeAssistantMessageOutput({
-      content: input.assistantContent,
-      parts: input.assistantParts,
-    });
-    const assistantMessage = await this.prisma.message.update({
-      where: { id: input.assistantMessageId },
-      data: {
-        content: normalizedAssistant.content,
-        partsJson: normalizedAssistant.parts.length
-          ? serializeMessageParts(normalizedAssistant.parts)
-          : null,
-        provider: input.providerId,
-        model: input.modelId,
-        status: 'completed',
-        error: null,
-        toolCalls: null,
-        toolResults: null,
-      },
-    });
-    await this.touchConversation(input.conversationId);
-    const finalResult = await this.orchestration.applyFinalResponseHooks({
-      userId: input.userId,
-      conversationId: input.conversationId,
-      activePersonaId: input.activePersonaId,
-      responseSource: 'short-circuit',
-      result: {
-        assistantMessageId: input.assistantMessageId,
-        conversationId: input.conversationId,
-        providerId: input.providerId,
-        modelId: input.modelId,
-        content: normalizedAssistant.content,
-        parts: normalizedAssistant.parts,
-        toolCalls: [],
-        toolResults: [],
-      },
-    });
-
-    const serializedFinalParts = finalResult.parts.length
-      ? serializeMessageParts(finalResult.parts)
-      : null;
-    const finalAssistantMessage = finalResult.content === assistantMessage.content
-      && serializedFinalParts === ((assistantMessage as { partsJson?: string | null }).partsJson ?? null)
-      && finalResult.providerId === assistantMessage.provider
-      && finalResult.modelId === assistantMessage.model
-      ? assistantMessage
-      : await this.prisma.message.update({
-        where: { id: input.assistantMessageId },
-        data: {
-          content: finalResult.content,
-          partsJson: serializedFinalParts,
-          provider: finalResult.providerId,
-          model: finalResult.modelId,
-          status: 'completed',
-          error: null,
-          toolCalls: finalResult.toolCalls.length
-            ? JSON.stringify(finalResult.toolCalls)
-            : null,
-          toolResults: finalResult.toolResults.length
-            ? JSON.stringify(finalResult.toolResults)
-            : null,
-        },
-      });
-    await this.touchConversation(input.conversationId);
-    await this.orchestration.runResponseAfterSendHooks({
-      userId: input.userId,
-      conversationId: input.conversationId,
-      activePersonaId: input.activePersonaId,
-      responseSource: 'short-circuit',
-      result: finalResult,
-    });
-    return finalAssistantMessage;
-  }
-
-  /**
-   * 把图像转述元数据回写到当前发送产生的 user/assistant 消息。
-   * @param input 当前发送的消息记录与转述条目
-   * @returns 带最新 metadataJson 的消息记录
-   */
-  private async applyVisionFallbackMetadata(input: {
-    userMessage: MessageRecordWithMetadata;
-    assistantMessage: MessageRecordWithMetadata;
-    visionFallbackEntries: ChatVisionFallbackMetadataEntry[];
-  }) {
-    if (input.visionFallbackEntries.length === 0) {
-      return input;
-    }
-
-    const metadataJson = serializeChatMessageMetadata({
-      visionFallback: {
-        state: 'completed',
-        entries: input.visionFallbackEntries,
-      },
-    });
-    await this.prisma.message.updateMany({
-      where: {
-        id: {
-          in: [input.userMessage.id, input.assistantMessage.id],
-        },
-      },
-      data: {
-        metadataJson,
-      },
-    });
-
-    return {
-      userMessage: {
-        ...input.userMessage,
-        metadataJson,
-      },
-      assistantMessage: {
-        ...input.assistantMessage,
-        metadataJson,
-      },
-    };
-  }
-
-  /**
-   * 把图像转述元数据回写到重试产生的 assistant 消息。
-   * @param input assistant 消息与转述条目
-   * @returns 带最新 metadataJson 的 assistant 消息
-   */
-  private async applyVisionFallbackMetadataToAssistant(input: {
-    assistantMessage: MessageRecordWithMetadata;
-    visionFallbackEntries: ChatVisionFallbackMetadataEntry[];
-  }) {
-    if (input.visionFallbackEntries.length === 0) {
-      return input.assistantMessage;
-    }
-
-    const metadataJson = serializeChatMessageMetadata({
-      visionFallback: {
-        state: 'completed',
-        entries: input.visionFallbackEntries,
-      },
-    });
-    await this.prisma.message.update({
-      where: {
-        id: input.assistantMessage.id,
-      },
-      data: {
-        metadataJson,
-      },
-    });
-
-    return {
-      ...input.assistantMessage,
-      metadataJson,
-    };
-  }
-}
-
-function serializeChatMessageMetadata(
-  metadata: ChatMessageMetadataValue,
-): string {
-  return JSON.stringify(metadata);
 }
