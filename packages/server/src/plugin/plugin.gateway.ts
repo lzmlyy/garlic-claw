@@ -1,19 +1,12 @@
 import {
   type AuthPayload,
   type ExecuteErrorPayload,
-  type ExecutePayload,
-  type ExecuteResultPayload,
-  type HookInvokePayload,
-  type HookResultPayload,
-  type HostCallPayload,
-  type PluginHostMethod,
   type HostResultPayload,
   type JsonValue,
   type PluginCallContext,
   type PluginManifest,
+  type PluginHostMethod,
   type PluginRouteResponse,
-  type RegisterPayload,
-  type RouteInvokePayload,
   type RouteResultPayload,
   WS_ACTION,
   DeviceType,
@@ -33,6 +26,20 @@ import type { IncomingMessage } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { JsonObject } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
+import {
+  readPluginGatewayRequestId,
+  readPluginGatewayTimeoutMs,
+  rejectPluginGatewayPendingRequest,
+  rejectPluginGatewayPendingRequestsForSocket,
+  resolvePluginGatewayPendingRequest,
+  sendPluginGatewayMessage,
+  sendPluginGatewayProtocolError,
+  sendPluginGatewayRequest,
+  sendTypedPluginGatewayRequest,
+  type ActiveRequestContext,
+  type PendingRequest,
+  type PluginGatewayPayload,
+} from './plugin-gateway-transport.helpers';
 import { normalizePluginManifestCandidate } from './plugin-manifest.persistence';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
@@ -157,30 +164,6 @@ interface PluginConnection {
   lastHeartbeatAt: number;
 }
 
-/**
- * 等待远程插件回包的请求。
- */
-interface PendingRequest {
-  /** 成功回调。 */
-  resolve: (value: JsonValue) => void;
-  /** 失败回调。 */
-  reject: (reason: Error) => void;
-  /** 超时计时器。 */
-  timer: ReturnType<typeof setTimeout>;
-  /** 请求所属的 WebSocket 连接。 */
-  ws: WebSocket;
-}
-
-/**
- * 远程插件当前已获授权的运行时上下文。
- */
-interface ActiveRequestContext {
-  /** 请求所属的 WebSocket 连接。 */
-  ws: WebSocket;
-  /** 由宿主发出的上下文快照。 */
-  context: PluginCallContext;
-}
-
 interface ValidatedRegisterPayload {
   manifest: Record<string, unknown>;
 }
@@ -191,24 +174,6 @@ interface ValidatedHostCallPayload {
   context?: PluginCallContext;
 }
 
-/**
- * 网关消息负载联合。
- */
-type PluginGatewayPayload =
-  | AuthPayload
-  | RegisterPayload
-  | ExecutePayload
-  | ExecuteResultPayload
-  | ExecuteErrorPayload
-  | HookInvokePayload
-  | HookResultPayload
-  | HostCallPayload
-  | HostResultPayload
-  | RouteInvokePayload
-  | RouteResultPayload
-  | JsonValue;
-
-type PluginGatewayMessage = WsMessage<PluginGatewayPayload>;
 type PluginGatewayInboundMessage = WsMessage<unknown>;
 
 /**
@@ -373,7 +338,12 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
     const authTimeout = setTimeout(() => {
       if (!connection.authenticated) {
-        this.send(ws, WS_TYPE.ERROR, WS_ACTION.AUTH_FAIL, { error: '认证超时' });
+        sendPluginGatewayMessage({
+          ws,
+          type: WS_TYPE.ERROR,
+          action: WS_ACTION.AUTH_FAIL,
+          payload: { error: '认证超时' },
+        });
         ws.close();
       }
     }, 10000);
@@ -409,13 +379,22 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     try {
       parsed = JSON.parse(rawText);
     } catch {
-      this.send(ws, WS_TYPE.ERROR, 'parse_error', { error: '无效的 JSON' });
+      sendPluginGatewayMessage({
+        ws,
+        type: WS_TYPE.ERROR,
+        action: 'parse_error',
+        payload: { error: '无效的 JSON' },
+      });
       return;
     }
 
     const message = readPluginGatewayMessage(parsed);
     if (!message) {
-      this.sendProtocolError(ws, '无效的插件协议消息');
+      sendPluginGatewayProtocolError({
+        ws,
+        error: '无效的插件协议消息',
+        protocolErrorAction: PROTOCOL_ERROR_ACTION,
+      });
       return;
     }
 
@@ -424,7 +403,11 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
       this.logger.warn(`插件协议消息处理失败: ${messageText}`);
-      this.sendProtocolError(ws, '插件协议消息处理失败');
+      sendPluginGatewayProtocolError({
+        ws,
+        error: '插件协议消息处理失败',
+        protocolErrorAction: PROTOCOL_ERROR_ACTION,
+      });
     }
   }
 
@@ -441,7 +424,12 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     msg: PluginGatewayInboundMessage,
   ): Promise<void> {
     if (!conn.authenticated && !(msg.type === WS_TYPE.AUTH && msg.action === WS_ACTION.AUTHENTICATE)) {
-      this.send(ws, WS_TYPE.ERROR, WS_ACTION.AUTH_FAIL, { error: '未认证' });
+      sendPluginGatewayMessage({
+        ws,
+        type: WS_TYPE.ERROR,
+        action: WS_ACTION.AUTH_FAIL,
+        payload: { error: '未认证' },
+      });
       return;
     }
     if (conn.authenticated) {
@@ -453,7 +441,11 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
         if (msg.action === WS_ACTION.AUTHENTICATE) {
           const payload = readAuthPayload(msg.payload);
           if (!payload) {
-            this.sendProtocolError(ws, '无效的认证负载');
+            sendPluginGatewayProtocolError({
+              ws,
+              error: '无效的认证负载',
+              protocolErrorAction: PROTOCOL_ERROR_ACTION,
+            });
             return;
           }
           await this.handleAuth(ws, conn, payload);
@@ -473,7 +465,12 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
           if (conn.manifest) {
             await this.pluginRuntimeOrchestrator.touchPluginHeartbeat(conn.pluginName);
           }
-          this.send(ws, WS_TYPE.HEARTBEAT, WS_ACTION.PONG, {});
+          sendPluginGatewayMessage({
+            ws,
+            type: WS_TYPE.HEARTBEAT,
+            action: WS_ACTION.PONG,
+            payload: {},
+          });
         }
         return;
 
@@ -498,58 +495,106 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
       case WS_ACTION.REGISTER: {
         const payload = readRegisterPayload(msg.payload);
         if (!payload) {
-          this.sendProtocolError(ws, '无效的插件注册负载');
+          sendPluginGatewayProtocolError({
+            ws,
+            error: '无效的插件注册负载',
+            protocolErrorAction: PROTOCOL_ERROR_ACTION,
+          });
           return;
         }
         await this.handleRegister(ws, conn, payload);
         return;
       }
       case WS_ACTION.HOOK_RESULT: {
+        const requestId = readPluginGatewayRequestId({
+          msg,
+          onMissing: (message) => this.logger.warn(message),
+        });
         const payload = readDataPayload(msg.payload);
         if (!payload) {
-          this.rejectPendingRequest(this.readRequestId(msg), '无效的 Hook 返回负载');
+          rejectPluginGatewayPendingRequest({
+            requestId,
+            error: '无效的 Hook 返回负载',
+            pendingRequests: this.pendingRequests,
+            activeRequestContexts: this.activeRequestContexts,
+          });
           return;
         }
-        this.resolvePendingRequest(
-          this.readRequestId(msg),
-          payload.data,
-        );
+        resolvePluginGatewayPendingRequest({
+          requestId,
+          data: payload.data,
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+        });
         return;
       }
       case WS_ACTION.HOOK_ERROR: {
+        const requestId = readPluginGatewayRequestId({
+          msg,
+          onMissing: (message) => this.logger.warn(message),
+        });
         const payload = readErrorPayload(msg.payload);
         if (!payload) {
-          this.rejectPendingRequest(this.readRequestId(msg), '无效的 Hook 错误负载');
+          rejectPluginGatewayPendingRequest({
+            requestId,
+            error: '无效的 Hook 错误负载',
+            pendingRequests: this.pendingRequests,
+            activeRequestContexts: this.activeRequestContexts,
+          });
           return;
         }
-        this.rejectPendingRequest(
-          this.readRequestId(msg),
-          payload.error,
-        );
+        rejectPluginGatewayPendingRequest({
+          requestId,
+          error: payload.error,
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+        });
         return;
       }
       case WS_ACTION.ROUTE_RESULT: {
+        const requestId = readPluginGatewayRequestId({
+          msg,
+          onMissing: (message) => this.logger.warn(message),
+        });
         const payload = readRouteResultPayload(msg.payload);
         if (!payload) {
-          this.rejectPendingRequest(this.readRequestId(msg), '无效的插件 Route 返回负载');
+          rejectPluginGatewayPendingRequest({
+            requestId,
+            error: '无效的插件 Route 返回负载',
+            pendingRequests: this.pendingRequests,
+            activeRequestContexts: this.activeRequestContexts,
+          });
           return;
         }
-        this.resolvePendingRequest(
-          this.readRequestId(msg),
-          toJsonValue(payload.data),
-        );
+        resolvePluginGatewayPendingRequest({
+          requestId,
+          data: toJsonValue(payload.data),
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+        });
         return;
       }
       case WS_ACTION.ROUTE_ERROR: {
+        const requestId = readPluginGatewayRequestId({
+          msg,
+          onMissing: (message) => this.logger.warn(message),
+        });
         const payload = readErrorPayload(msg.payload);
         if (!payload) {
-          this.rejectPendingRequest(this.readRequestId(msg), '无效的插件 Route 错误负载');
+          rejectPluginGatewayPendingRequest({
+            requestId,
+            error: '无效的插件 Route 错误负载',
+            pendingRequests: this.pendingRequests,
+            activeRequestContexts: this.activeRequestContexts,
+          });
           return;
         }
-        this.rejectPendingRequest(
-          this.readRequestId(msg),
-          payload.error,
-        );
+        rejectPluginGatewayPendingRequest({
+          requestId,
+          error: payload.error,
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+        });
         return;
       }
       case WS_ACTION.HOST_CALL:
@@ -570,27 +615,49 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     switch (msg.action) {
       case WS_ACTION.EXECUTE_RESULT: {
+        const requestId = readPluginGatewayRequestId({
+          msg,
+          onMissing: (message) => this.logger.warn(message),
+        });
         const payload = readDataPayload(msg.payload);
         if (!payload) {
-          this.rejectPendingRequest(this.readRequestId(msg), '无效的远程命令返回负载');
+          rejectPluginGatewayPendingRequest({
+            requestId,
+            error: '无效的远程命令返回负载',
+            pendingRequests: this.pendingRequests,
+            activeRequestContexts: this.activeRequestContexts,
+          });
           return;
         }
-        this.resolvePendingRequest(
-          this.readRequestId(msg),
-          payload.data,
-        );
+        resolvePluginGatewayPendingRequest({
+          requestId,
+          data: payload.data,
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+        });
         return;
       }
       case WS_ACTION.EXECUTE_ERROR: {
+        const requestId = readPluginGatewayRequestId({
+          msg,
+          onMissing: (message) => this.logger.warn(message),
+        });
         const payload = readErrorPayload(msg.payload);
         if (!payload) {
-          this.rejectPendingRequest(this.readRequestId(msg), '无效的远程命令错误负载');
+          rejectPluginGatewayPendingRequest({
+            requestId,
+            error: '无效的远程命令错误负载',
+            pendingRequests: this.pendingRequests,
+            activeRequestContexts: this.activeRequestContexts,
+          });
           return;
         }
-        this.rejectPendingRequest(
-          this.readRequestId(msg),
-          payload.error,
-        );
+        rejectPluginGatewayPendingRequest({
+          requestId,
+          error: payload.error,
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+        });
         return;
       }
       default:
@@ -626,11 +693,21 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`插件 "${payload.pluginName}" 已存在旧连接，当前将其替换`);
         previousConnection.ws.close();
       }
-      this.send(ws, WS_TYPE.AUTH, WS_ACTION.AUTH_OK, {});
+      sendPluginGatewayMessage({
+        ws,
+        type: WS_TYPE.AUTH,
+        action: WS_ACTION.AUTH_OK,
+        payload: {},
+      });
       this.logger.log(`Plugin "${payload.pluginName}" authenticated`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid token';
-      this.send(ws, WS_TYPE.AUTH, WS_ACTION.AUTH_FAIL, { error: message });
+      sendPluginGatewayMessage({
+        ws,
+        type: WS_TYPE.AUTH,
+        action: WS_ACTION.AUTH_FAIL,
+        payload: { error: message },
+      });
       ws.close();
     }
   }
@@ -657,7 +734,12 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
       transport: this.createRemoteTransport(conn),
     });
 
-    this.send(ws, WS_TYPE.PLUGIN, WS_ACTION.REGISTER_OK, {});
+    sendPluginGatewayMessage({
+      ws,
+      type: WS_TYPE.PLUGIN,
+      action: WS_ACTION.REGISTER_OK,
+      payload: {},
+    });
   }
 
   /**
@@ -672,20 +754,23 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     conn: PluginConnection,
     msg: PluginGatewayInboundMessage,
   ): Promise<void> {
-    const requestId = this.readRequestId(msg);
+    const requestId = readPluginGatewayRequestId({
+      msg,
+      onMissing: (message) => this.logger.warn(message),
+    });
     if (!requestId) {
       return;
     }
 
     const payload = readHostCallPayload(msg.payload);
     if (!payload) {
-      this.send(
+      sendPluginGatewayMessage({
         ws,
-        WS_TYPE.PLUGIN,
-        WS_ACTION.HOST_ERROR,
-        { error: '无效的 Host API 调用负载' },
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_ERROR,
+        payload: { error: '无效的 Host API 调用负载' },
         requestId,
-      );
+      });
       return;
     }
 
@@ -701,10 +786,22 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
         method: payload.method,
         params: payload.params,
       });
-      this.send(ws, WS_TYPE.PLUGIN, WS_ACTION.HOST_RESULT, { data: result }, requestId);
+      sendPluginGatewayMessage({
+        ws,
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_RESULT,
+        payload: { data: result },
+        requestId,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.send(ws, WS_TYPE.PLUGIN, WS_ACTION.HOST_ERROR, { error: message }, requestId);
+      sendPluginGatewayMessage({
+        ws,
+        type: WS_TYPE.PLUGIN,
+        action: WS_ACTION.HOST_ERROR,
+        payload: { error: message },
+        requestId,
+      });
     }
   }
 
@@ -715,7 +812,12 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
    */
   private async handleDisconnect(conn: PluginConnection): Promise<void> {
     this.connections.delete(conn.ws);
-    this.rejectPendingRequestsForSocket(conn.ws, new Error('插件连接已断开'));
+    rejectPluginGatewayPendingRequestsForSocket({
+      ws: conn.ws,
+      error: new Error('插件连接已断开'),
+      pendingRequests: this.pendingRequests,
+      activeRequestContexts: this.activeRequestContexts,
+    });
     if (!conn.pluginName) {
       return;
     }
@@ -743,126 +845,58 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private createRemoteTransport(conn: PluginConnection): PluginTransport {
     return {
       executeTool: ({ toolName, params, context }) =>
-        this.sendRequest(
-          conn.ws,
-          WS_TYPE.COMMAND,
-          WS_ACTION.EXECUTE,
-          {
+        sendPluginGatewayRequest({
+          ws: conn.ws,
+          type: WS_TYPE.COMMAND,
+          action: WS_ACTION.EXECUTE,
+          payload: {
             toolName,
             params,
             context,
           },
-          this.readTimeoutMs(context, 30000),
-        ),
+          timeoutMs: readPluginGatewayTimeoutMs(context, 30000),
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+          extractContext: extractPluginCallContext,
+          cloneContext: clonePluginCallContext,
+        }),
       invokeHook: ({ hookName, context, payload }) =>
-        this.sendRequest(
-          conn.ws,
-          WS_TYPE.PLUGIN,
-          WS_ACTION.HOOK_INVOKE,
-          {
+        sendPluginGatewayRequest({
+          ws: conn.ws,
+          type: WS_TYPE.PLUGIN,
+          action: WS_ACTION.HOOK_INVOKE,
+          payload: {
             hookName,
             context,
             payload,
           },
-          this.readTimeoutMs(context, 10000),
-        ),
+          timeoutMs: readPluginGatewayTimeoutMs(context, 10000),
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+          extractContext: extractPluginCallContext,
+          cloneContext: clonePluginCallContext,
+        }),
       invokeRoute: ({ request, context }) =>
-        this.sendTypedRequest<PluginRouteResponse>(
-          conn.ws,
-          WS_TYPE.PLUGIN,
-          WS_ACTION.ROUTE_INVOKE,
-          {
+        sendTypedPluginGatewayRequest<PluginRouteResponse>({
+          ws: conn.ws,
+          type: WS_TYPE.PLUGIN,
+          action: WS_ACTION.ROUTE_INVOKE,
+          payload: {
             request,
             context,
           },
-          this.readTimeoutMs(context, 15000),
-          readPluginRouteResponseOrThrow,
-        ),
+          timeoutMs: readPluginGatewayTimeoutMs(context, 15000),
+          pendingRequests: this.pendingRequests,
+          activeRequestContexts: this.activeRequestContexts,
+          extractContext: extractPluginCallContext,
+          cloneContext: clonePluginCallContext,
+          readResult: readPluginRouteResponseOrThrow,
+        }),
       reload: () => this.disconnectPlugin(conn.pluginName),
       reconnect: () => this.disconnectPlugin(conn.pluginName),
       checkHealth: () => this.checkPluginHealth(conn.pluginName),
       listSupportedActions: () => ['health-check', 'reload', 'reconnect'],
     };
-  }
-
-  /**
-   * 发送一条需要等待结果的请求。
-   * @param ws WebSocket 连接
-   * @param type 消息 type
-   * @param action 消息 action
-   * @param payload 请求负载
-   * @param timeoutMs 超时时间
-   * @returns 远程插件的返回值
-   */
-  private sendRequest(
-    ws: WebSocket,
-    type: string,
-    action: string,
-    payload: PluginGatewayPayload,
-    timeoutMs = 30000,
-  ): Promise<JsonValue> {
-    if (ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error('插件连接不可用'));
-    }
-
-    const requestId = crypto.randomUUID();
-    const activeContext = extractPluginCallContext(payload);
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingRequests.delete(requestId);
-        this.activeRequestContexts.delete(requestId);
-        reject(new Error(`插件请求超时: ${action}`));
-      }, timeoutMs);
-
-      this.pendingRequests.set(requestId, { resolve, reject, timer, ws });
-      if (activeContext) {
-        this.activeRequestContexts.set(requestId, {
-          ws,
-          context: clonePluginCallContext(activeContext),
-        });
-      }
-      this.send(ws, type, action, payload, requestId);
-    });
-  }
-
-  /**
-   * 发送一条带类型收口的远程请求。
-   * @param ws WebSocket 连接
-   * @param type 消息 type
-   * @param action 消息 action
-   * @param payload 请求负载
-   * @param timeoutMs 超时时间
-   * @returns 收口后的结果
-   */
-  private sendTypedRequest<T>(
-    ws: WebSocket,
-    type: string,
-    action: string,
-    payload: PluginGatewayPayload,
-    timeoutMs = 30000,
-    readResult: (value: JsonValue) => T,
-  ): Promise<T> {
-    return this.sendRequest(ws, type, action, payload, timeoutMs).then((value) =>
-      readResult(value),
-    );
-  }
-
-  /**
-   * 从调用上下文读取超时参数。
-   * @param context 插件调用上下文
-   * @param fallback 默认超时
-   * @returns 超时毫秒数
-   */
-  private readTimeoutMs(
-    context: PluginCallContext | undefined,
-    fallback: number,
-  ): number {
-    const raw = context?.metadata?.timeoutMs;
-    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
-      return fallback;
-    }
-
-    return raw;
   }
 
   /**
@@ -885,88 +919,6 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
       version: '0.0.0',
       runtimeKind: 'remote',
     });
-  }
-
-  /**
-   * 读取请求 ID；缺失时记录日志。
-   * @param msg 插件消息
-   * @returns requestId；缺失时返回 null
-   */
-  private readRequestId(msg: PluginGatewayInboundMessage): string | null {
-    if (typeof msg.requestId === 'string' && msg.requestId.length > 0) {
-      return msg.requestId;
-    }
-
-    this.logger.warn(`收到缺少 requestId 的插件消息: ${msg.type}/${msg.action}`);
-    return null;
-  }
-
-  /**
-   * 成功解析一个等待中的远程请求。
-   * @param requestId 请求 ID
-   * @param data 返回值
-   * @returns 无返回值
-   */
-  private resolvePendingRequest(
-    requestId: string | null,
-    data: JsonValue,
-  ): void {
-    if (!requestId) {
-      return;
-    }
-
-    const pending = this.pendingRequests.get(requestId);
-    if (!pending) {
-      return;
-    }
-
-    clearTimeout(pending.timer);
-    this.pendingRequests.delete(requestId);
-    this.activeRequestContexts.delete(requestId);
-    pending.resolve(data);
-  }
-
-  /**
-   * 失败终止一个等待中的远程请求。
-   * @param requestId 请求 ID
-   * @param error 错误信息
-   * @returns 无返回值
-   */
-  private rejectPendingRequest(
-    requestId: string | null,
-    error: string,
-  ): void {
-    if (!requestId) {
-      return;
-    }
-
-    const pending = this.pendingRequests.get(requestId);
-    if (!pending) {
-      return;
-    }
-
-    clearTimeout(pending.timer);
-    this.pendingRequests.delete(requestId);
-    this.activeRequestContexts.delete(requestId);
-    pending.reject(new Error(error));
-  }
-
-  /**
-   * 在连接断开时失败该连接下所有等待中的远程请求。
-   * @param ws 断开的 WebSocket 连接
-   * @param error 失败原因
-   */
-  private rejectPendingRequestsForSocket(ws: WebSocket, error: Error): void {
-    for (const [requestId, pending] of this.pendingRequests) {
-      if (pending.ws !== ws) {
-        continue;
-      }
-
-      clearTimeout(pending.timer);
-      this.pendingRequests.delete(requestId);
-      this.activeRequestContexts.delete(requestId);
-      pending.reject(error);
-    }
   }
 
   /**
@@ -1021,44 +973,6 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     }
 
     return null;
-  }
-
-  /**
-   * 发送一条 WebSocket 消息。
-   * @param ws WebSocket 连接
-   * @param type 消息 type
-   * @param action 消息 action
-   * @param payload JSON 负载
-   * @param requestId 可选 requestId
-   * @returns 无返回值
-   */
-  private send(
-    ws: WebSocket,
-    type: string,
-    action: string,
-    payload: PluginGatewayPayload,
-    requestId?: string,
-  ): void {
-    if (ws.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    const message: PluginGatewayMessage = {
-      type,
-      action,
-      payload,
-      requestId,
-    };
-    ws.send(JSON.stringify(message));
-  }
-
-  /**
-   * 发送一条协议错误消息。
-   * @param ws WebSocket 连接
-   * @param error 错误描述
-   */
-  private sendProtocolError(ws: WebSocket, error: string): void {
-    this.send(ws, WS_TYPE.ERROR, PROTOCOL_ERROR_ACTION, { error });
   }
 
   /**

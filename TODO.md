@@ -361,6 +361,18 @@
     - scope JSON 解析与归一化
     - storage / event metadata JSON 回退解析
   - `plugin.service.ts` 主文件行数已从 `916` 继续降到 `734`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-gateway-transport.helpers.ts`
+    继续把远程 transport 的请求跟踪、超时、结果回填和协议发送从网关主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-gateway-transport.helpers.spec.ts`
+    直接给 gateway transport helper 补请求队列与上下文跟踪回归
+  - `PluginGateway` 已不再直接承载：
+    - send/sendProtocolError 样板
+    - pending request resolve/reject 样板
+    - request timeout 读取
+    - transport request 发起样板
+  - `plugin.gateway.ts` 主文件行数已从 `1269` 继续降到 `1205`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
