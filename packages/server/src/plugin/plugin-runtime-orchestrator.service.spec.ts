@@ -6,6 +6,7 @@ import type {
 import { NotFoundException } from '@nestjs/common';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
 
@@ -70,6 +71,7 @@ describe('PluginRuntimeOrchestratorService', () => {
   let runtime: PluginRuntimeService;
   let runtimeGovernanceFacade: PluginRuntimeGovernanceFacade;
   let runtimeHostFacade: PluginRuntimeHostFacade;
+  let runtimeSubagentFacade: PluginRuntimeSubagentFacade;
   let orchestrator: PluginRuntimeOrchestratorService;
 
   beforeEach(() => {
@@ -87,15 +89,19 @@ describe('PluginRuntimeOrchestratorService', () => {
       cronService as never,
       moduleRef as never,
     );
+    runtimeSubagentFacade = new PluginRuntimeSubagentFacade(
+      aiModelExecution as never,
+      moduleRef as never,
+    );
 
     runtime = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
       cronService as never,
       aiModelExecution as never,
-      moduleRef as never,
       runtimeGovernanceFacade as never,
       runtimeHostFacade as never,
+      runtimeSubagentFacade as never,
     );
     orchestrator = new PluginRuntimeOrchestratorService(
       runtime,

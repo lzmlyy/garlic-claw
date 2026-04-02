@@ -13,6 +13,7 @@ import { createPluginGovernanceRecorderPlugin } from './builtin/plugin-governanc
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { createResponseRecorderPlugin } from './builtin/response-recorder.plugin';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import { createToolAuditPlugin } from './builtin/tool-audit.plugin';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { ChatMessageService } from '../chat/chat-message.service';
@@ -120,6 +121,7 @@ describe('PluginRuntimeService', () => {
   let service: PluginRuntimeService;
   let runtimeGovernanceFacade: PluginRuntimeGovernanceFacade;
   let runtimeHostFacade: PluginRuntimeHostFacade;
+  let runtimeSubagentFacade: PluginRuntimeSubagentFacade;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -194,14 +196,18 @@ describe('PluginRuntimeService', () => {
       cronService as never,
       moduleRef as never,
     );
+    runtimeSubagentFacade = new PluginRuntimeSubagentFacade(
+      aiModelExecution as never,
+      moduleRef as never,
+    );
     service = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
       cronService as never,
       aiModelExecution as never,
-      moduleRef as never,
       runtimeGovernanceFacade as never,
       runtimeHostFacade as never,
+      runtimeSubagentFacade as never,
     );
   });
 

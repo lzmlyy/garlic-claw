@@ -37,17 +37,15 @@ import type {
   ToolAfterCallHookPayload,
   ToolBeforeCallHookPayload,
 } from '@garlic-claw/shared';
-import type { Tool } from 'ai';
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
-import { toAiSdkMessages } from '../chat/sdk-message-converter';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { PluginHostService } from './plugin-host.service';
 import { PluginCronService } from './plugin-cron.service';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import {
   cloneAutomationAfterRunPayload,
   cloneAutomationBeforeRunPayload,
@@ -60,7 +58,6 @@ import {
   cloneResponseBeforeSendHookPayload,
   cloneSubagentAfterRunPayload,
   cloneSubagentBeforeRunPayload,
-  cloneSubagentRequest,
   cloneToolAfterCallHookPayload,
   cloneToolBeforeCallHookPayload,
 } from './plugin-runtime-clone.helpers';
@@ -111,19 +108,11 @@ import {
   runWithRuntimeExecutionSlot,
 } from './plugin-runtime-record.helpers';
 import {
-  resolveCachedRuntimeServicePromise,
-} from './plugin-runtime-module.helpers';
-import {
   findManifestRouteOrThrow,
   findManifestToolOrThrow,
 } from './plugin-runtime-manifest.helpers';
 import {
-  assertSubagentRequestInputSupported,
-  buildResolvedSubagentAfterRunPayload,
-  collectSubagentRunResult,
   buildResolvedSubagentRunResult,
-  buildSubagentStreamPreparedInput,
-  buildSubagentToolSetRequest,
 } from './plugin-runtime-subagent.helpers';
 import { runPromiseWithTimeout } from './plugin-runtime-timeout.helpers';
 import {
@@ -430,25 +419,15 @@ export type ToolBeforeCallExecutionResult =
 export class PluginRuntimeService {
   private readonly records = new Map<string, PluginRuntimeRecord>();
   private readonly conversationSessions = new Map<string, ConversationSessionRecord>();
-  private toolRegistryPromise?: Promise<{
-    buildToolSet: (input: {
-      context: PluginCallContext;
-      allowedToolNames?: string[];
-      excludedSources?: Array<{
-        kind: 'plugin' | 'mcp' | 'skill';
-        id: string;
-      }>;
-    }) => Promise<Record<string, Tool> | undefined>;
-  }>;
 
   constructor(
     private readonly pluginService: PluginService,
     private readonly hostService: PluginHostService,
     private readonly cronService: PluginCronService,
     private readonly aiModelExecution: AiModelExecutionService,
-    private readonly moduleRef: ModuleRef,
     private readonly runtimeGovernanceFacade: PluginRuntimeGovernanceFacade,
     private readonly runtimeHostFacade: PluginRuntimeHostFacade,
+    private readonly runtimeSubagentFacade: PluginRuntimeSubagentFacade,
   ) {}
 
   /**
@@ -1452,22 +1431,6 @@ export class PluginRuntimeService {
     });
   }
 
-  private async getToolRegistry() {
-    return resolveCachedRuntimeServicePromise({
-      current: this.toolRegistryPromise,
-      resolve: async () => {
-        const { ToolRegistryService } = await import('../tool/tool-registry.service');
-        return this.moduleRef.get(ToolRegistryService, {
-          strict: false,
-        });
-      },
-      cache: (value) => {
-        this.toolRegistryPromise = value;
-      },
-      notFoundMessage: 'ToolRegistryService is not available',
-    });
-  }
-
   /**
    * 执行一份已经归一化的子代理请求。
    * @param input 插件 ID、调用上下文与归一化后的请求
@@ -1478,70 +1441,13 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     request: PluginSubagentRequest;
   }): Promise<PluginSubagentRunResult> {
-    const beforeRunResult = await this.runSubagentBeforeRunHooks({
-      context: input.context,
-      payload: {
-        context: {
-          ...input.context,
-        },
-        pluginId: input.pluginId,
-        request: cloneSubagentRequest(input.request),
-      },
-    });
-    if (beforeRunResult.action === 'short-circuit') {
-      return beforeRunResult.result;
-    }
-
-    const request = beforeRunResult.payload.request;
-    const modelConfig = this.aiModelExecution.resolveModelConfig(
-      request.providerId,
-      request.modelId,
-    );
-
-    assertSubagentRequestInputSupported({
-      request,
-      modelConfig,
-    });
-
-    const prepared = this.aiModelExecution.prepareResolved({
-      modelConfig,
-      sdkMessages: toAiSdkMessages(request.messages),
-    });
-    const toolSetRequest = buildSubagentToolSetRequest({
+    return this.runtimeSubagentFacade.executeRequest({
       pluginId: input.pluginId,
       context: input.context,
-      providerId: String(modelConfig.providerId),
-      modelId: String(modelConfig.id),
-      toolNames: request.toolNames,
+      request: input.request,
+      runBeforeHooks: (beforeInput) => this.runSubagentBeforeRunHooks(beforeInput),
+      runAfterHooks: (afterInput) => this.runSubagentAfterRunHooks(afterInput),
     });
-    const tools = toolSetRequest
-      ? await (await this.getToolRegistry()).buildToolSet(toolSetRequest)
-      : undefined;
-    const executed = this.aiModelExecution.streamPrepared(
-      buildSubagentStreamPreparedInput({
-        prepared,
-        request,
-        tools,
-      }),
-    );
-    const result = await collectSubagentRunResult({
-      modelConfig,
-      fullStream: executed.result.fullStream,
-      finishReason: executed.result.finishReason,
-    });
-
-    const afterRunPayload = await this.runSubagentAfterRunHooks({
-      context: input.context,
-      payload: buildResolvedSubagentAfterRunPayload({
-        context: input.context,
-        pluginId: input.pluginId,
-        request,
-        modelConfig,
-        result,
-      }),
-    });
-
-    return afterRunPayload.result;
   }
 
   /**

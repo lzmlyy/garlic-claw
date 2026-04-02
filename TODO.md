@@ -256,6 +256,15 @@
     - `listRoutes`
     - `listSupportedActions`
   - `plugin-runtime.service.ts` 主文件行数已从 `1606` 继续降到 `1520`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-runtime-subagent.facade.ts`
+    把 `executeSubagentRequest(...)` 和 tool registry 懒解析从 runtime 主类里继续拆出
+  - `PluginRuntimeService.executeSubagentRequest(...)` 现在只保留 facade 委派，不再直接承载：
+    - before-run / after-run hook 之间的 subagent 执行装配
+    - model resolve / prepared stream 调用
+    - tool set 构建
+    - fullStream 结果采集
+  - `plugin-runtime.service.ts` 主文件行数已从 `1520` 继续降到 `1432`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
