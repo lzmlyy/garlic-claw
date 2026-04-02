@@ -4,6 +4,7 @@ import type {
   HostCallPayload,
   PluginConversationSessionInfo,
   PluginCronJobSummary,
+  PluginEventLevel,
   PluginEventListResult,
   PluginKbEntryDetail,
   PluginKbEntrySummary,
@@ -21,6 +22,7 @@ import type {
   PluginSubagentTaskSummary,
 } from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
+import type { BuiltinPluginHostFacade } from './builtin-plugin.types';
 import {
   buildBuiltinConversationSessionKeepParams,
   buildBuiltinConversationSessionStartParams,
@@ -48,7 +50,7 @@ type BuiltinHostQuery = <T>(
 export function createBuiltinPluginHostFacade(input: {
   call: BuiltinHostCall;
   callHost: BuiltinHostQuery;
-}) {
+}): BuiltinPluginHostFacade {
   const { call, callHost } = input;
 
   return {
@@ -152,7 +154,7 @@ export function createBuiltinPluginHostFacade(input: {
         ...(toHostJsonValue(query) as JsonObject),
       }),
     writeLog: (input: {
-      level: PluginEventListResult['items'][number]['level'];
+      level: PluginEventLevel;
       message: string;
       type?: string;
       metadata?: Record<string, unknown>;

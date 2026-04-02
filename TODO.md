@@ -95,6 +95,9 @@
     - `packages/server/src/plugin/builtin/builtin-plugin-host-facade.helpers.ts`
     继续把 builtin transport 里的 Host API 参数构造、JSON normalize 和 host facade 装配样板从主文件中拆出
   - 已新增：
+    - `packages/server/src/plugin/builtin/builtin-plugin.types.ts`
+    把 builtin transport 里的 authoring/host facade 类型面从主文件中拆出
+  - 已新增：
     - `packages/server/src/plugin/builtin/builtin-plugin-host-params.helpers.spec.ts`
     - `packages/server/src/plugin/builtin/builtin-plugin-host-facade.helpers.spec.ts`
     直接给 builtin host helper 补参数构造与 facade 路由回归
@@ -104,7 +107,8 @@
     - `storage.*` / `state.*` scoped params 组装
     - `llm.generate` / `subagent.run` / `subagent.task.start` 参数构造
     - Host facade 大对象装配
-  - `builtin-plugin.transport.ts` 主文件行数已从 `1069` 继续降到 `784`
+    - host facade / execution / definition 类型面
+  - `builtin-plugin.transport.ts` 主文件行数已从 `1069` 继续降到 `246`
   - `plugin-host.service.ts` / `plugin-runtime.service.ts` 已共享 `plugin-llm-payload.helpers.ts`，删除两处重复的 LLM message / part 解析逻辑
   - `plugin-host.service.ts` 已继续外提到：
     - `plugin-host.helpers.ts`
