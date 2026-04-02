@@ -34,7 +34,6 @@ import {
   buildPluginGovernanceSnapshot,
   readPersistedPluginManifestRecord,
 } from './plugin-governance.helpers';
-import { serializePersistedPluginManifest } from './plugin-manifest.persistence';
 import {
   parsePluginScope,
   parseStoredPluginJsonValue,
@@ -46,11 +45,8 @@ import {
   buildPluginFailureUpdate,
   buildPluginSuccessUpdate,
 } from './plugin-health.helpers';
-import {
-  buildPluginConfigSnapshot,
-  buildPluginSelfInfo,
-  buildResolvedPluginConfig,
-} from './plugin-record-view.helpers';
+import { buildPluginRegistrationEvent, buildPluginRegistrationUpsertData } from './plugin-register.helpers';
+import { buildPluginConfigSnapshot, buildPluginSelfInfo, buildResolvedPluginConfig } from './plugin-record-view.helpers';
 
 /**
  * 运行时可直接消费的插件治理快照。
@@ -113,49 +109,29 @@ export class PluginService {
         id: true,
       },
     });
+    const now = new Date();
     const plugin = await this.prisma.plugin.upsert({
       where: { name },
-      create: {
+      ...buildPluginRegistrationUpsertData({
         name,
-        displayName: manifest.name,
         deviceType,
-        runtimeKind: manifest.runtime,
-        description: manifest.description,
-        status: 'online',
-        manifestJson: serializePersistedPluginManifest(manifest),
-        version: manifest.version,
-        healthStatus: 'healthy',
-        lastSeenAt: new Date(),
-      },
-      update: {
-        displayName: manifest.name,
-        deviceType,
-        runtimeKind: manifest.runtime,
-        description: manifest.description,
-        status: 'online',
-        manifestJson: serializePersistedPluginManifest(manifest),
-        version: manifest.version,
-        healthStatus: 'healthy',
-        lastSeenAt: new Date(),
-      },
+        manifest,
+        now,
+      }),
+    });
+    const registrationEvent = buildPluginRegistrationEvent({
+      existing: Boolean(existing),
+    });
+    await createPluginEvent({
+      prisma: this.prisma,
+      pluginId: plugin.id,
+      type: registrationEvent.type,
+      level: 'info',
+      message: registrationEvent.message,
     });
     if (existing) {
-      await createPluginEvent({
-        prisma: this.prisma,
-        pluginId: plugin.id,
-        type: 'lifecycle:online',
-        level: 'info',
-        message: '插件已上线',
-      });
       this.logger.log(`插件 "${name}" 已重新接入运行时，包含 ${(manifest.tools ?? []).length} 个能力`);
     } else {
-      await createPluginEvent({
-        prisma: this.prisma,
-        pluginId: plugin.id,
-        type: 'register',
-        level: 'info',
-        message: '插件已注册',
-      });
       this.logger.log(`插件 "${name}" 已注册，包含 ${(manifest.tools ?? []).length} 个能力`);
     }
     return buildPluginGovernanceSnapshot({

@@ -542,6 +542,16 @@
     - limit 截断后的 items 投影
     - nextCursor 计算
   - `plugin.service.ts` 主文件行数已从 `685` 继续降到 `672`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-register.helpers.ts`
+    继续把 plugin register 的 upsert payload/event 选择样板从 `PluginService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-register.helpers.spec.ts`
+    直接给 plugin register helper 补 upsert data 与 register/lifecycle 事件选择回归
+  - `PluginService` 已不再直接承载：
+    - register/upsert 的 create/update payload 组装
+    - register 与 lifecycle:online 事件类型选择
+  - `plugin.service.ts` 主文件行数已从 `672` 继续降到 `648`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
