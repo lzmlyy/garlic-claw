@@ -290,6 +290,10 @@
     - `listRoutes`
     - `listSupportedActions`
   - `plugin-runtime.service.ts` 主文件行数已从 `1606` 继续降到 `1520`
+  - `PluginRuntimeService` 已继续删除无人消费的公开死入口：
+    - `listRoutes()`
+  - `plugin-runtime-governance.facade.ts` 已同步删除 route list 聚合样板
+  - `plugin-runtime.service.ts` 主文件行数已从 `696` 继续降到 `684`
   - 已新增：
     - `packages/server/src/plugin/plugin-runtime-subagent.facade.ts`
     把 `executeSubagentRequest(...)` 和 tool registry 懒解析从 runtime 主类里继续拆出

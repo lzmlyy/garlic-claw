@@ -635,17 +635,6 @@ describe('PluginRuntimeService', () => {
       }),
     });
 
-    expect(service.listRoutes()).toEqual([
-      {
-        pluginId: 'builtin.route-inspector',
-        runtimeKind: 'builtin',
-        route: {
-          path: 'inspect/context',
-          methods: ['GET'],
-        },
-      },
-    ]);
-
     await expect(
       service.invokeRoute({
         pluginId: 'builtin.route-inspector',

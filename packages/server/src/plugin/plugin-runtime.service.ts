@@ -18,7 +18,6 @@ import type {
   PluginHookName,
   PluginManifest,
   PluginLoadedHookPayload,
-  PluginRouteDescriptor,
   PluginRouteRequest,
   PluginRouteResponse,
   PluginRuntimePressureSnapshot,
@@ -256,18 +255,6 @@ export class PluginRuntimeService {
    */
   async checkPluginHealth(pluginId: string): Promise<{ ok: boolean }> {
     return this.runtimeGovernanceFacade.checkPluginHealth(this.records, pluginId);
-  }
-
-  /**
-   * 列出当前 runtime 中声明的 Route。
-   * @returns 插件 ID、运行类型与 Route 描述
-   */
-  listRoutes(): Array<{
-    pluginId: string;
-    runtimeKind: PluginRuntimeKind;
-    route: PluginRouteDescriptor;
-  }> {
-    return this.runtimeGovernanceFacade.listRoutes(this.records);
   }
 
   /**

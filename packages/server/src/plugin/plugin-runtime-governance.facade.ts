@@ -4,7 +4,6 @@ import type {
   PluginCapability,
   PluginConversationSessionInfo,
   PluginManifest,
-  PluginRouteDescriptor,
   PluginRuntimePressureSnapshot,
   PluginRuntimeKind,
 } from '@garlic-claw/shared';
@@ -181,29 +180,5 @@ export class PluginRuntimeGovernanceFacade {
     }
 
     return { ok: false };
-  }
-
-  listRoutes(records: Map<string, RuntimeGovernanceRecord>): Array<{
-    pluginId: string;
-    runtimeKind: PluginRuntimeKind;
-    route: PluginRouteDescriptor;
-  }> {
-    const routes: Array<{
-      pluginId: string;
-      runtimeKind: PluginRuntimeKind;
-      route: PluginRouteDescriptor;
-    }> = [];
-
-    for (const [pluginId, record] of records) {
-      for (const route of record.manifest.routes ?? []) {
-        routes.push({
-          pluginId,
-          runtimeKind: record.runtimeKind,
-          route,
-        });
-      }
-    }
-
-    return routes;
   }
 }
