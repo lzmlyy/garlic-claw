@@ -695,6 +695,10 @@
     - `packages/server/src/chat/chat-message-completion.service.ts`
     - `packages/server/src/chat/chat-message-completion.service.spec.ts`
     把短路 assistant 完成态写回、response hook 后处理和 vision fallback metadata 写回从 `ChatMessageService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/chat/chat-message-mutation.service.ts`
+    - `packages/server/src/chat/chat-message-mutation.service.spec.ts`
+    把消息编辑、删除、对应的 `message:*` hook 和持久化写回从 `ChatMessageService` 主类中拆出
   - `ChatMessageService` 已改为通过 `ChatMessagePluginTargetService` 委派：
     - `message.target.current.get`
     - `message.send`
@@ -703,7 +707,11 @@
     - 短路 assistant 回复的完成态写回
     - `response:before-send / response:after-send` 后处理
     - 当前 user/assistant 与重试 assistant 的 vision fallback metadata 写回
-  - `chat-message.service.ts` 主文件行数已从 `1030` 继续降到 `611`
+  - `ChatMessageService` 已改为通过 `ChatMessageMutationService` 委派：
+    - 消息编辑
+    - 消息删除
+    - 对应的 `message:updated / message:deleted` hook 与持久化写回
+  - `chat-message.service.ts` 主文件行数已从 `1030` 继续降到 `517`
   - 已删除多厂商 SDK runtime / stub 残留，当前 runtime 与 type stub 都已收敛到三种协议族
   - 已把 provider catalog 收口为 `core + preset + protocol`，preset 不再绑定独立 SDK
   - 已删除一批 AI 模块薄壳：

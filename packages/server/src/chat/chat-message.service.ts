@@ -21,7 +21,6 @@ import { SkillCommandService } from '../skill/skill-command.service';
 import {
   CHAT_SYSTEM_PROMPT,
   hasActiveAssistantMessage,
-  mapDtoParts,
   toRuntimeMessages,
   toUserMessageInput,
 } from './chat-message.helpers';
@@ -29,6 +28,7 @@ import {
   ChatMessageOrchestrationService,
 } from './chat-message-orchestration.service';
 import { ChatMessageCompletionService } from './chat-message-completion.service';
+import { ChatMessageMutationService } from './chat-message-mutation.service';
 import { ChatMessagePluginTargetService } from './chat-message-plugin-target.service';
 import { ChatModelInvocationService } from './chat-model-invocation.service';
 import type { ChatRuntimeMessage } from './chat-message-session';
@@ -36,7 +36,7 @@ import { prepareSendMessagePayload } from './chat-message-session';
 import { ChatService } from './chat.service';
 import { type RetryMessageDto, type SendMessageDto, type UpdateMessageDto } from './dto/chat.dto';
 import { normalizeConversationHostServices } from './chat-host-services';
-import { deserializeMessageParts, normalizeUserMessageInput, serializeMessageParts } from './message-parts';
+import { deserializeMessageParts, serializeMessageParts } from './message-parts';
 import {
   ChatTaskService,
 } from './chat-task.service';
@@ -54,6 +54,7 @@ export class ChatMessageService {
     private readonly orchestration: ChatMessageOrchestrationService,
     private readonly chatTaskService: ChatTaskService,
     private readonly completionService: ChatMessageCompletionService,
+    private readonly mutationService: ChatMessageMutationService,
     private readonly pluginTargetService: ChatMessagePluginTargetService,
     private readonly skillCommands: SkillCommandService,
   ) {}
@@ -438,85 +439,12 @@ export class ChatMessageService {
 
   /** 更新一条已存在的消息，不会自动触发重跑。 */
   async updateMessage(userId: string, conversationId: string, messageId: string, dto: UpdateMessageDto) {
-    const { message } = await this.getOwnedMessage(userId, conversationId, messageId);
-    await this.chatTaskService.stopTask(messageId);
-
-    const updated = message.role === 'user'
-      ? normalizeUserMessageInput({
-          content: dto.content,
-          parts: dto.parts ? mapDtoParts(dto.parts) : undefined,
-        })
-      : null;
-    const hookContext = this.createChatLifecycleContext({
-      userId,
-      conversationId,
-    });
-    const updatedPayload = await this.pluginRuntime.runMessageUpdatedHooks({
-      context: hookContext,
-      payload: {
-        context: hookContext,
-        conversationId,
-        messageId,
-        currentMessage: this.toMessageHookInfo(message),
-        nextMessage: message.role === 'user'
-          ? {
-              role: 'user',
-              content: updated?.content ?? '',
-              parts: updated?.parts ?? [],
-              status: 'completed',
-            }
-          : {
-              role: message.role,
-              content: dto.content?.trim() ?? '',
-              parts: [],
-              provider: message.provider,
-              model: message.model,
-              status: 'completed',
-            },
-      },
-    });
-
-    const result = await this.prisma.message.update({
-      where: { id: messageId },
-      data: message.role === 'user'
-        ? {
-            content: updatedPayload.nextMessage.content ?? '',
-            partsJson: serializeMessageParts(updatedPayload.nextMessage.parts),
-            status: updatedPayload.nextMessage.status ?? 'completed',
-            error: null,
-          }
-        : {
-            content: updatedPayload.nextMessage.content ?? '',
-            provider: updatedPayload.nextMessage.provider ?? message.provider,
-            model: updatedPayload.nextMessage.model ?? message.model,
-            status: updatedPayload.nextMessage.status ?? 'completed',
-            error: null,
-          },
-    });
-    await this.touchConversation(conversationId);
-    return result;
+    return this.mutationService.updateMessage(userId, conversationId, messageId, dto);
   }
 
   /** 删除一条消息，不会自动删除其后的消息。 */
   async deleteMessage(userId: string, conversationId: string, messageId: string) {
-    const { message } = await this.getOwnedMessage(userId, conversationId, messageId);
-    await this.chatTaskService.stopTask(messageId);
-    const hookContext = this.createChatLifecycleContext({
-      userId,
-      conversationId,
-    });
-    await this.pluginRuntime.runMessageDeletedHooks({
-      context: hookContext,
-      payload: {
-        context: hookContext,
-        conversationId,
-        messageId,
-        message: this.toMessageHookInfo(message),
-      },
-    });
-    await this.prisma.message.delete({ where: { id: messageId } });
-    await this.touchConversation(conversationId);
-    return { success: true };
+    return this.mutationService.deleteMessage(userId, conversationId, messageId);
   }
 
   /** 供插件读取当前消息目标摘要；当前实现映射为当前会话。 */
@@ -617,28 +545,4 @@ export class ChatMessageService {
     }
   }
 
-  /**
-   * 将持久化消息记录映射为消息生命周期 Hook 快照。
-   * @param message 已持久化消息
-   * @returns Hook 可见的消息快照
-   */
-  private toMessageHookInfo(message: {
-    id: string;
-    role: string;
-    content: string | null;
-    partsJson?: string | null;
-    provider?: string | null;
-    model?: string | null;
-    status: string;
-  }) {
-    return {
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      parts: deserializeMessageParts(message.partsJson),
-      ...(typeof message.provider !== 'undefined' ? { provider: message.provider } : {}),
-      ...(typeof message.model !== 'undefined' ? { model: message.model } : {}),
-      status: message.status as 'pending' | 'streaming' | 'completed' | 'stopped' | 'error',
-    };
-  }
 }
