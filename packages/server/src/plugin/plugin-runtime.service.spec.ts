@@ -218,9 +218,6 @@ describe('PluginRuntimeService', () => {
       pluginService as never,
     );
     service = new PluginRuntimeService(
-      pluginService as never,
-      hostService as never,
-      aiModelExecution as never,
       runtimeBroadcastFacade as never,
       runtimeGovernanceFacade as never,
       runtimeHostFacade as never,

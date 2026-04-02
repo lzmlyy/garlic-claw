@@ -36,9 +36,7 @@ import type {
   ToolBeforeCallHookPayload,
 } from '@garlic-claw/shared';
 import { Injectable } from '@nestjs/common';
-import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
-import { PluginHostService } from './plugin-host.service';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
@@ -57,7 +55,6 @@ import {
   collectDisabledConversationSessionIds,
 } from './plugin-runtime-scope';
 import {
-  PluginService,
   type PluginGovernanceSnapshot,
 } from './plugin.service';
 
@@ -292,9 +289,6 @@ export class PluginRuntimeService {
   private readonly conversationSessions = new Map<string, ConversationSessionRecord>();
 
   constructor(
-    private readonly pluginService: PluginService,
-    private readonly hostService: PluginHostService,
-    private readonly aiModelExecution: AiModelExecutionService,
     private readonly runtimeBroadcastFacade: PluginRuntimeBroadcastFacade,
     private readonly runtimeGovernanceFacade: PluginRuntimeGovernanceFacade,
     private readonly runtimeHostFacade: PluginRuntimeHostFacade,
@@ -920,14 +914,6 @@ export class PluginRuntimeService {
       payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
     });
-  }
-
-  /**
-   * 暴露 Host API 服务给后续 transport 适配器复用。
-   * @returns Host API 服务实例
-   */
-  getHostService(): PluginHostService {
-    return this.hostService;
   }
 
   /**

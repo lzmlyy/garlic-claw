@@ -324,6 +324,13 @@
     - `plugin.self.get`
     让 `PluginRuntimeService.callHost(...)` 继续收口为纯委派入口
   - `plugin-runtime.service.ts` 主文件行数已从 `982` 继续降到 `902`
+  - `PluginRuntimeService` 已删除不再使用的直持依赖与死入口：
+    - `PluginService`
+    - `PluginHostService`
+    - `AiModelExecutionService`
+    - `getHostService()`
+    让 runtime 主类只保留仍实际参与分发的 facade 依赖
+  - `plugin-runtime.service.ts` 主文件行数已从 `902` 继续降到 `888`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口

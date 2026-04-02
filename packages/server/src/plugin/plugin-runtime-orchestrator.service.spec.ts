@@ -7,9 +7,11 @@ import { NotFoundException } from '@nestjs/common';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeInboundHooksFacade } from './plugin-runtime-inbound-hooks.facade';
 import { PluginRuntimeMessageHooksFacade } from './plugin-runtime-message-hooks.facade';
 import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
+import { PluginRuntimeTransportFacade } from './plugin-runtime-transport.facade';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
 
@@ -75,9 +77,11 @@ describe('PluginRuntimeOrchestratorService', () => {
   let runtimeBroadcastFacade: PluginRuntimeBroadcastFacade;
   let runtimeGovernanceFacade: PluginRuntimeGovernanceFacade;
   let runtimeHostFacade: PluginRuntimeHostFacade;
+  let runtimeInboundHooksFacade: PluginRuntimeInboundHooksFacade;
   let runtimeMessageHooksFacade: PluginRuntimeMessageHooksFacade;
   let runtimeOperationHooksFacade: PluginRuntimeOperationHooksFacade;
   let runtimeSubagentFacade: PluginRuntimeSubagentFacade;
+  let runtimeTransportFacade: PluginRuntimeTransportFacade;
   let orchestrator: PluginRuntimeOrchestratorService;
 
   beforeEach(() => {
@@ -96,23 +100,26 @@ describe('PluginRuntimeOrchestratorService', () => {
       cronService as never,
       moduleRef as never,
     );
+    runtimeInboundHooksFacade = new PluginRuntimeInboundHooksFacade();
     runtimeMessageHooksFacade = new PluginRuntimeMessageHooksFacade();
     runtimeOperationHooksFacade = new PluginRuntimeOperationHooksFacade();
     runtimeSubagentFacade = new PluginRuntimeSubagentFacade(
       aiModelExecution as never,
       moduleRef as never,
     );
+    runtimeTransportFacade = new PluginRuntimeTransportFacade(
+      pluginService as never,
+    );
 
     runtime = new PluginRuntimeService(
-      pluginService as never,
-      hostService as never,
-      aiModelExecution as never,
       runtimeBroadcastFacade as never,
       runtimeGovernanceFacade as never,
       runtimeHostFacade as never,
+      runtimeInboundHooksFacade as never,
       runtimeMessageHooksFacade as never,
       runtimeOperationHooksFacade as never,
       runtimeSubagentFacade as never,
+      runtimeTransportFacade as never,
     );
     orchestrator = new PluginRuntimeOrchestratorService(
       runtime,
