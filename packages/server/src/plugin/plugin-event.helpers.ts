@@ -136,6 +136,25 @@ export function buildPluginEventWhere(input: {
   return where;
 }
 
+export function buildPluginEventFindManyInput(input: {
+  pluginId: string;
+  options: NormalizedPluginEventOptions;
+  cursorEvent: { id: string; createdAt: Date } | null;
+}) {
+  return {
+    where: buildPluginEventWhere(input),
+    orderBy: [
+      {
+        createdAt: 'desc' as const,
+      },
+      {
+        id: 'desc' as const,
+      },
+    ],
+    take: input.options.limit + 1,
+  };
+}
+
 export function parsePluginEventLevel(raw: string): PluginEventLevel {
   switch (raw) {
     case 'warn':

@@ -596,6 +596,13 @@
     - protected builtin 禁用拦截
     - normalized scope 与持久化 updateData 组装
   - `plugin.service.ts` 主文件行数已从 `631` 继续降到 `614`
+  - 已扩展：
+    - `packages/server/src/plugin/plugin-event.helpers.ts`
+    继续把 event findMany 的 query 组装样板从 `PluginService` 主类中拆出
+  - `PluginService` 已不再直接承载：
+    - event findMany 的 where/orderBy/take 组装
+    - cursor-aware 查询参数组合
+  - `plugin.service.ts` 主文件行数已从 `614` 继续降到 `608`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口

@@ -18,7 +18,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  buildPluginEventWhere,
+  buildPluginEventFindManyInput,
   buildPluginEventListResult,
   buildPluginHealthSnapshot,
   createPluginEvent,
@@ -490,20 +490,11 @@ export class PluginService {
       })
       : null;
     const events = await this.prisma.pluginEvent.findMany({
-      where: buildPluginEventWhere({
+      ...buildPluginEventFindManyInput({
         pluginId: plugin.id,
         options: normalized,
         cursorEvent,
       }),
-      orderBy: [
-        {
-          createdAt: 'desc',
-        },
-        {
-          id: 'desc',
-        },
-      ],
-      take: normalized.limit + 1,
     });
     return buildPluginEventListResult({
       events,

@@ -1,6 +1,56 @@
-import { buildPluginEventListResult } from './plugin-event.helpers';
+import {
+  buildPluginEventFindManyInput,
+  buildPluginEventListResult,
+} from './plugin-event.helpers';
 
 describe('plugin-event.helpers', () => {
+  it('builds event query input with filters, cursor, ordering, and take size', () => {
+    expect(
+      buildPluginEventFindManyInput({
+        pluginId: 'plugin-1',
+        options: {
+          limit: 2,
+          level: 'error',
+          type: 'tool:error',
+          keyword: 'memory.search',
+        },
+        cursorEvent: null,
+      }),
+    ).toEqual({
+      where: {
+        pluginId: 'plugin-1',
+        level: 'error',
+        type: 'tool:error',
+        OR: [
+          {
+            type: {
+              contains: 'memory.search',
+            },
+          },
+          {
+            message: {
+              contains: 'memory.search',
+            },
+          },
+          {
+            metadataJson: {
+              contains: 'memory.search',
+            },
+          },
+        ],
+      },
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          id: 'desc',
+        },
+      ],
+      take: 3,
+    });
+  });
+
   it('builds paginated event list results with parsed metadata and next cursor', () => {
     expect(
       buildPluginEventListResult({
@@ -99,5 +149,51 @@ describe('plugin-event.helpers', () => {
     expect(warnings).toEqual([
       expect.stringContaining('plugin.nullableJsonObject'),
     ]);
+  });
+
+  it('builds cursor-aware findMany input for event pagination', () => {
+    expect(
+      buildPluginEventFindManyInput({
+        pluginId: 'plugin-1',
+        options: {
+          limit: 20,
+          cursor: 'event-4',
+        },
+        cursorEvent: {
+          id: 'event-4',
+          createdAt: new Date('2026-04-02T12:04:00.000Z'),
+        },
+      }),
+    ).toEqual({
+      where: {
+        pluginId: 'plugin-1',
+        AND: [
+          {
+            OR: [
+              {
+                createdAt: {
+                  lt: new Date('2026-04-02T12:04:00.000Z'),
+                },
+              },
+              {
+                createdAt: new Date('2026-04-02T12:04:00.000Z'),
+                id: {
+                  lt: 'event-4',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          id: 'desc',
+        },
+      ],
+      take: 21,
+    });
   });
 });
