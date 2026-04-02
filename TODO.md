@@ -331,6 +331,14 @@
     - `getHostService()`
     让 runtime 主类只保留仍实际参与分发的 facade 依赖
   - `plugin-runtime.service.ts` 主文件行数已从 `902` 继续降到 `888`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-runtime.types.ts`
+    把 transport contract 与运行时执行结果类型从主类中拆出
+  - `PluginRuntimeService` 已不再直接承载：
+    - `PluginTransport`
+    - `PluginRuntimeRecord`
+    - chat/message/tool/automation 的执行结果类型定义
+  - `plugin-runtime.service.ts` 主文件行数已从 `888` 继续降到 `721`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口

@@ -78,7 +78,9 @@ export class PluginRouteController {
     });
 
     res.status(result.status);
-    for (const [header, value] of Object.entries(result.headers ?? {})) {
+    for (const [header, value] of Object.entries(
+      (result.headers ?? {}) as Record<string, string>,
+    )) {
       if (isBlockedPluginResponseHeader(header)) {
         continue;
       }

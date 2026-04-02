@@ -2,9 +2,7 @@ import type {
   AutomationAfterRunHookPayload,
   AutomationBeforeRunHookPayload,
   ChatAfterModelHookPayload,
-  ChatBeforeModelRequest,
   ChatBeforeModelHookPayload,
-  ChatMessagePart,
   ChatWaitingModelHookPayload,
   ConversationCreatedHookPayload,
   HostCallPayload,
@@ -45,6 +43,14 @@ import { PluginRuntimeMessageHooksFacade } from './plugin-runtime-message-hooks.
 import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import { PluginRuntimeTransportFacade } from './plugin-runtime-transport.facade';
+import type {
+  AutomationBeforeRunExecutionResult,
+  ChatBeforeModelExecutionResult,
+  MessageReceivedExecutionResult,
+  PluginRuntimeRecord,
+  PluginTransport,
+  ToolBeforeCallExecutionResult,
+} from './plugin-runtime.types';
 import {
   resolveMaxConcurrentExecutions,
 } from './plugin-runtime-record.helpers';
@@ -58,80 +64,6 @@ import {
   type PluginGovernanceSnapshot,
 } from './plugin.service';
 
-/**
- * 插件传输适配器接口。
- *
- * 输入:
- * - 工具调用请求
- * - Hook 调用请求
- *
- * 输出:
- * - 工具执行结果
- * - Hook 返回结果
- * - Route 调用返回结果
- *
- * 预期行为:
- * - 将 builtin / remote 的差异收在 transport 内部
- * - 对 runtime 暴露统一的 executeTool / invokeHook / invokeRoute 接口
- */
-export interface PluginTransport {
-  /**
-   * 执行插件工具。
-   * @param input 工具名、参数和调用上下文
-   * @returns JSON 可序列化的工具结果
-   */
-  executeTool(input: {
-    toolName: string;
-    params: JsonObject;
-    context: PluginCallContext;
-  }): Promise<JsonValue> | JsonValue;
-
-  /**
-   * 调用插件 Hook。
-   * @param input Hook 名称、调用上下文和 Hook 负载
-   * @returns Hook 返回值；无返回时返回 null/undefined
-   */
-  invokeHook(input: {
-    hookName: PluginHookName;
-    context: PluginCallContext;
-    payload: JsonValue;
-  }): Promise<JsonValue | null | undefined> | JsonValue | null | undefined;
-
-  /**
-   * 调用插件声明的 Web Route。
-   * @param input Route 请求与调用上下文
-   * @returns 标准化的 Route 响应
-   */
-  invokeRoute(input: {
-    request: PluginRouteRequest;
-    context: PluginCallContext;
-  }): Promise<PluginRouteResponse> | PluginRouteResponse;
-
-  /**
-   * 重新装载当前插件。
-   * @returns 无返回值
-   */
-  reload?(): Promise<void> | void;
-
-  /**
-   * 请求当前插件主动重连。
-   * @returns 无返回值
-   */
-  reconnect?(): Promise<void> | void;
-
-  /**
-   * 执行一次当前插件的健康检查。
-   * @returns 健康检查结果
-   */
-  checkHealth?(): Promise<{ ok: boolean }> | { ok: boolean };
-
-  /**
-   * 声明当前 transport 支持的治理动作。
-   * @returns 动作列表
-   */
-  listSupportedActions?(): PluginActionName[];
-}
-
 function createDefaultGovernanceSnapshot(): PluginGovernanceSnapshot {
   return {
     configSchema: null,
@@ -142,125 +74,6 @@ function createDefaultGovernanceSnapshot(): PluginGovernanceSnapshot {
     },
   };
 }
-
-/**
- * 注册到统一 runtime 的插件记录。
- */
-interface PluginRuntimeRecord {
-  manifest: PluginManifest;
-  runtimeKind: PluginRuntimeKind;
-  deviceType: string;
-  transport: PluginTransport;
-  governance: PluginGovernanceSnapshot;
-  activeExecutions: number;
-  maxConcurrentExecutions: number;
-}
-
-/**
- * 宿主侧会话消息写入器。
- */
-/**
- * 聊天模型前 Hook 继续执行模型调用。
- */
-export interface ChatBeforeModelContinueResult {
-  action: 'continue';
-  request: ChatBeforeModelRequest;
-}
-
-/**
- * 聊天模型前 Hook 直接短路模型调用。
- */
-export interface ChatBeforeModelShortCircuitExecutionResult {
-  action: 'short-circuit';
-  request: ChatBeforeModelRequest;
-  assistantContent: string;
-  assistantParts: ChatMessagePart[];
-  providerId: string;
-  modelId: string;
-  reason?: string;
-}
-
-/**
- * 聊天模型前 Hook 执行结果。
- */
-export type ChatBeforeModelExecutionResult =
-  | ChatBeforeModelContinueResult
-  | ChatBeforeModelShortCircuitExecutionResult;
-
-/**
- * 收到消息后 Hook 继续执行。
- */
-export interface MessageReceivedContinueResult {
-  action: 'continue';
-  payload: MessageReceivedHookPayload;
-}
-
-/**
- * 收到消息后 Hook 直接短路。
- */
-export interface MessageReceivedShortCircuitExecutionResult {
-  action: 'short-circuit';
-  payload: MessageReceivedHookPayload;
-  assistantContent: string;
-  assistantParts: ChatMessagePart[];
-  providerId: string;
-  modelId: string;
-  reason?: string;
-}
-
-/**
- * 收到消息后 Hook 执行结果。
- */
-export type MessageReceivedExecutionResult =
-  | MessageReceivedContinueResult
-  | MessageReceivedShortCircuitExecutionResult;
-
-/**
- * 自动化运行前 Hook 继续执行。
- */
-export interface AutomationBeforeRunContinueResult {
-  action: 'continue';
-  payload: AutomationBeforeRunHookPayload;
-}
-
-/**
- * 自动化运行前 Hook 直接短路。
- */
-export interface AutomationBeforeRunShortCircuitExecutionResult {
-  action: 'short-circuit';
-  status: string;
-  results: JsonValue[];
-}
-
-/**
- * 自动化运行前 Hook 执行结果。
- */
-export type AutomationBeforeRunExecutionResult =
-  | AutomationBeforeRunContinueResult
-  | AutomationBeforeRunShortCircuitExecutionResult;
-
-/**
- * 工具调用前 Hook 继续执行。
- */
-export interface ToolBeforeCallContinueResult {
-  action: 'continue';
-  payload: ToolBeforeCallHookPayload;
-}
-
-/**
- * 工具调用前 Hook 直接短路。
- */
-export interface ToolBeforeCallShortCircuitExecutionResult {
-  action: 'short-circuit';
-  output: JsonValue;
-}
-
-/**
- * 工具调用前 Hook 执行结果。
- */
-export type ToolBeforeCallExecutionResult =
-  | ToolBeforeCallContinueResult
-  | ToolBeforeCallShortCircuitExecutionResult;
 
 /**
  * 统一插件运行时。

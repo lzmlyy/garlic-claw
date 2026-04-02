@@ -44,7 +44,7 @@ import type {
 import { BadRequestException } from '@nestjs/common';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
-import type { PluginTransport } from '../plugin-runtime.service';
+import type { PluginTransport } from '../plugin-runtime.types';
 import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**

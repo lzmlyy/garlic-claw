@@ -35,7 +35,8 @@ import type { JsonObject } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { normalizePluginManifestCandidate } from './plugin-manifest.persistence';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
-import { PluginRuntimeService, type PluginTransport } from './plugin-runtime.service';
+import { PluginRuntimeService } from './plugin-runtime.service';
+import type { PluginTransport } from './plugin-runtime.types';
 
 /**
  * 远程插件心跳扫描间隔。

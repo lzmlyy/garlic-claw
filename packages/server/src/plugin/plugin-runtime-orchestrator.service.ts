@@ -5,7 +5,8 @@ import type {
 } from '@garlic-claw/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { buildPluginLifecycleHookInfo } from './plugin-runtime-manifest.helpers';
-import { PluginRuntimeService, type PluginTransport } from './plugin-runtime.service';
+import { PluginRuntimeService } from './plugin-runtime.service';
+import type { PluginTransport } from './plugin-runtime.types';
 import { PluginCronService } from './plugin-cron.service';
 import { PluginService } from './plugin.service';
 

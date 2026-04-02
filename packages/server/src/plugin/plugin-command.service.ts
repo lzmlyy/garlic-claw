@@ -123,7 +123,7 @@ export class PluginCommandService {
     });
     const manifestCommands = runtimePlugin?.manifest.commands ?? persistedManifest.commands ?? [];
     if (manifestCommands.length > 0) {
-      return manifestCommands.map((descriptor) => ({
+      return manifestCommands.map((descriptor: PluginCommandDescriptor) => ({
         descriptor: cloneCommandDescriptor(descriptor),
         source: 'manifest' as const,
       }));
