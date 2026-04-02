@@ -23,10 +23,10 @@ import {
 } from './plugin-governance-policy';
 import {
   buildPluginEventWhere,
+  buildPluginEventListResult,
   buildPluginHealthSnapshot,
   createPluginEvent,
   normalizePluginEventOptions,
-  parsePluginEventLevel,
   resolvePluginEventCursor,
   type ListPluginEventOptions,
 } from './plugin-event.helpers';
@@ -36,7 +36,6 @@ import {
 } from './plugin-governance.helpers';
 import { serializePersistedPluginManifest } from './plugin-manifest.persistence';
 import {
-  parseNullablePluginJsonObject,
   parsePluginScope,
   parseStoredPluginJsonValue,
   resolvePluginConfig,
@@ -564,24 +563,11 @@ export class PluginService {
       ],
       take: normalized.limit + 1,
     });
-    const hasMore = events.length > normalized.limit;
-    const items = (hasMore ? events.slice(0, normalized.limit) : events).map((event) => ({
-      id: event.id,
-      type: event.type,
-      level: parsePluginEventLevel(event.level),
-      message: event.message,
-      metadata: parseNullablePluginJsonObject({
-        raw: event.metadataJson,
-        label: 'plugin.nullableJsonObject',
-        onWarn: (message) => this.logger.warn(message),
-      }),
-      createdAt: event.createdAt.toISOString(),
-    }));
-
-    return {
-      items,
-      nextCursor: hasMore ? events[normalized.limit]?.id ?? null : null,
-    };
+    return buildPluginEventListResult({
+      events,
+      limit: normalized.limit,
+      onWarn: (message) => this.logger.warn(message),
+    });
   }
 
   /**

@@ -1,9 +1,11 @@
 import type {
   PluginEventLevel,
+  PluginEventListResult,
   PluginHealthSnapshot,
 } from '@garlic-claw/shared';
 import { BadRequestException } from '@nestjs/common';
 import type { JsonObject } from '../common/types/json-value';
+import { parseNullablePluginJsonObject } from './plugin-persistence.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface ListPluginEventOptions {
@@ -142,6 +144,38 @@ export function parsePluginEventLevel(raw: string): PluginEventLevel {
     default:
       return 'info';
   }
+}
+
+export function buildPluginEventListResult(input: {
+  events: Array<{
+    id: string;
+    type: string;
+    level: string;
+    message: string;
+    metadataJson: string | null;
+    createdAt: Date;
+  }>;
+  limit: number;
+  onWarn?: (message: string) => void;
+}): PluginEventListResult {
+  const hasMore = input.events.length > input.limit;
+  const items = (hasMore ? input.events.slice(0, input.limit) : input.events).map((event) => ({
+    id: event.id,
+    type: event.type,
+    level: parsePluginEventLevel(event.level),
+    message: event.message,
+    metadata: parseNullablePluginJsonObject({
+      raw: event.metadataJson,
+      label: 'plugin.nullableJsonObject',
+      onWarn: input.onWarn,
+    }),
+    createdAt: event.createdAt.toISOString(),
+  }));
+
+  return {
+    items,
+    nextCursor: hasMore ? input.events[input.limit]?.id ?? null : null,
+  };
 }
 
 export function parsePluginHealthStatus(

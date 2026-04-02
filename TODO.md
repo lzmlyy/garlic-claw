@@ -531,6 +531,17 @@
     - failure 时的 degraded/error/offline 判定
     - failureCount / consecutiveFailures / lastError 写回规则
   - `plugin.service.ts` 主文件行数已从 `690` 继续降到 `685`
+  - 已扩展：
+    - `packages/server/src/plugin/plugin-event.helpers.ts`
+    继续把事件分页结果的 metadata/level/items/nextCursor 视图样板从 `PluginService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-event.helpers.spec.ts`
+    直接给 plugin event helper 补 metadata fallback、分页截断与 nextCursor 回归
+  - `PluginService` 已不再直接承载：
+    - event list 的 metadata 解析与 level 归一化
+    - limit 截断后的 items 投影
+    - nextCursor 计算
+  - `plugin.service.ts` 主文件行数已从 `685` 继续降到 `672`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
