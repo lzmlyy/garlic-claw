@@ -36,7 +36,6 @@ import {
 } from './plugin-governance.helpers';
 import {
   parsePluginScope,
-  parseStoredPluginJsonValue,
   resolvePluginConfig,
   validateAndNormalizePluginConfig,
   validatePluginScope,
@@ -47,6 +46,13 @@ import {
 } from './plugin-health.helpers';
 import { buildPluginRegistrationEvent, buildPluginRegistrationUpsertData } from './plugin-register.helpers';
 import { buildPluginConfigSnapshot, buildPluginSelfInfo, buildResolvedPluginConfig } from './plugin-record-view.helpers';
+import {
+  buildPluginStorageEntries,
+  buildPluginStorageKey,
+  buildPluginStorageListWhere,
+  buildPluginStorageUpsertData,
+  readPluginStorageValue,
+} from './plugin-storage.helpers';
 
 /**
  * 运行时可直接消费的插件治理快照。
@@ -289,21 +295,16 @@ export class PluginService {
   async getPluginStorage(name: string, key: string): Promise<JsonValue | null> {
     const plugin = await this.findByNameOrThrow(name);
     const entry = await this.prisma.pluginStorage.findUnique({
-      where: {
-        pluginId_key: {
-          pluginId: plugin.id,
-          key,
-        },
-      },
+      where: buildPluginStorageKey(plugin.id, key),
     });
     if (!entry) {
       return null;
     }
 
-    return parseStoredPluginJsonValue({
+    return readPluginStorageValue({
+      pluginName: name,
+      key,
       raw: entry.valueJson,
-      fallback: null,
-      label: `pluginStorage:${name}:${key}`,
       onWarn: (message) => this.logger.warn(message),
     });
   }
@@ -321,22 +322,13 @@ export class PluginService {
     value: JsonValue,
   ): Promise<JsonValue> {
     const plugin = await this.findByNameOrThrow(name);
-    await this.prisma.pluginStorage.upsert({
-      where: {
-        pluginId_key: {
-          pluginId: plugin.id,
-          key,
-        },
-      },
-      create: {
+    await this.prisma.pluginStorage.upsert(
+      buildPluginStorageUpsertData({
         pluginId: plugin.id,
         key,
-        valueJson: JSON.stringify(value),
-      },
-      update: {
-        valueJson: JSON.stringify(value),
-      },
-    });
+        value,
+      }),
+    );
 
     return value;
   }
@@ -371,24 +363,20 @@ export class PluginService {
   ): Promise<Array<{ key: string; value: JsonValue }>> {
     const plugin = await this.findByNameOrThrow(name);
     const entries = await this.prisma.pluginStorage.findMany({
-      where: {
+      where: buildPluginStorageListWhere({
         pluginId: plugin.id,
-        ...(prefix ? { key: { startsWith: prefix } } : {}),
-      },
+        prefix,
+      }),
       orderBy: {
         key: 'asc',
       },
     });
 
-    return entries.map((entry) => ({
-      key: entry.key,
-      value: parseStoredPluginJsonValue({
-        raw: entry.valueJson,
-        fallback: null,
-        label: `pluginStorage:${name}:${entry.key}`,
-        onWarn: (message) => this.logger.warn(message),
-      }),
-    }));
+    return buildPluginStorageEntries({
+      pluginName: name,
+      entries,
+      onWarn: (message) => this.logger.warn(message),
+    });
   }
 
   /**

@@ -552,6 +552,17 @@
     - register/upsert 的 create/update payload 组装
     - register 与 lifecycle:online 事件类型选择
   - `plugin.service.ts` 主文件行数已从 `672` 继续降到 `648`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-storage.helpers.ts`
+    继续把 plugin storage 的 key/upsert/list/value 样板从 `PluginService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-storage.helpers.spec.ts`
+    直接给 plugin storage helper 补 composite key、upsert payload 与 value/list 投影回归
+  - `PluginService` 已不再直接承载：
+    - storage composite key / list where 组装
+    - storage upsert payload 组装
+    - persisted storage value 解析与 entry list 投影
+  - `plugin.service.ts` 主文件行数已从 `648` 继续降到 `636`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
