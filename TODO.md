@@ -385,6 +385,19 @@
     - findApprovedRequestContext
     - authorized context compare / clone
   - `plugin.gateway.ts` 主文件行数已从 `1205` 继续降到 `1113`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-gateway-payload.helpers.ts`
+    继续把 websocket message/payload reader、Host API method 白名单和 route/context 纯解析规则从网关主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-gateway-payload.helpers.spec.ts`
+    直接给 gateway payload helper 补协议 reader 与 JSON-safe 规则回归
+  - `PluginGateway` 已不再直接承载：
+    - websocket envelope reader
+    - auth/register/data/error/route/host payload reader
+    - plugin call context reader
+    - Host API method / connection-scoped 白名单判断
+    - route response 归一化与上下文提取
+  - `plugin.gateway.ts` 主文件行数已从 `1113` 继续降到 `799`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
