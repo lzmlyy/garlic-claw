@@ -726,6 +726,10 @@
     - `packages/server/src/chat/chat-message-common.helpers.spec.ts`
     把聊天共享的 lifecycle context、会话更新时间、归属消息查找和 LLM 启用校验收口到公共 helper
   - 已新增：
+    - `packages/server/src/chat/chat-task-persistence.service.ts`
+    - `packages/server/src/chat/chat-task-persistence.service.spec.ts`
+    把聊天后台任务的消息状态持久化、完成态快照构造与补丁写回从 `ChatTaskService` 主类中拆出
+  - 已新增：
     - `packages/server/src/plugin/plugin-storage.service.ts`
     - `packages/server/src/plugin/plugin-storage.service.spec.ts`
     把插件存储的 CRUD、坏 JSON 回退与 logger 告警从 `PluginService` 主类中拆出
@@ -763,6 +767,12 @@
     - `stopMessageGeneration`
   - `chat-message.service.ts` 主文件行数已从 `1030` 继续降到 `65`
   - `chat-message-generation.service.ts` 主文件行数已从 `503` 继续降到 `463`
+  - `ChatTaskService` 已改为通过 `ChatTaskPersistenceService` 委派：
+    - `persistMessageState`
+    - `buildCompletedTaskResult`
+    - `persistCompletedResult`
+    - `hasCompletedResultPatch`
+  - `chat-task.service.ts` 主文件行数已从 `443` 继续降到 `379`
   - `PluginService` 已改为通过 `PluginStorageService` 委派：
     - `storage.get`
     - `storage.set`

@@ -15,6 +15,9 @@
  */
 
 import {
+  ChatTaskPersistenceService,
+} from './chat-task-persistence.service';
+import {
   ChatTaskService,
 } from './chat-task.service';
 import type { ChatTaskEvent, ChatTaskStreamPart } from './chat.types';
@@ -35,7 +38,8 @@ describe('ChatTaskService', () => {
     jest.clearAllMocks();
     prisma.message.update.mockResolvedValue(null);
     prisma.conversation.update.mockResolvedValue(null);
-    service = new ChatTaskService(prisma as never);
+    const persistence = new ChatTaskPersistenceService(prisma as never);
+    service = new ChatTaskService(prisma as never, persistence);
   });
 
   it('persists streamed text and completes the assistant message', async () => {

@@ -11,6 +11,7 @@ import { ChatMessageMutationService } from './chat-message-mutation.service';
 import { ChatMessageOrchestrationService } from './chat-message-orchestration.service';
 import { ChatMessagePluginTargetService } from './chat-message-plugin-target.service';
 import { ChatMessageTransformService } from './chat-message-transform.service';
+import { ChatTaskPersistenceService } from './chat-task-persistence.service';
 import { ChatMessageService } from './chat-message.service';
 import { ChatTaskService } from './chat-task.service';
 import { ChatController } from './chat.controller';
@@ -28,6 +29,7 @@ import { OpenApiMessageController } from './open-api-message.controller';
     ChatMessageMutationService,
     ChatMessageOrchestrationService,
     ChatMessagePluginTargetService,
+    ChatTaskPersistenceService,
     ChatTaskService,
     ChatModelInvocationService,
     ChatMessageTransformService,
