@@ -18,9 +18,7 @@ import type {
   PluginCapability,
   PluginErrorHookPayload,
   PluginHookName,
-  PluginHostMethod,
   PluginManifest,
-  PluginPermission,
   PluginLoadedHookPayload,
   PluginRouteDescriptor,
   PluginRouteRequest,
@@ -37,10 +35,9 @@ import type {
   ToolAfterCallHookPayload,
   ToolBeforeCallHookPayload,
 } from '@garlic-claw/shared';
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
-import { toJsonValue } from '../common/utils/json-value';
 import { PluginHostService } from './plugin-host.service';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
@@ -51,81 +48,18 @@ import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-ho
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import { PluginRuntimeTransportFacade } from './plugin-runtime-transport.facade';
 import {
-  getRuntimeRecordOrThrow,
-} from './plugin-runtime-dispatch.helpers';
-import {
   resolveMaxConcurrentExecutions,
 } from './plugin-runtime-record.helpers';
 import {
   type ConversationSessionRecord,
 } from './plugin-runtime-session.helpers';
 import {
-  readRuntimeSubagentRequest,
-} from './plugin-runtime-input.helpers';
-import {
   collectDisabledConversationSessionIds,
 } from './plugin-runtime-scope';
-import {
-} from './plugin-runtime-validation.helpers';
 import {
   PluginService,
   type PluginGovernanceSnapshot,
 } from './plugin.service';
-
-/**
- * Host API 与权限的映射表。
- */
-const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | null> = {
-  'automation.create': 'automation:write',
-  'automation.event.emit': 'automation:write',
-  'automation.list': 'automation:read',
-  'automation.run': 'automation:write',
-  'automation.toggle': 'automation:write',
-  'config.get': 'config:read',
-  'cron.delete': 'cron:write',
-  'cron.list': 'cron:read',
-  'cron.register': 'cron:write',
-  'conversation.get': 'conversation:read',
-  'conversation.session.finish': 'conversation:write',
-  'conversation.session.get': 'conversation:write',
-  'conversation.session.keep': 'conversation:write',
-  'conversation.session.start': 'conversation:write',
-  'conversation.messages.list': 'conversation:read',
-  'conversation.title.set': 'conversation:write',
-  'kb.get': 'kb:read',
-  'kb.list': 'kb:read',
-  'kb.search': 'kb:read',
-  'llm.generate': 'llm:generate',
-  'llm.generate-text': 'llm:generate',
-  'log.list': 'log:read',
-  'log.write': 'log:write',
-  'message.send': 'conversation:write',
-  'message.target.current.get': 'conversation:read',
-  'memory.search': 'memory:read',
-  'memory.save': 'memory:write',
-  'persona.activate': 'persona:write',
-  'persona.current.get': 'persona:read',
-  'persona.get': 'persona:read',
-  'persona.list': 'persona:read',
-  'plugin.self.get': null,
-  'provider.current.get': 'provider:read',
-  'provider.get': 'provider:read',
-  'provider.list': 'provider:read',
-  'provider.model.get': 'provider:read',
-  'storage.delete': 'storage:write',
-  'storage.get': 'storage:read',
-  'storage.list': 'storage:read',
-  'storage.set': 'storage:write',
-  'subagent.run': 'subagent:run',
-  'subagent.task.get': 'subagent:run',
-  'subagent.task.list': 'subagent:run',
-  'subagent.task.start': 'subagent:run',
-  'state.delete': 'state:write',
-  'state.get': 'state:read',
-  'state.list': 'state:read',
-  'state.set': 'state:write',
-  'user.get': 'user:read',
-};
 
 /**
  * 插件传输适配器接口。
@@ -598,27 +532,6 @@ export class PluginRuntimeService {
     method: HostCallPayload['method'];
     params: JsonObject;
   }): Promise<JsonValue> {
-    const record = input.method === 'plugin.self.get'
-      ? this.records.get(input.pluginId)
-      : getRuntimeRecordOrThrow(this.records, input.pluginId);
-    const requiredPermission = HOST_METHOD_PERMISSION_MAP[input.method];
-    if (
-      requiredPermission
-      && record
-      && !record.manifest.permissions.includes(requiredPermission)
-    ) {
-      throw new ForbiddenException(
-        `插件 ${input.pluginId} 缺少权限 ${requiredPermission}`,
-      );
-    }
-    if (input.method === 'subagent.run') {
-      return toJsonValue(await this.executeSubagentRequest({
-        pluginId: input.pluginId,
-        context: input.context,
-        request: readRuntimeSubagentRequest(input.params, 'subagent.run'),
-      }));
-    }
-
     return this.runtimeHostFacade.call({
       records: this.records,
       conversationSessions: this.conversationSessions,
@@ -626,6 +539,11 @@ export class PluginRuntimeService {
       context: input.context,
       method: input.method,
       params: input.params,
+      runSubagentRequest: (subagentInput) => this.executeSubagentRequest({
+        pluginId: subagentInput.pluginId,
+        context: subagentInput.context,
+        request: subagentInput.request as PluginSubagentRequest,
+      }),
     });
   }
 

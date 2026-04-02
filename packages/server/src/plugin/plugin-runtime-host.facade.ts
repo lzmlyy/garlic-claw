@@ -3,14 +3,17 @@ import type {
   PluginActionName,
   PluginCallContext,
   PluginManifest,
+  PluginHostMethod,
+  PluginPermission,
   PluginRuntimeKind,
 } from '@garlic-claw/shared';
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { AutomationService } from '../automation/automation.service';
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { ChatMessageService } from '../chat/chat-message.service';
+import { getRuntimeRecordOrThrow } from './plugin-runtime-dispatch.helpers';
 import {
   finishConversationSessionForRuntime,
   getConversationSessionInfoForRuntime,
@@ -30,6 +33,7 @@ import {
   readOptionalRuntimeString,
   readRuntimeAutomationActions,
   readRuntimeAutomationTrigger,
+  readRuntimeSubagentRequest,
   readRuntimeSubagentTaskStartParams,
   requirePositiveRuntimeNumber,
   requireRuntimeString,
@@ -50,6 +54,58 @@ interface RuntimeHostFacadeRecord {
     listSupportedActions?: () => PluginActionName[];
   };
 }
+
+const HOST_METHOD_PERMISSION_MAP: Record<PluginHostMethod, PluginPermission | null> = {
+  'automation.create': 'automation:write',
+  'automation.event.emit': 'automation:write',
+  'automation.list': 'automation:read',
+  'automation.run': 'automation:write',
+  'automation.toggle': 'automation:write',
+  'config.get': 'config:read',
+  'cron.delete': 'cron:write',
+  'cron.list': 'cron:read',
+  'cron.register': 'cron:write',
+  'conversation.get': 'conversation:read',
+  'conversation.session.finish': 'conversation:write',
+  'conversation.session.get': 'conversation:write',
+  'conversation.session.keep': 'conversation:write',
+  'conversation.session.start': 'conversation:write',
+  'conversation.messages.list': 'conversation:read',
+  'conversation.title.set': 'conversation:write',
+  'kb.get': 'kb:read',
+  'kb.list': 'kb:read',
+  'kb.search': 'kb:read',
+  'llm.generate': 'llm:generate',
+  'llm.generate-text': 'llm:generate',
+  'log.list': 'log:read',
+  'log.write': 'log:write',
+  'message.send': 'conversation:write',
+  'message.target.current.get': 'conversation:read',
+  'memory.search': 'memory:read',
+  'memory.save': 'memory:write',
+  'persona.activate': 'persona:write',
+  'persona.current.get': 'persona:read',
+  'persona.get': 'persona:read',
+  'persona.list': 'persona:read',
+  'plugin.self.get': null,
+  'provider.current.get': 'provider:read',
+  'provider.get': 'provider:read',
+  'provider.list': 'provider:read',
+  'provider.model.get': 'provider:read',
+  'storage.delete': 'storage:write',
+  'storage.get': 'storage:read',
+  'storage.list': 'storage:read',
+  'storage.set': 'storage:write',
+  'subagent.run': 'subagent:run',
+  'subagent.task.get': 'subagent:run',
+  'subagent.task.list': 'subagent:run',
+  'subagent.task.start': 'subagent:run',
+  'state.delete': 'state:write',
+  'state.get': 'state:read',
+  'state.list': 'state:read',
+  'state.set': 'state:write',
+  'user.get': 'user:read',
+};
 
 @Injectable()
 export class PluginRuntimeHostFacade {
@@ -82,9 +138,27 @@ export class PluginRuntimeHostFacade {
     context: PluginCallContext;
     method: HostCallPayload['method'];
     params: JsonObject;
+    runSubagentRequest: (input: {
+      pluginId: string;
+      context: PluginCallContext;
+      request: unknown;
+    }) => Promise<unknown>;
   }): Promise<JsonValue> {
+    const record = input.method === 'plugin.self.get'
+      ? input.records.get(input.pluginId)
+      : getRuntimeRecordOrThrow(input.records, input.pluginId);
+    const requiredPermission = HOST_METHOD_PERMISSION_MAP[input.method];
+    if (
+      requiredPermission
+      && record
+      && !record.manifest.permissions.includes(requiredPermission)
+    ) {
+      throw new ForbiddenException(
+        `插件 ${input.pluginId} 缺少权限 ${requiredPermission}`,
+      );
+    }
+
     if (input.method === 'plugin.self.get') {
-      const record = input.records.get(input.pluginId);
       if (!record) {
         return toJsonValue(
           buildStoredPluginSelfInfo({
@@ -100,6 +174,13 @@ export class PluginRuntimeHostFacade {
           supportedActions: record.transport.listSupportedActions?.() ?? ['health-check'],
         }),
       );
+    }
+    if (input.method === 'subagent.run') {
+      return toJsonValue(await input.runSubagentRequest({
+        pluginId: input.pluginId,
+        context: input.context,
+        request: readRuntimeSubagentRequest(input.params, 'subagent.run'),
+      }));
     }
 
     if (input.method === 'automation.create') {

@@ -318,6 +318,12 @@
     - `invokePluginHook`
     - 统一 timeout / overloaded / failure dispatch 路径
   - `plugin-runtime.service.ts` 主文件行数已从 `1184` 继续降到 `982`
+  - `PluginRuntimeHostFacade` 已继续承接：
+    - Host API 权限映射校验
+    - `subagent.run`
+    - `plugin.self.get`
+    让 `PluginRuntimeService.callHost(...)` 继续收口为纯委派入口
+  - `plugin-runtime.service.ts` 主文件行数已从 `982` 继续降到 `902`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
