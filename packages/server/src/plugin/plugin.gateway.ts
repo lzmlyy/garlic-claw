@@ -20,6 +20,10 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { JsonObject } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import {
+  attachPluginGatewaySocketHandlers,
+  createPluginGatewayConnectionRecord,
+} from './plugin-gateway-connection.helpers';
+import {
   resolvePluginGatewayManifest,
 } from './plugin-gateway-context.helpers';
 import {
@@ -224,39 +228,20 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
    * @returns 无返回值
    */
   private handleConnection(ws: WebSocket) {
-    const connection: PluginConnection = {
-      ws,
-      pluginName: '',
-      deviceType: '',
-      authenticated: false,
-      manifest: null,
-      lastHeartbeatAt: Date.now(),
-    };
+    const connection: PluginConnection = createPluginGatewayConnectionRecord(ws);
     this.connections.set(ws, connection);
-
-    const authTimeout = setTimeout(() => {
-      if (!connection.authenticated) {
-        sendPluginGatewayMessage({
-          ws,
-          type: WS_TYPE.ERROR,
-          action: WS_ACTION.AUTH_FAIL,
-          payload: { error: '认证超时' },
-        });
-        ws.close();
-      }
-    }, 10000);
-
-    ws.on('message', (raw: Buffer) => {
-      void this.handleIncomingMessage(ws, connection, raw);
-    });
-
-    ws.on('close', () => {
-      clearTimeout(authTimeout);
-      void this.handleDisconnect(connection);
-    });
-
-    ws.on('error', (error) => {
-      this.logger.error(`来自 "${connection.pluginName}" 的 WS 错误：${error.message}`);
+    attachPluginGatewaySocketHandlers({
+      ws,
+      connection,
+      onIncomingMessage: (socket, record, raw) => {
+        void this.handleIncomingMessage(socket, record, raw);
+      },
+      onDisconnect: (record) => {
+        void this.handleDisconnect(record);
+      },
+      onSocketError: (error, record) => {
+        this.logger.error(`来自 "${record.pluginName}" 的 WS 错误：${error.message}`);
+      },
     });
   }
 
