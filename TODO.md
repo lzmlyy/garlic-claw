@@ -207,6 +207,11 @@
   - `plugin-host.helpers.ts` 已继续补齐：
     - provider summary 查找 / not-found 归一化
     继续把 `provider.get` 的查找薄壳移出主类
+  - 已新增：
+    - `packages/server/src/plugin/plugin-host-params.helpers.ts`
+    - `packages/server/src/plugin/plugin-host-provider.helpers.ts`
+    - `packages/server/src/plugin/plugin-host-record.helpers.ts`
+    把 `plugin-host.helpers.ts` 里的参数读取、provider/generate 组装和 record summary 规则按域拆分
   - `plugin-host.service.ts` 主文件行数已从 `852` 继续降到 `725`
   - `plugin-host.service.ts` 主文件行数已从 `725` 继续降到 `696`
   - `plugin-host.service.ts` 主文件行数已从 `696` 继续降到 `689`
@@ -220,6 +225,7 @@
     - `buildHostGenerateExecutionInput(...)`
     - `buildHostGenerateTextResult(...)`
     继续把统一 LLM generate 执行参数组装和 `llm.generate-text` 结果投影移出主类
+  - `plugin-host.helpers.ts` 主文件行数已从 `507` 继续降到 `3`
   - `plugin-host.service.ts` 主文件行数已从 `737` 继续降到 `733`
   - `plugin-host.service.ts` 主文件行数已从 `733` 继续降到 `723`
   - 已新增：
