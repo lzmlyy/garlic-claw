@@ -62,32 +62,7 @@ export function normalizeAiSettingsFile(
 function normalizeProviders(
   value: JsonValue | undefined,
 ): NormalizedValue<StoredAiProviderConfig[]> {
-  if (!Array.isArray(value)) {
-    return {
-      value: [],
-      changed: true,
-    };
-  }
-
-  let changed = false;
-  const providers: StoredAiProviderConfig[] = [];
-
-  for (const entry of value) {
-    const normalized = normalizeProvider(entry);
-    changed = changed || normalized.changed;
-    if (normalized.value) {
-      providers.push(normalized.value);
-    }
-  }
-
-  if (providers.length !== value.length) {
-    changed = true;
-  }
-
-  return {
-    value: providers,
-    changed,
-  };
+  return normalizeArrayEntries(value, normalizeProvider);
 }
 
 function normalizeProvider(
@@ -127,14 +102,15 @@ function normalizeProvider(
       ...(defaultModel.value ? { defaultModel: defaultModel.value } : {}),
       models: models.value,
     },
-    changed:
-      name.changed
-      || mode.changed
-      || driver.changed
-      || apiKey.changed
-      || baseUrl.changed
-      || defaultModel.changed
-      || models.changed,
+    changed: hasNormalizedChanges(
+      name,
+      mode,
+      driver,
+      apiKey,
+      baseUrl,
+      defaultModel,
+      models,
+    ),
   };
 }
 
@@ -164,12 +140,13 @@ function normalizeVisionFallback(
         ? { maxDescriptionLength: maxDescriptionLength.value }
         : {}),
     },
-    changed:
-      enabled.changed
-      || providerId.changed
-      || modelId.changed
-      || prompt.changed
-      || maxDescriptionLength.changed,
+    changed: hasNormalizedChanges(
+      enabled,
+      providerId,
+      modelId,
+      prompt,
+      maxDescriptionLength,
+    ),
   };
 }
 
@@ -202,10 +179,11 @@ function normalizeHostModelRouting(
         : {}),
       utilityModelRoles: utilityModelRoles.value,
     },
-    changed:
-      fallbackChatModels.changed
-      || compressionModel.changed
-      || utilityModelRoles.changed,
+    changed: hasNormalizedChanges(
+      fallbackChatModels,
+      compressionModel,
+      utilityModelRoles,
+    ),
   };
 }
 
@@ -242,32 +220,7 @@ function normalizeUtilityModelRoles(
 function normalizeRequiredModelRouteTargetArray(
   value: JsonValue | undefined,
 ): NormalizedValue<StoredAiModelRouteTarget[]> {
-  if (!Array.isArray(value)) {
-    return {
-      value: [],
-      changed: true,
-    };
-  }
-
-  let changed = false;
-  const targets: StoredAiModelRouteTarget[] = [];
-
-  for (const entry of value) {
-    const normalized = normalizeModelRouteTarget(entry);
-    changed = changed || normalized.changed;
-    if (normalized.value) {
-      targets.push(normalized.value);
-    }
-  }
-
-  if (targets.length !== value.length) {
-    changed = true;
-  }
-
-  return {
-    value: targets,
-    changed,
-  };
+  return normalizeArrayEntries(value, normalizeModelRouteTarget);
 }
 
 function normalizeOptionalModelRouteTarget(
@@ -312,6 +265,34 @@ function normalizeModelRouteTarget(
       modelId,
     },
     changed: false,
+  };
+}
+
+function normalizeArrayEntries<T>(
+  value: JsonValue | undefined,
+  normalizeEntry: (entry: JsonValue) => NormalizedValue<T | null>,
+): NormalizedValue<T[]> {
+  if (!Array.isArray(value)) {
+    return {
+      value: [],
+      changed: true,
+    };
+  }
+
+  let changed = false;
+  const normalizedValues: T[] = [];
+
+  for (const entry of value) {
+    const normalized = normalizeEntry(entry);
+    changed = changed || normalized.changed;
+    if (normalized.value) {
+      normalizedValues.push(normalized.value);
+    }
+  }
+
+  return {
+    value: normalizedValues,
+    changed: changed || normalizedValues.length !== value.length,
   };
 }
 
@@ -375,15 +356,10 @@ function normalizeRequiredStringWithFallback(
   fallback: string,
 ): NormalizedValue<string> {
   const normalized = normalizeOptionalString(value);
-  return normalized.value
-    ? {
-        value: normalized.value,
-        changed: normalized.changed,
-      }
-    : {
-        value: fallback,
-        changed: true,
-      };
+  return {
+    value: normalized.value ?? fallback,
+    changed: normalized.changed || !normalized.value,
+  };
 }
 
 function normalizeOptionalString(
@@ -443,6 +419,12 @@ function normalizeRequiredBoolean(
     value: fallback,
     changed: true,
   };
+}
+
+function hasNormalizedChanges(
+  ...values: Array<NormalizedValue<unknown>>
+): boolean {
+  return values.some((value) => value.changed);
 }
 
 function normalizeOptionalNumber(
