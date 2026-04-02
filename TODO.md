@@ -398,6 +398,18 @@
     - Host API method / connection-scoped 白名单判断
     - route response 归一化与上下文提取
   - `plugin.gateway.ts` 主文件行数已从 `1113` 继续降到 `799`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-subagent-task.helpers.ts`
+    继续把后台 subagent task 的 persisted snapshot 解析、summary/detail 序列化与 message.send 返回值校验从服务主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-subagent-task.helpers.spec.ts`
+    直接给 subagent task helper 补快照回退、preview 生成和 message.send reader 回归
+  - `PluginSubagentTaskService` 已不再直接承载：
+    - persisted request/context/result/writeBackTarget 解析
+    - task summary/detail 序列化
+    - request/result preview 规则
+    - JSON clone 样板
+  - `plugin-subagent-task.service.ts` 主文件行数已从 `668` 继续降到 `223`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
