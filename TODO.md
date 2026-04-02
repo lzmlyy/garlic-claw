@@ -703,6 +703,10 @@
     - `packages/server/src/plugin/plugin-storage.service.ts`
     - `packages/server/src/plugin/plugin-storage.service.spec.ts`
     把插件存储的 CRUD、坏 JSON 回退与 logger 告警从 `PluginService` 主类中拆出
+  - 已新增：
+    - `packages/server/src/plugin/plugin-event-write.service.ts`
+    - `packages/server/src/plugin/plugin-event-write.service.spec.ts`
+    把插件事件写入、成功/失败健康状态更新和 health-check 写回从 `PluginService` 主类中拆出
   - `ChatMessageService` 已改为通过 `ChatMessagePluginTargetService` 委派：
     - `message.target.current.get`
     - `message.send`
@@ -721,7 +725,12 @@
     - `storage.set`
     - `storage.delete`
     - `storage.list`
-  - `plugin.service.ts` 主文件行数已从 `605` 继续降到 `561`
+  - `PluginService` 已改为通过 `PluginEventWriteService` 委派：
+    - `event.record`
+    - `health.success`
+    - `health.failure`
+    - `health.check`
+  - `plugin.service.ts` 主文件行数已从 `605` 继续降到 `506`
   - 已删除多厂商 SDK runtime / stub 残留，当前 runtime 与 type stub 都已收敛到三种协议族
   - 已把 provider catalog 收口为 `core + preset + protocol`，preset 不再绑定独立 SDK
   - 已删除一批 AI 模块薄壳：

@@ -10,6 +10,7 @@ import { PluginCommandController } from './plugin-command.controller';
 import { PluginCommandService } from './plugin-command.service';
 import { PluginCronService } from './plugin-cron.service';
 import { PluginController } from './plugin.controller';
+import { PluginEventWriteService } from './plugin-event-write.service';
 import { PluginGateway } from './plugin.gateway';
 import { PluginHostService } from './plugin-host.service';
 import { PluginHostAiFacade } from './plugin-host-ai.facade';
@@ -42,6 +43,7 @@ import { PluginService } from './plugin.service';
   ],
   providers: [
     PluginService,
+    PluginEventWriteService,
     PluginStorageService,
     PluginGateway,
     PluginStateService,
@@ -77,6 +79,7 @@ import { PluginService } from './plugin.service';
   ],
   exports: [
     PluginService,
+    PluginEventWriteService,
     PluginStorageService,
     PluginGateway,
     PluginHostService,
