@@ -18,6 +18,7 @@ import { PluginRuntimeInboundHooksFacade } from './plugin-runtime-inbound-hooks.
 import { PluginRuntimeMessageHooksFacade } from './plugin-runtime-message-hooks.facade';
 import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
+import { PluginRuntimeTransportFacade } from './plugin-runtime-transport.facade';
 import { createToolAuditPlugin } from './builtin/tool-audit.plugin';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { ChatMessageService } from '../chat/chat-message.service';
@@ -130,6 +131,7 @@ describe('PluginRuntimeService', () => {
   let runtimeMessageHooksFacade: PluginRuntimeMessageHooksFacade;
   let runtimeOperationHooksFacade: PluginRuntimeOperationHooksFacade;
   let runtimeSubagentFacade: PluginRuntimeSubagentFacade;
+  let runtimeTransportFacade: PluginRuntimeTransportFacade;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -212,6 +214,9 @@ describe('PluginRuntimeService', () => {
       aiModelExecution as never,
       moduleRef as never,
     );
+    runtimeTransportFacade = new PluginRuntimeTransportFacade(
+      pluginService as never,
+    );
     service = new PluginRuntimeService(
       pluginService as never,
       hostService as never,
@@ -223,6 +228,7 @@ describe('PluginRuntimeService', () => {
       runtimeMessageHooksFacade as never,
       runtimeOperationHooksFacade as never,
       runtimeSubagentFacade as never,
+      runtimeTransportFacade as never,
     );
   });
 

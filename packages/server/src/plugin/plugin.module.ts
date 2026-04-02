@@ -23,6 +23,7 @@ import { PluginRuntimeInboundHooksFacade } from './plugin-runtime-inbound-hooks.
 import { PluginRuntimeMessageHooksFacade } from './plugin-runtime-message-hooks.facade';
 import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
+import { PluginRuntimeTransportFacade } from './plugin-runtime-transport.facade';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginStateService } from './plugin-state.service';
@@ -53,6 +54,7 @@ import { PluginService } from './plugin.service';
     PluginRuntimeMessageHooksFacade,
     PluginRuntimeOperationHooksFacade,
     PluginRuntimeSubagentFacade,
+    PluginRuntimeTransportFacade,
     PluginCronService,
     PluginRuntimeService,
     PluginRuntimeOrchestratorService,
@@ -85,6 +87,7 @@ import { PluginService } from './plugin.service';
     PluginRuntimeMessageHooksFacade,
     PluginRuntimeOperationHooksFacade,
     PluginRuntimeSubagentFacade,
+    PluginRuntimeTransportFacade,
     PluginCronService,
     PluginRuntimeService,
     PluginRuntimeOrchestratorService,

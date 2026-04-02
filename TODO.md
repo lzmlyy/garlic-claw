@@ -309,6 +309,15 @@
     - `message:received`
     - active conversation session 的 owner 优先路由
   - `plugin-runtime.service.ts` 主文件行数已从 `1315` 继续降到 `1184`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-runtime-transport.facade.ts`
+    把 transport 执行与统一超时/失败治理继续拆出
+  - `PluginRuntimeService` 已改为通过 transport facade 承接：
+    - `executeTool`
+    - `invokeRoute`
+    - `invokePluginHook`
+    - 统一 timeout / overloaded / failure dispatch 路径
+  - `plugin-runtime.service.ts` 主文件行数已从 `1184` 继续降到 `982`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口
