@@ -7,6 +7,7 @@ import { NotFoundException } from '@nestjs/common';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
@@ -73,6 +74,7 @@ describe('PluginRuntimeOrchestratorService', () => {
   let runtimeBroadcastFacade: PluginRuntimeBroadcastFacade;
   let runtimeGovernanceFacade: PluginRuntimeGovernanceFacade;
   let runtimeHostFacade: PluginRuntimeHostFacade;
+  let runtimeOperationHooksFacade: PluginRuntimeOperationHooksFacade;
   let runtimeSubagentFacade: PluginRuntimeSubagentFacade;
   let orchestrator: PluginRuntimeOrchestratorService;
 
@@ -92,6 +94,7 @@ describe('PluginRuntimeOrchestratorService', () => {
       cronService as never,
       moduleRef as never,
     );
+    runtimeOperationHooksFacade = new PluginRuntimeOperationHooksFacade();
     runtimeSubagentFacade = new PluginRuntimeSubagentFacade(
       aiModelExecution as never,
       moduleRef as never,
@@ -104,6 +107,7 @@ describe('PluginRuntimeOrchestratorService', () => {
       runtimeBroadcastFacade as never,
       runtimeGovernanceFacade as never,
       runtimeHostFacade as never,
+      runtimeOperationHooksFacade as never,
       runtimeSubagentFacade as never,
     );
     orchestrator = new PluginRuntimeOrchestratorService(

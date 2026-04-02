@@ -283,6 +283,16 @@
     - `plugin:error`
     这一组广播型 hook 的统一分发
   - `plugin-runtime.service.ts` 主文件行数已从 `1411` 继续降到 `1402`
+  - 已新增：
+    - `packages/server/src/plugin/plugin-runtime-operation-hooks.facade.ts`
+    把 automation/tool/response 的专用 mutate 与 short-circuit hook 控制流继续拆出
+  - `PluginRuntimeService` 已改为通过 operation hooks facade 承接：
+    - `automation:before-run`
+    - `automation:after-run`
+    - `tool:before-call`
+    - `tool:after-call`
+    - `response:before-send`
+  - `plugin-runtime.service.ts` 主文件行数已从 `1402` 继续降到 `1344`
   - 已新增维护文档：
     - `docs/扩展内核维护说明.md`
     并在 `README.md` / `docs/插件开发指南.md` 增加入口

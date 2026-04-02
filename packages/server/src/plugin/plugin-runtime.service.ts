@@ -45,19 +45,14 @@ import { PluginHostService } from './plugin-host.service';
 import { PluginRuntimeBroadcastFacade } from './plugin-runtime-broadcast.facade';
 import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
+import { PluginRuntimeOperationHooksFacade } from './plugin-runtime-operation-hooks.facade';
 import { PluginRuntimeSubagentFacade } from './plugin-runtime-subagent.facade';
 import {
-  cloneAutomationAfterRunPayload,
-  cloneAutomationBeforeRunPayload,
   cloneChatAfterModelPayload,
   cloneChatBeforeModelRequest,
-  cloneJsonValueArray,
   cloneMessageCreatedHookPayload,
   cloneMessageReceivedHookPayload,
   cloneMessageUpdatedHookPayload,
-  cloneResponseBeforeSendHookPayload,
-  cloneToolAfterCallHookPayload,
-  cloneToolBeforeCallHookPayload,
 } from './plugin-runtime-clone.helpers';
 import {
   assertRuntimeRecordEnabled,
@@ -65,8 +60,6 @@ import {
   listDispatchableHookRecords,
 } from './plugin-runtime-dispatch.helpers';
 import {
-  applyAutomationAfterRunMutation,
-  applyAutomationBeforeRunMutation,
   applyChatAfterModelMutation,
   applyChatBeforeModelMutation,
   applyChatBeforeModelHookResult,
@@ -74,25 +67,17 @@ import {
   applyMessageReceivedMutation,
   applyMessageReceivedHookResult,
   applyMessageUpdatedMutation,
-  applyResponseBeforeSendMutation,
-  applyToolAfterCallMutation,
-  applyToolBeforeCallMutation,
 } from './plugin-runtime-hook-mutation.helpers';
 import {
   runMutatingHookChain,
   runShortCircuitingHookChain,
 } from './plugin-runtime-hook-runner.helpers';
 import {
-  normalizeAutomationAfterRunHookResult,
-  normalizeAutomationBeforeRunHookResult,
   normalizeChatAfterModelHookResult,
   normalizeChatBeforeModelHookResult,
   normalizeMessageCreatedHookResult,
   normalizeMessageReceivedHookResult,
   normalizeMessageUpdatedHookResult,
-  normalizeResponseBeforeSendHookResult,
-  normalizeToolAfterCallHookResult,
-  normalizeToolBeforeCallHookResult,
 } from './plugin-runtime-hook-result.helpers';
 import { recordRuntimePluginFailureAndDispatch } from './plugin-runtime-failure.helpers';
 import {
@@ -419,6 +404,7 @@ export class PluginRuntimeService {
     private readonly runtimeBroadcastFacade: PluginRuntimeBroadcastFacade,
     private readonly runtimeGovernanceFacade: PluginRuntimeGovernanceFacade,
     private readonly runtimeHostFacade: PluginRuntimeHostFacade,
+    private readonly runtimeOperationHooksFacade: PluginRuntimeOperationHooksFacade,
     private readonly runtimeSubagentFacade: PluginRuntimeSubagentFacade,
   ) {}
 
@@ -1110,23 +1096,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: AutomationBeforeRunHookPayload;
   }): Promise<AutomationBeforeRunExecutionResult> {
-    return runShortCircuitingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'automation:before-run',
-        context: input.context,
-      }),
-      hookName: 'automation:before-run',
+    return this.runtimeOperationHooksFacade.runAutomationBeforeRunHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneAutomationBeforeRunPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeAutomationBeforeRunHookResult,
-      applyMutation: applyAutomationBeforeRunMutation,
-      buildShortCircuitReturn: ({ result }) => ({
-        action: 'short-circuit',
-        status: result.status,
-        results: cloneJsonValueArray(result.results),
-      }),
     });
   }
 
@@ -1139,18 +1113,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: AutomationAfterRunHookPayload;
   }): Promise<AutomationAfterRunHookPayload> {
-    return runMutatingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'automation:after-run',
-        context: input.context,
-      }),
-      hookName: 'automation:after-run',
+    return this.runtimeOperationHooksFacade.runAutomationAfterRunHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneAutomationAfterRunPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeAutomationAfterRunHookResult,
-      applyMutation: applyAutomationAfterRunMutation,
     });
   }
 
@@ -1163,22 +1130,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ToolBeforeCallHookPayload;
   }): Promise<ToolBeforeCallExecutionResult> {
-    return runShortCircuitingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'tool:before-call',
-        context: input.context,
-      }),
-      hookName: 'tool:before-call',
+    return this.runtimeOperationHooksFacade.runToolBeforeCallHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneToolBeforeCallHookPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeToolBeforeCallHookResult,
-      applyMutation: applyToolBeforeCallMutation,
-      buildShortCircuitReturn: ({ result }) => ({
-        action: 'short-circuit',
-        output: toJsonValue(result.output),
-      }),
     });
   }
 
@@ -1191,18 +1147,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ToolAfterCallHookPayload;
   }): Promise<ToolAfterCallHookPayload> {
-    return runMutatingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'tool:after-call',
-        context: input.context,
-      }),
-      hookName: 'tool:after-call',
+    return this.runtimeOperationHooksFacade.runToolAfterCallHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneToolAfterCallHookPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeToolAfterCallHookResult,
-      applyMutation: applyToolAfterCallMutation,
     });
   }
 
@@ -1215,18 +1164,11 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ResponseBeforeSendHookPayload;
   }): Promise<ResponseBeforeSendHookPayload> {
-    return runMutatingHookChain({
-      records: listDispatchableHookRecords({
-        records: this.records.values(),
-        hookName: 'response:before-send',
-        context: input.context,
-      }),
-      hookName: 'response:before-send',
+    return this.runtimeOperationHooksFacade.runResponseBeforeSendHooks({
+      records: this.records.values(),
       context: input.context,
-      payload: cloneResponseBeforeSendHookPayload(input.payload),
+      payload: input.payload,
       invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-      normalizeResult: normalizeResponseBeforeSendHookResult,
-      applyMutation: applyResponseBeforeSendMutation,
     });
   }
 
