@@ -38,7 +38,7 @@ import type {
   ToolBeforeCallHookPayload,
 } from '@garlic-claw/shared';
 import type { Tool } from 'ai';
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import { toAiSdkMessages } from '../chat/sdk-message-converter';
@@ -46,6 +46,7 @@ import type { JsonObject, JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { PluginHostService } from './plugin-host.service';
 import { PluginCronService } from './plugin-cron.service';
+import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
 import {
   cloneAutomationAfterRunPayload,
@@ -66,7 +67,6 @@ import {
 import {
   assertRuntimeRecordEnabled,
   getRuntimeRecordOrThrow,
-  isRuntimeRecordEnabledForContext,
   invokeDispatchableHooks,
   listDispatchableHookRecords,
 } from './plugin-runtime-dispatch.helpers';
@@ -106,9 +106,7 @@ import {
 } from './plugin-runtime-hook-result.helpers';
 import { recordRuntimePluginFailureAndDispatch } from './plugin-runtime-failure.helpers';
 import {
-  buildRuntimePressureSnapshot,
   isPluginOverloadedError,
-  listSupportedPluginActions,
   resolveMaxConcurrentExecutions,
   runWithRuntimeExecutionSlot,
 } from './plugin-runtime-record.helpers';
@@ -129,8 +127,6 @@ import {
 } from './plugin-runtime-subagent.helpers';
 import { runPromiseWithTimeout } from './plugin-runtime-timeout.helpers';
 import {
-  finishOwnedConversationSession,
-  listActiveConversationSessionInfos,
   prepareDispatchableConversationSessionMessageReceivedHook,
   syncConversationSessionMessageReceivedPayload,
   type ConversationSessionRecord,
@@ -451,6 +447,7 @@ export class PluginRuntimeService {
     private readonly cronService: PluginCronService,
     private readonly aiModelExecution: AiModelExecutionService,
     private readonly moduleRef: ModuleRef,
+    private readonly runtimeGovernanceFacade: PluginRuntimeGovernanceFacade,
     private readonly runtimeHostFacade: PluginRuntimeHostFacade,
   ) {}
 
@@ -527,27 +524,7 @@ export class PluginRuntimeService {
     runtimeKind: PluginRuntimeKind;
     tool: PluginCapability;
   }> {
-    const tools: Array<{
-      pluginId: string;
-      runtimeKind: PluginRuntimeKind;
-      tool: PluginCapability;
-    }> = [];
-
-    for (const [pluginId, record] of this.records) {
-      if (context && !isRuntimeRecordEnabledForContext(record, context)) {
-        continue;
-      }
-
-      for (const tool of record.manifest.tools ?? []) {
-        tools.push({
-          pluginId,
-          runtimeKind: record.runtimeKind,
-          tool,
-        });
-      }
-    }
-
-    return tools;
+    return this.runtimeGovernanceFacade.listTools(this.records, context);
   }
 
   /**
@@ -562,14 +539,7 @@ export class PluginRuntimeService {
     supportedActions: PluginActionName[];
     runtimePressure: PluginRuntimePressureSnapshot;
   }> {
-    return [...this.records.entries()].map(([pluginId, record]) => ({
-      pluginId,
-      runtimeKind: record.runtimeKind,
-      deviceType: record.deviceType,
-      manifest: record.manifest,
-      supportedActions: listSupportedPluginActions(record),
-      runtimePressure: buildRuntimePressureSnapshot(record),
-    }));
+    return this.runtimeGovernanceFacade.listPlugins(this.records);
   }
 
   /**
@@ -578,12 +548,7 @@ export class PluginRuntimeService {
    * @returns 压力快照；插件未注册时返回 null
    */
   getRuntimePressure(pluginId: string): PluginRuntimePressureSnapshot | null {
-    const record = this.records.get(pluginId);
-    if (!record) {
-      return null;
-    }
-
-    return buildRuntimePressureSnapshot(record);
+    return this.runtimeGovernanceFacade.getRuntimePressure(this.records, pluginId);
   }
 
   /**
@@ -592,10 +557,9 @@ export class PluginRuntimeService {
    * @returns 当前活动等待态列表
    */
   listConversationSessions(pluginId?: string): PluginConversationSessionInfo[] {
-    return listActiveConversationSessionInfos(
+    return this.runtimeGovernanceFacade.listConversationSessions(
       this.conversationSessions,
       pluginId,
-      Date.now(),
     );
   }
 
@@ -609,7 +573,7 @@ export class PluginRuntimeService {
     pluginId: string,
     conversationId: string,
   ): boolean {
-    return finishOwnedConversationSession(
+    return this.runtimeGovernanceFacade.finishConversationSessionForGovernance(
       this.conversationSessions,
       pluginId,
       conversationId,
@@ -625,21 +589,11 @@ export class PluginRuntimeService {
     pluginId: string;
     action: Exclude<PluginActionName, 'health-check'>;
   }): Promise<void> {
-    const record = getRuntimeRecordOrThrow(this.records, input.pluginId);
-    const handler = input.action === 'reload'
-      ? record.transport.reload
-      : record.transport.reconnect;
-    if (!handler) {
-      throw new BadRequestException(
-        `插件 ${input.pluginId} 不支持治理动作 ${input.action}`,
-      );
-    }
-
-    await runPromiseWithTimeout(
-      Promise.resolve(handler.call(record.transport)),
-      15000,
-      `插件 ${input.pluginId} 治理动作 ${input.action} 执行超时`,
-    );
+    await this.runtimeGovernanceFacade.runPluginAction({
+      records: this.records,
+      pluginId: input.pluginId,
+      action: input.action,
+    });
   }
 
   /**
@@ -648,36 +602,7 @@ export class PluginRuntimeService {
    * @returns 健康检查结果
    */
   async checkPluginHealth(pluginId: string): Promise<{ ok: boolean }> {
-    const record = this.records.get(pluginId);
-    if (!record) {
-      return {
-        ok: false,
-      };
-    }
-    if (!record.transport.checkHealth) {
-      return {
-        ok: true,
-      };
-    }
-
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const result = await runPromiseWithTimeout(
-          Promise.resolve(record.transport.checkHealth()),
-          5000,
-          `插件 ${pluginId} 健康检查超时`,
-        );
-        if (result.ok) {
-          return result;
-        }
-      } catch {
-        // 健康检查允许做一次轻量重试，以过滤瞬时网络抖动。
-      }
-    }
-
-    return {
-      ok: false,
-    };
+    return this.runtimeGovernanceFacade.checkPluginHealth(this.records, pluginId);
   }
 
   /**
@@ -689,23 +614,7 @@ export class PluginRuntimeService {
     runtimeKind: PluginRuntimeKind;
     route: PluginRouteDescriptor;
   }> {
-    const routes: Array<{
-      pluginId: string;
-      runtimeKind: PluginRuntimeKind;
-      route: PluginRouteDescriptor;
-    }> = [];
-
-    for (const [pluginId, record] of this.records) {
-      for (const route of record.manifest.routes ?? []) {
-        routes.push({
-          pluginId,
-          runtimeKind: record.runtimeKind,
-          route,
-        });
-      }
-    }
-
-    return routes;
+    return this.runtimeGovernanceFacade.listRoutes(this.records);
   }
 
   /**
@@ -898,12 +807,7 @@ export class PluginRuntimeService {
    * @returns 归一化后的治理动作列表
    */
   listSupportedActions(pluginId: string): PluginActionName[] {
-    const record = this.records.get(pluginId);
-    if (!record) {
-      return ['health-check'];
-    }
-
-    return listSupportedPluginActions(record);
+    return this.runtimeGovernanceFacade.listSupportedActions(this.records, pluginId);
   }
 
   /**

@@ -4,6 +4,7 @@ import type {
   PluginManifest,
 } from '@garlic-claw/shared';
 import { NotFoundException } from '@nestjs/common';
+import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
@@ -67,6 +68,7 @@ describe('PluginRuntimeOrchestratorService', () => {
   };
 
   let runtime: PluginRuntimeService;
+  let runtimeGovernanceFacade: PluginRuntimeGovernanceFacade;
   let runtimeHostFacade: PluginRuntimeHostFacade;
   let orchestrator: PluginRuntimeOrchestratorService;
 
@@ -78,6 +80,7 @@ describe('PluginRuntimeOrchestratorService', () => {
     pluginService.heartbeat.mockResolvedValue(undefined);
     cronService.onPluginRegistered.mockResolvedValue(undefined);
     cronService.onPluginUnregistered.mockResolvedValue(undefined);
+    runtimeGovernanceFacade = new PluginRuntimeGovernanceFacade();
     runtimeHostFacade = new PluginRuntimeHostFacade(
       pluginService as never,
       hostService as never,
@@ -91,6 +94,7 @@ describe('PluginRuntimeOrchestratorService', () => {
       cronService as never,
       aiModelExecution as never,
       moduleRef as never,
+      runtimeGovernanceFacade as never,
       runtimeHostFacade as never,
     );
     orchestrator = new PluginRuntimeOrchestratorService(

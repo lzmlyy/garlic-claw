@@ -16,6 +16,7 @@ import { PluginHostAiFacade } from './plugin-host-ai.facade';
 import { PluginHostConversationFacade } from './plugin-host-conversation.facade';
 import { PluginHostStateFacade } from './plugin-host-state.facade';
 import { PluginRouteController } from './plugin-route.controller';
+import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
@@ -40,6 +41,7 @@ import { PluginService } from './plugin.service';
     PluginHostConversationFacade,
     PluginHostStateFacade,
     PluginHostService,
+    PluginRuntimeGovernanceFacade,
     PluginRuntimeHostFacade,
     PluginCronService,
     PluginRuntimeService,
@@ -66,6 +68,7 @@ import { PluginService } from './plugin.service';
     PluginHostAiFacade,
     PluginHostConversationFacade,
     PluginHostStateFacade,
+    PluginRuntimeGovernanceFacade,
     PluginRuntimeHostFacade,
     PluginCronService,
     PluginRuntimeService,

@@ -10,6 +10,7 @@ import { BuiltinPluginTransport } from './builtin/builtin-plugin.transport';
 import { createMessageEntryRecorderPlugin } from './builtin/message-entry-recorder.plugin';
 import { createMessageLifecycleRecorderPlugin } from './builtin/message-lifecycle-recorder.plugin';
 import { createPluginGovernanceRecorderPlugin } from './builtin/plugin-governance-recorder.plugin';
+import { PluginRuntimeGovernanceFacade } from './plugin-runtime-governance.facade';
 import { createResponseRecorderPlugin } from './builtin/response-recorder.plugin';
 import { PluginRuntimeHostFacade } from './plugin-runtime-host.facade';
 import { createToolAuditPlugin } from './builtin/tool-audit.plugin';
@@ -117,6 +118,7 @@ describe('PluginRuntimeService', () => {
   };
 
   let service: PluginRuntimeService;
+  let runtimeGovernanceFacade: PluginRuntimeGovernanceFacade;
   let runtimeHostFacade: PluginRuntimeHostFacade;
 
   beforeEach(() => {
@@ -185,6 +187,7 @@ describe('PluginRuntimeService', () => {
     });
     subagentTaskService.listTasksForPlugin.mockResolvedValue([]);
     subagentTaskService.getTaskForPlugin.mockResolvedValue(null);
+    runtimeGovernanceFacade = new PluginRuntimeGovernanceFacade();
     runtimeHostFacade = new PluginRuntimeHostFacade(
       pluginService as never,
       hostService as never,
@@ -197,6 +200,7 @@ describe('PluginRuntimeService', () => {
       cronService as never,
       aiModelExecution as never,
       moduleRef as never,
+      runtimeGovernanceFacade as never,
       runtimeHostFacade as never,
     );
   });
