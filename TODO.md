@@ -159,6 +159,7 @@
   - `chat-message.helpers.ts` 已把两处 `chat-tool` context 组装并回共享本地函数
   - `plugin-cron.service.ts` 已把 host/manifest 两处重复的 cron upsert 载荷生成并回单一 mutation builder
   - `plugin-command.service.ts` 已把两处重复的 priority 比较并回共享本地 comparator，并继续删掉单次 `runtimeKind/path/clone` 薄壳
+  - `plugin.controller.ts` 已删掉与类级别完全重复的方法级 `@UseGuards(RolesGuard)` / `@Roles('admin', 'super_admin')` 样板
   - `plugin-route.controller.ts` 已删回现有 `readUnknownObject(...)` / `normalizeRoutePath(...)`，并顺手删掉请求体与 header 屏蔽薄壳，不再在 route controller 本地维护同义 helper 副本
   - `plugin-subagent-task-request.helpers.ts` 里重复的 `normalizePositiveInteger(...)` 已删回现有 validation helper
   - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
@@ -187,6 +188,7 @@
 - `chat-message-session.ts`: `109 -> 92`
 - `chat-task.service.ts`: `443 -> 360`
 - `config-manager.loader.ts`: `426 -> 392`
+- `plugin.controller.ts`: `389 -> 357`
 - `plugin-command.service.ts`: `250 -> 233`
 - `plugin-cron.service.ts`: `244 -> 239`
 - `plugin-route.controller.ts`: `218 -> 180`
@@ -196,8 +198,8 @@
 
 ## 当前 core 行数快照
 
-- `packages/server/src`: `32485`
-- `packages/server/src/plugin`: `16969`
+- `packages/server/src`: `32453`
+- `packages/server/src/plugin`: `16937`
 - `packages/server/src/chat`: `3862`
 - `packages/server/src/chat/chat.controller.ts`: `228`
 - `packages/server/src/chat/chat-message.helpers.ts`: `152`
@@ -209,6 +211,7 @@
 - `packages/server/src/chat/chat-message-session.ts`: `92`
 - `packages/server/src/chat/chat.service.ts`: `175`
 - `packages/server/src/chat/chat-task.service.ts`: `360`
+- `packages/server/src/plugin/plugin.controller.ts`: `357`
 - `packages/server/src/plugin/plugin-command.service.ts`: `233`
 - `packages/server/src/plugin/plugin-cron.service.ts`: `239`
 - `packages/server/src/plugin/plugin-route.controller.ts`: `180`
@@ -251,6 +254,7 @@
 - [x] 本轮已把 `chat.service.ts` 的重复 conversation owner 校验并回统一内部断言
 - [x] 本轮已把 `chat-message-session.ts` 的本地角色归一化删回现有 `normalizeMessageRole(...)`
 - [x] 本轮已把 `chat-message.helpers.ts` 的两处 `chat-tool` context 组装并回共享本地函数
+- [x] 本轮已把 `plugin.controller.ts` 里与类级别完全重复的方法级 `@UseGuards(RolesGuard)` / `@Roles('admin', 'super_admin')` 样板删掉
 - [x] 本轮已把 `plugin-cron.service.ts` 的 host/manifest 重复 cron upsert 载荷并回单一 mutation builder
 - [x] 本轮已把 `plugin-command.service.ts` 的两处 priority 比较并回共享本地 comparator，并继续删掉单次 `runtimeKind/path/clone` 薄壳
 - [x] 本轮已把 `plugin-route.controller.ts` 的本地 `readUnknownObject(...)` / `normalizeRoutePath(...)` 删回现有 helper，并删掉请求体与 header 屏蔽薄壳

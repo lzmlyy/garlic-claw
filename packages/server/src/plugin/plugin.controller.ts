@@ -108,8 +108,6 @@ export class PluginController {
   }
 
   @Post('remote/bootstrap')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   createRemoteBootstrap(
     @Body() dto: CreateRemotePluginBootstrapDto,
   ): Promise<RemotePluginBootstrapInfo> {
@@ -123,22 +121,16 @@ export class PluginController {
   }
 
   @Delete(':name')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   deletePlugin(@Param('name') name: string) {
     return this.pluginService.deletePlugin(name);
   }
 
   @Get(':name/config')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   getPluginConfig(@Param('name') name: string): Promise<PluginConfigSnapshot> {
     return this.pluginService.getPluginConfig(name);
   }
 
   @Put(':name/config')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   async updatePluginConfig(
     @Param('name') name: string,
     @Body() dto: UpdatePluginConfigDto,
@@ -149,8 +141,6 @@ export class PluginController {
   }
 
   @Get(':name/storage')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   listPluginStorage(
     @Param('name') name: string,
     @Query('prefix') prefix?: string,
@@ -159,8 +149,6 @@ export class PluginController {
   }
 
   @Put(':name/storage')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   async setPluginStorage(
     @Param('name') name: string,
     @Body() dto: UpdatePluginStorageDto,
@@ -176,8 +164,6 @@ export class PluginController {
   }
 
   @Delete(':name/storage')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   deletePluginStorage(
     @Param('name') name: string,
     @Query('key') key?: string,
@@ -191,15 +177,11 @@ export class PluginController {
   }
 
   @Get(':name/scopes')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   getPluginScope(@Param('name') name: string): Promise<PluginScopeSettings> {
     return this.pluginService.getPluginScope(name);
   }
 
   @Get(':name/health')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   async getPluginHealth(@Param('name') name: string): Promise<PluginHealthSnapshot> {
     const health = await this.pluginService.getPluginHealth(name);
     const runtimePressure = this.pluginRuntime.getRuntimePressure(name);
@@ -212,8 +194,6 @@ export class PluginController {
   }
 
   @Get(':name/events')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   listPluginEvents(
     @Param('name') name: string,
     @Query('limit') limit?: string,
@@ -235,15 +215,11 @@ export class PluginController {
   }
 
   @Get(':name/crons')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   listPluginCrons(@Param('name') name: string) {
     return this.pluginCronService.listCronJobs(name);
   }
 
   @Delete(':name/crons/:jobId')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   deletePluginCron(
     @Param('name') name: string,
     @Param('jobId') jobId: string,
@@ -252,8 +228,6 @@ export class PluginController {
   }
 
   @Get(':name/sessions')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   async listPluginConversationSessions(
     @Param('name') name: string,
   ): Promise<PluginConversationSessionInfo[]> {
@@ -261,8 +235,6 @@ export class PluginController {
   }
 
   @Delete(':name/sessions/:conversationId')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   async finishPluginConversationSession(
     @Param('name') name: string,
     @Param('conversationId') conversationId: string,
@@ -274,8 +246,6 @@ export class PluginController {
   }
 
   @Put(':name/scopes')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   async updatePluginScope(
     @Param('name') name: string,
     @Body() dto: UpdatePluginScopeDto,
@@ -290,8 +260,6 @@ export class PluginController {
   }
 
   @Post(':name/actions/:action')
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
   runPluginAction(
     @Param('name') name: string,
     @Param('action') action: string,
