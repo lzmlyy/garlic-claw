@@ -4,7 +4,7 @@ import type {
 } from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
 /**
  * 创建自动化工具插件。

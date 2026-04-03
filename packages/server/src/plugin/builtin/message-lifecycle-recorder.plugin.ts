@@ -5,7 +5,7 @@ import type {
   MessageUpdatedHookPayload,
 } from '@garlic-claw/shared';
 import type { JsonObject } from '../../common/types/json-value';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**

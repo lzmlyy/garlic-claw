@@ -1,5 +1,5 @@
 import type { JsonValue } from '../../common/types/json-value';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
 /**
  * 会话标题插件使用的最小会话摘要。

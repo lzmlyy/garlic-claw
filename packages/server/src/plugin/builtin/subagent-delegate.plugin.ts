@@ -1,7 +1,7 @@
 import type { PluginSubagentRunResult } from '@garlic-claw/shared';
 import type { JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
 /**
  * 子代理委托插件配置。

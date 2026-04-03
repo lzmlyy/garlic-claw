@@ -1,6 +1,6 @@
 import type { JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 import {
   asChatBeforeModelPayload,
   createChatBeforeModelHookResult,

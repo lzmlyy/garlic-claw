@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
 /**
  * 创建通用内建工具插件。

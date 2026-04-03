@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PluginRuntimeOrchestratorService } from '../plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from '../plugin-runtime.service';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 import { BuiltinPluginTransport } from './builtin-plugin.transport';
 import { createAutomationRecorderPlugin } from './automation-recorder.plugin';
 import { createAutomationToolsPlugin } from './automation-tools.plugin';

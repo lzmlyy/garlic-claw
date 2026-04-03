@@ -135,6 +135,7 @@
   - 插件治理与持久化链路已按职责拆成 `storage / event-write / lifecycle-write / read / governance-write` 等聚焦 service
   - AI provider runtime 已收敛到 `openai / anthropic / gemini` 三个协议族，`official / compatible / format` 等历史命名已基本清空
   - `builtin` 作者侧的 Host facade / param builder / host type 已开始从 `server` 外移到 `plugin-sdk` 共用导出
+  - builtin 示例插件与 loader 已不再从 `builtin-plugin.transport.ts` 读取 definition type，参考实现继续降低对 transport 实现文件的编译期耦合
   - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
 
 ## 当前基线
@@ -167,6 +168,7 @@
 - [x] 本轮已补齐 `remote plugin` 在线添加：专用 bootstrap 令牌 + 在线 placeholder record
 - [x] 本轮已让 `/plugins/:name/scopes` 只保留会话级覆盖，不再写私有 `defaultEnabled`
 - [x] 本轮已把 builtin Host facade / param builder / host type 的重复作者侧语法糖收口到 `plugin-sdk`
+- [x] 本轮已把 builtin 示例插件和 loader 的 definition type import 从 transport 实现文件解耦
 - [x] 这一次切片已确认满足“core 净减少、复杂度外移到 SDK”：
   - `git diff --numstat` 显示 `packages/server/src/plugin/builtin/*host*` 与 `builtin-plugin.types.ts` 合计净减 `557` 行
   - 同一轮 `packages/plugin-sdk/src/index.ts` 净增 `70` 行，用于承接共用 facade / builder 导出

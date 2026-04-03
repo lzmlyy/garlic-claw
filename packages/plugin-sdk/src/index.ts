@@ -593,12 +593,18 @@ export interface PluginConversationSessionController {
 /**
  * 插件执行上下文。
  */
-export interface PluginExecutionContext {
+export interface PluginAuthorExecutionContext<THost = PluginHostFacade> {
   /** 当前调用上下文。 */
   callContext: PluginCallContext;
   /** Host API 门面。 */
-  host: PluginHostFacade;
+  host: THost;
 }
+
+/**
+ * 插件执行上下文。
+ */
+export interface PluginExecutionContext
+  extends PluginAuthorExecutionContext<PluginHostFacade> {}
 
 /** `client.sessionWaiter(...)` 返回的 waiter 句柄。 */
 export interface PluginSessionWaiterHandle {
@@ -671,6 +677,28 @@ export interface PluginCommandGroupRegistration {
     name: string,
     options?: PluginCommandGroupOptions,
   ): PluginCommandGroupRegistration;
+}
+
+export type PluginToolHandler<THost = PluginHostFacade> = (
+  params: JsonObject,
+  context: PluginAuthorExecutionContext<THost>,
+) => Promise<JsonValue> | JsonValue;
+
+export type PluginHookHandler<THost = PluginHostFacade> = (
+  payload: JsonValue,
+  context: PluginAuthorExecutionContext<THost>,
+) => Promise<JsonValue | null | undefined> | JsonValue | null | undefined;
+
+export type PluginRouteHandler<THost = PluginHostFacade> = (
+  request: PluginRouteRequest,
+  context: PluginAuthorExecutionContext<THost>,
+) => Promise<PluginRouteResponse> | PluginRouteResponse;
+
+export interface PluginAuthorDefinition<THost = PluginHostFacade> {
+  manifest: PluginManifest;
+  tools?: Record<string, PluginToolHandler<THost>>;
+  hooks?: Partial<Record<PluginHookName, PluginHookHandler<THost>>>;
+  routes?: Record<string, PluginRouteHandler<THost>>;
 }
 
 type CommandHandler = (

@@ -1,15 +1,16 @@
 import type {
+  PluginAuthorDefinition,
+  PluginAuthorExecutionContext,
   PluginGenerateTextParams,
+  PluginHookHandler,
   PluginHostFacadeMethods,
+  PluginRouteHandler,
   PluginScopedStateOptions,
+  PluginToolHandler,
 } from '@garlic-claw/plugin-sdk';
 import type {
   HostCallPayload,
   PluginCallContext,
-  PluginHookName,
-  PluginManifest,
-  PluginRouteRequest,
-  PluginRouteResponse,
 } from '@garlic-claw/shared';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 
@@ -64,41 +65,25 @@ export type BuiltinPluginHostFacade = PluginHostFacadeMethods;
 /**
  * 内建插件执行上下文。
  */
-export interface BuiltinPluginExecutionContext {
-  callContext: PluginCallContext;
-  host: BuiltinPluginHostFacade;
-}
+export type BuiltinPluginExecutionContext =
+  PluginAuthorExecutionContext<BuiltinPluginHostFacade>;
 
 /**
  * 内建插件工具处理器。
  */
-export type BuiltinPluginToolHandler = (
-  params: JsonObject,
-  context: BuiltinPluginExecutionContext,
-) => Promise<JsonValue> | JsonValue;
+export type BuiltinPluginToolHandler = PluginToolHandler<BuiltinPluginHostFacade>;
 
 /**
  * 内建插件 Hook 处理器。
  */
-export type BuiltinPluginHookHandler = (
-  payload: JsonValue,
-  context: BuiltinPluginExecutionContext,
-) => Promise<JsonValue | null | undefined> | JsonValue | null | undefined;
+export type BuiltinPluginHookHandler = PluginHookHandler<BuiltinPluginHostFacade>;
 
 /**
  * 内建插件 Route 处理器。
  */
-export type BuiltinPluginRouteHandler = (
-  request: PluginRouteRequest,
-  context: BuiltinPluginExecutionContext,
-) => Promise<PluginRouteResponse> | PluginRouteResponse;
+export type BuiltinPluginRouteHandler = PluginRouteHandler<BuiltinPluginHostFacade>;
 
 /**
  * 内建插件定义。
  */
-export interface BuiltinPluginDefinition {
-  manifest: PluginManifest;
-  tools?: Record<string, BuiltinPluginToolHandler>;
-  hooks?: Partial<Record<PluginHookName, BuiltinPluginHookHandler>>;
-  routes?: Record<string, BuiltinPluginRouteHandler>;
-}
+export type BuiltinPluginDefinition = PluginAuthorDefinition<BuiltinPluginHostFacade>;

@@ -1,5 +1,5 @@
 import type { PluginCronTickPayload } from '@garlic-claw/shared';
-import type { BuiltinPluginDefinition } from './builtin-plugin.transport';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
