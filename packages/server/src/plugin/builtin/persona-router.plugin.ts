@@ -1,5 +1,6 @@
 import {
   asChatBeforeModelPayload,
+  PERSONA_ROUTER_CONFIG_FIELDS,
   readCurrentPersonaInfo,
   readLatestUserTextFromMessages,
   readPersonaRouterConfig,
@@ -41,18 +42,7 @@ export function createPersonaRouterPlugin(): BuiltinPluginDefinition {
         },
       ],
       config: {
-        fields: [
-          {
-            key: 'targetPersonaId',
-            type: 'string',
-            description: '命中路由后要切换到的 persona ID',
-          },
-          {
-            key: 'switchKeyword',
-            type: 'string',
-            description: '当最近一条用户消息包含该关键字时，切换到目标 persona',
-          },
-        ],
+        fields: PERSONA_ROUTER_CONFIG_FIELDS,
       },
     },
     hooks: {

@@ -2,11 +2,15 @@ import {
   asChatBeforeModelPayload,
   clipContextText,
   createChatBeforeModelLineBlockResult,
+  KB_CONTEXT_CONFIG_FIELDS,
+  KB_CONTEXT_DEFAULT_LIMIT,
+  KB_CONTEXT_DEFAULT_PROMPT_PREFIX,
   readLatestUserTextFromMessages,
   readPromptBlockConfig,
+  resolvePromptBlockConfig,
+  toHostJsonValue,
 } from '@garlic-claw/plugin-sdk';
 import type { JsonValue } from '../../common/types/json-value';
-import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
 /**
@@ -39,20 +43,7 @@ export function createKbContextPlugin(): BuiltinPluginDefinition {
         },
       ],
       config: {
-        fields: [
-          {
-            key: 'limit',
-            type: 'number',
-            description: '每次检索系统知识的最大条数',
-            defaultValue: 3,
-          },
-          {
-            key: 'promptPrefix',
-            type: 'string',
-            description: '知识摘要写入系统提示词时的前缀',
-            defaultValue: '与当前问题相关的系统知识',
-          },
-        ],
+        fields: KB_CONTEXT_CONFIG_FIELDS,
       },
     },
     hooks: {
@@ -69,10 +60,16 @@ export function createKbContextPlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const config = readPromptBlockConfig(await context.host.getConfig());
+        const config = resolvePromptBlockConfig(
+          readPromptBlockConfig(await context.host.getConfig()),
+          {
+            limit: KB_CONTEXT_DEFAULT_LIMIT,
+            promptPrefix: KB_CONTEXT_DEFAULT_PROMPT_PREFIX,
+          },
+        );
         const entries = await context.host.searchKnowledgeBase(
           latestUserText,
-          config.limit ?? 3,
+          config.limit,
         );
         if (entries.length === 0) {
           return null;
@@ -81,9 +78,9 @@ export function createKbContextPlugin(): BuiltinPluginDefinition {
         const knowledgeLines = entries.map((entry) =>
           `- [${entry.title}] ${clipContextText(entry.content)}`,
         );
-        return toJsonValue(createChatBeforeModelLineBlockResult(
+        return toHostJsonValue(createChatBeforeModelLineBlockResult(
           hookPayload.request.systemPrompt,
-          config.promptPrefix ?? '与当前问题相关的系统知识',
+          config.promptPrefix,
           knowledgeLines,
         ));
       },

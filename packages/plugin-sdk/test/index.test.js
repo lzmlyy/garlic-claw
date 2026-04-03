@@ -7,6 +7,15 @@ const {
   buildPluginGovernanceMessage,
   buildPluginGovernanceSummary,
   buildConversationTitlePrompt,
+  CONVERSATION_TITLE_CONFIG_FIELDS,
+  CONVERSATION_TITLE_DEFAULT_TITLE,
+  CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES,
+  KB_CONTEXT_CONFIG_FIELDS,
+  KB_CONTEXT_DEFAULT_LIMIT,
+  KB_CONTEXT_DEFAULT_PROMPT_PREFIX,
+  MEMORY_CONTEXT_CONFIG_FIELDS,
+  MEMORY_CONTEXT_DEFAULT_LIMIT,
+  MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
   buildMessageLifecycleSummary,
   buildMessageReceivedSummary,
   buildResponseSendSummary,
@@ -33,6 +42,9 @@ const {
   readConversationMessages,
   readPersonaRouterConfig,
   readPersonaSummaryInfo,
+  PERSONA_ROUTER_CONFIG_FIELDS,
+  PROVIDER_ROUTER_CONFIG_FIELDS,
+  PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY,
   readConversationSummary,
   readConversationTitleConfig,
   readMemorySearchResults,
@@ -40,12 +52,15 @@ const {
   readOptionalObjectParam,
   readPromptBlockConfig,
   readProviderRouterConfig,
+  resolveConversationTitleRuntimeConfig,
   readOptionalStringParam,
   readPluginHookPayload,
   readJsonObjectValue,
   readLatestUserTextFromMessages,
   readRequiredStringParam,
   readRequiredTextValue,
+  resolvePromptBlockConfig,
+  resolveProviderRouterShortCircuitReply,
   sameToolNames,
   readTextGenerationResult,
   sanitizeConversationTitle,
@@ -723,6 +738,20 @@ test('plugin-sdk exposes shared author-side text helpers for builtin plugins', (
   assert.equal(clipContextText('a'.repeat(250)).length, 240);
   assert.equal(textIncludesKeyword('请直接回复 #fast', '#fast'), true);
   assert.equal(textIncludesKeyword('普通消息', ' #fast '), false);
+  assert.deepEqual(
+    resolvePromptBlockConfig({}, {
+      limit: MEMORY_CONTEXT_DEFAULT_LIMIT,
+      promptPrefix: MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
+    }),
+    {
+      limit: MEMORY_CONTEXT_DEFAULT_LIMIT,
+      promptPrefix: MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
+    },
+  );
+  assert.equal(
+    resolveProviderRouterShortCircuitReply('   '),
+    PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY,
+  );
 });
 
 test('plugin-sdk exposes shared json object readers for author-side plugins', () => {
@@ -830,6 +859,13 @@ test('plugin-sdk exposes shared host result readers for conversation, memory and
     },
   );
   assert.deepEqual(
+    resolveConversationTitleRuntimeConfig({}),
+    {
+      defaultTitle: CONVERSATION_TITLE_DEFAULT_TITLE,
+      maxMessages: CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES,
+    },
+  );
+  assert.deepEqual(
     readProviderRouterConfig({
       targetProviderId: 'anthropic',
       targetModelId: 'claude-3-7-sonnet',
@@ -882,6 +918,14 @@ test('plugin-sdk exposes shared host result readers for conversation, memory and
       id: 'persona-writer',
       prompt: '你是一个偏文学表达的写作助手。',
     },
+  );
+  assert.equal(CONVERSATION_TITLE_CONFIG_FIELDS.length, 2);
+  assert.equal(PROVIDER_ROUTER_CONFIG_FIELDS.length, 5);
+  assert.equal(PERSONA_ROUTER_CONFIG_FIELDS.length, 2);
+  assert.equal(MEMORY_CONTEXT_CONFIG_FIELDS[0].defaultValue, MEMORY_CONTEXT_DEFAULT_LIMIT);
+  assert.equal(
+    KB_CONTEXT_CONFIG_FIELDS[1].defaultValue,
+    KB_CONTEXT_DEFAULT_PROMPT_PREFIX,
   );
   assert.equal(shouldGenerateConversationTitle(' New Chat ', 'New Chat'), true);
   assert.equal(shouldGenerateConversationTitle('已生成标题', 'New Chat'), false);

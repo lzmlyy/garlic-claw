@@ -769,6 +769,102 @@ export interface PluginConversationTitleConfig {
   maxMessages?: number;
 }
 
+export const CONVERSATION_TITLE_DEFAULT_TITLE = 'New Chat';
+export const CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES = 4;
+export const PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY =
+  '本轮请求已由 provider-router 直接处理。';
+export const MEMORY_CONTEXT_DEFAULT_LIMIT = 5;
+export const MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX = '与此用户相关的记忆';
+export const KB_CONTEXT_DEFAULT_LIMIT = 3;
+export const KB_CONTEXT_DEFAULT_PROMPT_PREFIX = '与当前问题相关的系统知识';
+
+export const CONVERSATION_TITLE_CONFIG_FIELDS = [
+  {
+    key: 'defaultTitle',
+    type: 'string',
+    description: '仍命中该默认标题时才尝试自动改标题',
+    defaultValue: CONVERSATION_TITLE_DEFAULT_TITLE,
+  },
+  {
+    key: 'maxMessages',
+    type: 'number',
+    description: '参与标题生成的最大消息条数',
+    defaultValue: CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES,
+  },
+] satisfies NonNullable<PluginManifest['config']>['fields'];
+
+export const PROVIDER_ROUTER_CONFIG_FIELDS = [
+  {
+    key: 'targetProviderId',
+    type: 'string',
+    description: '命中路由时切换到的 provider ID',
+  },
+  {
+    key: 'targetModelId',
+    type: 'string',
+    description: '命中路由时切换到的 model ID',
+  },
+  {
+    key: 'allowedToolNames',
+    type: 'string',
+    description: '允许暴露给模型的工具名列表，使用英文逗号分隔',
+  },
+  {
+    key: 'shortCircuitKeyword',
+    type: 'string',
+    description: '当最近一条用户消息包含该关键字时，直接返回 short-circuit',
+  },
+  {
+    key: 'shortCircuitReply',
+    type: 'string',
+    description: 'short-circuit 时直接写回给 assistant 的文本',
+    defaultValue: PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY,
+  },
+] satisfies NonNullable<PluginManifest['config']>['fields'];
+
+export const PERSONA_ROUTER_CONFIG_FIELDS = [
+  {
+    key: 'targetPersonaId',
+    type: 'string',
+    description: '命中路由后要切换到的 persona ID',
+  },
+  {
+    key: 'switchKeyword',
+    type: 'string',
+    description: '当最近一条用户消息包含该关键字时，切换到目标 persona',
+  },
+] satisfies NonNullable<PluginManifest['config']>['fields'];
+
+export const MEMORY_CONTEXT_CONFIG_FIELDS = [
+  {
+    key: 'limit',
+    type: 'number',
+    description: '每次检索长期记忆的最大条数',
+    defaultValue: MEMORY_CONTEXT_DEFAULT_LIMIT,
+  },
+  {
+    key: 'promptPrefix',
+    type: 'string',
+    description: '记忆摘要写入系统提示词时的前缀',
+    defaultValue: MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
+  },
+] satisfies NonNullable<PluginManifest['config']>['fields'];
+
+export const KB_CONTEXT_CONFIG_FIELDS = [
+  {
+    key: 'limit',
+    type: 'number',
+    description: '每次检索系统知识的最大条数',
+    defaultValue: KB_CONTEXT_DEFAULT_LIMIT,
+  },
+  {
+    key: 'promptPrefix',
+    type: 'string',
+    description: '知识摘要写入系统提示词时的前缀',
+    defaultValue: KB_CONTEXT_DEFAULT_PROMPT_PREFIX,
+  },
+] satisfies NonNullable<PluginManifest['config']>['fields'];
+
 export interface PluginProviderRouterConfig {
   targetProviderId?: string;
   targetModelId?: string;
@@ -1034,6 +1130,22 @@ export function textIncludesKeyword(text: string, keyword?: string): boolean {
   return Boolean(normalizedKeyword) && text.includes(normalizedKeyword);
 }
 
+export function resolvePromptBlockConfig(
+  config: PluginPromptBlockConfig,
+  defaults: {
+    limit: number;
+    promptPrefix: string;
+  },
+): {
+  limit: number;
+  promptPrefix: string;
+} {
+  return {
+    limit: typeof config.limit === 'number' ? config.limit : defaults.limit,
+    promptPrefix: sanitizeOptionalText(config.promptPrefix) || defaults.promptPrefix,
+  };
+}
+
 export function parseCommaSeparatedNames(raw?: string): string[] | undefined {
   const normalized = sanitizeOptionalText(raw);
   if (!normalized) {
@@ -1141,6 +1253,20 @@ export function readConversationTitleConfig(
   };
 }
 
+export function resolveConversationTitleRuntimeConfig(
+  config: PluginConversationTitleConfig,
+): {
+  defaultTitle: string;
+  maxMessages: number;
+} {
+  return {
+    defaultTitle: sanitizeOptionalText(config.defaultTitle) || CONVERSATION_TITLE_DEFAULT_TITLE,
+    maxMessages: typeof config.maxMessages === 'number'
+      ? config.maxMessages
+      : CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES,
+  };
+}
+
 export function readProviderRouterConfig(
   value: unknown,
 ): PluginProviderRouterConfig {
@@ -1166,6 +1292,10 @@ export function readProviderRouterConfig(
       ? { shortCircuitReply: object.shortCircuitReply }
       : {}),
   };
+}
+
+export function resolveProviderRouterShortCircuitReply(reply?: string): string {
+  return sanitizeOptionalText(reply) || PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY;
 }
 
 export function readCurrentProviderInfo(

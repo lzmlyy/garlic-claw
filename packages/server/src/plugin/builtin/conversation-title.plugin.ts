@@ -1,9 +1,11 @@
 import {
   buildConversationTitlePrompt,
+  CONVERSATION_TITLE_CONFIG_FIELDS,
   readConversationMessages,
   readConversationSummary,
   readConversationTitleConfig,
   readTextGenerationResult,
+  resolveConversationTitleRuntimeConfig,
   sanitizeConversationTitle,
   shouldGenerateConversationTitle,
 } from '@garlic-claw/plugin-sdk';
@@ -45,20 +47,7 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
         },
       ],
       config: {
-        fields: [
-          {
-            key: 'defaultTitle',
-            type: 'string',
-            description: '仍命中该默认标题时才尝试自动改标题',
-            defaultValue: 'New Chat',
-          },
-          {
-            key: 'maxMessages',
-            type: 'number',
-            description: '参与标题生成的最大消息条数',
-            defaultValue: 4,
-          },
-        ],
+        fields: CONVERSATION_TITLE_CONFIG_FIELDS,
       },
     },
     hooks: {
@@ -69,17 +58,18 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
        * @returns 当前不需要返回结果，始终返回 null
        */
       'chat:after-model': async (_payload: JsonValue, context) => {
-        const config = readConversationTitleConfig(await context.host.getConfig());
+        const config = resolveConversationTitleRuntimeConfig(
+          readConversationTitleConfig(await context.host.getConfig()),
+        );
         const conversation = readConversationSummary(await context.host.getConversation());
-        const defaultTitle = (config.defaultTitle ?? 'New Chat').trim() || 'New Chat';
-        if (!shouldGenerateConversationTitle(conversation.title, defaultTitle)) {
+        if (!shouldGenerateConversationTitle(conversation.title, config.defaultTitle)) {
           return null;
         }
 
         const messages = readConversationMessages(await context.host.listConversationMessages());
         const prompt = buildConversationTitlePrompt(
           messages,
-          config.maxMessages ?? 4,
+          config.maxMessages,
         );
         if (!prompt) {
           return null;

@@ -1,12 +1,16 @@
 import {
   asChatBeforeModelPayload,
   createChatBeforeModelLineBlockResult,
+  MEMORY_CONTEXT_CONFIG_FIELDS,
+  MEMORY_CONTEXT_DEFAULT_LIMIT,
+  MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
   readLatestUserTextFromMessages,
   readMemorySearchResults,
   readPromptBlockConfig,
+  resolvePromptBlockConfig,
+  toHostJsonValue,
 } from '@garlic-claw/plugin-sdk';
 import type { JsonValue } from '../../common/types/json-value';
-import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
 /**
@@ -39,20 +43,7 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
         },
       ],
       config: {
-        fields: [
-          {
-            key: 'limit',
-            type: 'number',
-            description: '每次检索长期记忆的最大条数',
-            defaultValue: 5,
-          },
-          {
-            key: 'promptPrefix',
-            type: 'string',
-            description: '记忆摘要写入系统提示词时的前缀',
-            defaultValue: '与此用户相关的记忆',
-          },
-        ],
+        fields: MEMORY_CONTEXT_CONFIG_FIELDS,
       },
     },
     hooks: {
@@ -69,10 +60,16 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const config = readPromptBlockConfig(await context.host.getConfig());
+        const config = resolvePromptBlockConfig(
+          readPromptBlockConfig(await context.host.getConfig()),
+          {
+            limit: MEMORY_CONTEXT_DEFAULT_LIMIT,
+            promptPrefix: MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
+          },
+        );
         const memories = readMemorySearchResults(await context.host.searchMemories(
           latestUserText,
-          config.limit ?? 5,
+          config.limit,
         ));
         if (memories.length === 0) {
           return null;
@@ -81,9 +78,9 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
         const memoryLines = memories.map((memory) =>
           `- [${memory.category ?? 'general'}] ${memory.content ?? ''}`,
         );
-        return toJsonValue(createChatBeforeModelLineBlockResult(
+        return toHostJsonValue(createChatBeforeModelLineBlockResult(
           hookPayload.request.systemPrompt,
-          config.promptPrefix ?? '与此用户相关的记忆',
+          config.promptPrefix,
           memoryLines,
         ));
       },

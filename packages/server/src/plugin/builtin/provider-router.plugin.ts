@@ -1,10 +1,12 @@
 import {
   asChatBeforeModelPayload,
+  PROVIDER_ROUTER_CONFIG_FIELDS,
   readCurrentProviderInfo,
   filterAllowedToolNames,
   parseCommaSeparatedNames,
   readLatestUserTextFromMessages,
   readProviderRouterConfig,
+  resolveProviderRouterShortCircuitReply,
   sameToolNames,
   sanitizeOptionalText,
   textIncludesKeyword,
@@ -44,34 +46,7 @@ export function createProviderRouterPlugin(): BuiltinPluginDefinition {
         },
       ],
       config: {
-        fields: [
-          {
-            key: 'targetProviderId',
-            type: 'string',
-            description: '命中路由时切换到的 provider ID',
-          },
-          {
-            key: 'targetModelId',
-            type: 'string',
-            description: '命中路由时切换到的 model ID',
-          },
-          {
-            key: 'allowedToolNames',
-            type: 'string',
-            description: '允许暴露给模型的工具名列表，使用英文逗号分隔',
-          },
-          {
-            key: 'shortCircuitKeyword',
-            type: 'string',
-            description: '当最近一条用户消息包含该关键字时，直接返回 short-circuit',
-          },
-          {
-            key: 'shortCircuitReply',
-            type: 'string',
-            description: 'short-circuit 时直接写回给 assistant 的文本',
-            defaultValue: '本轮请求已由 provider-router 直接处理。',
-          },
-        ],
+        fields: PROVIDER_ROUTER_CONFIG_FIELDS,
       },
     },
     hooks: {
@@ -92,8 +67,9 @@ export function createProviderRouterPlugin(): BuiltinPluginDefinition {
         if (textIncludesKeyword(latestUserText, config.shortCircuitKeyword)) {
           return toHostJsonValue({
             action: 'short-circuit',
-            assistantContent: sanitizeOptionalText(config.shortCircuitReply)
-              || '本轮请求已由 provider-router 直接处理。',
+            assistantContent: resolveProviderRouterShortCircuitReply(
+              config.shortCircuitReply,
+            ),
             providerId: currentProvider.providerId ?? hookPayload.request.providerId,
             modelId: currentProvider.modelId ?? hookPayload.request.modelId,
             reason: 'matched-short-circuit-keyword',
