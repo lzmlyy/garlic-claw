@@ -47,6 +47,7 @@ import {
   clonePluginSubagentToolCalls,
   clonePluginSubagentToolResults,
   cloneResponseBeforeSendHookPayload,
+  cloneShallowArray,
   cloneSubagentAfterRunPayload,
   cloneSubagentBeforeRunPayload,
   cloneToolAfterCallHookPayload,
@@ -64,36 +65,10 @@ export function applyChatBeforeModelMutation(
 ): ChatBeforeModelRequest {
   const nextRequest = cloneChatBeforeModelRequest(currentRequest);
 
-  if ('providerId' in mutation && typeof mutation.providerId === 'string') {
-    nextRequest.providerId = mutation.providerId;
-  }
-  if ('modelId' in mutation && typeof mutation.modelId === 'string') {
-    nextRequest.modelId = mutation.modelId;
-  }
-  if ('systemPrompt' in mutation && typeof mutation.systemPrompt === 'string') {
-    nextRequest.systemPrompt = mutation.systemPrompt;
-  }
-  if ('messages' in mutation && Array.isArray(mutation.messages)) {
-    nextRequest.messages = cloneChatMessages(mutation.messages);
-  }
-  if ('variant' in mutation) {
-    nextRequest.variant = mutation.variant ?? undefined;
-  }
-  if ('providerOptions' in mutation) {
-    nextRequest.providerOptions = mutation.providerOptions === null
-      || typeof mutation.providerOptions === 'undefined'
-      ? undefined
-      : { ...mutation.providerOptions };
-  }
-  if ('headers' in mutation) {
-    nextRequest.headers = mutation.headers === null
-      || typeof mutation.headers === 'undefined'
-      ? undefined
-      : { ...mutation.headers };
-  }
-  if ('maxOutputTokens' in mutation) {
-    nextRequest.maxOutputTokens = mutation.maxOutputTokens ?? undefined;
-  }
+  applyCommonModelRequestMutation(nextRequest, mutation, {
+    systemPromptField: 'systemPrompt',
+  });
+  assignClonedArrayField(nextRequest, mutation, 'messages', cloneChatMessages);
   if ('toolNames' in mutation && Array.isArray(mutation.toolNames)) {
     const allowedToolNames = new Set(mutation.toolNames);
     nextRequest.availableTools = nextRequest.availableTools.filter(
@@ -148,18 +123,11 @@ export function applyMessageReceivedMutation(
 ): MessageReceivedHookPayload {
   const nextPayload = cloneMessageReceivedHookPayload(currentPayload);
 
-  if ('providerId' in mutation && typeof mutation.providerId === 'string') {
-    nextPayload.providerId = mutation.providerId;
-  }
-  if ('modelId' in mutation && typeof mutation.modelId === 'string') {
-    nextPayload.modelId = mutation.modelId;
-  }
+  assignStringFields(nextPayload, mutation, ['providerId', 'modelId']);
   if ('content' in mutation || 'parts' in mutation) {
     applyMessageContentMutation(nextPayload.message, mutation);
   }
-  if ('modelMessages' in mutation && Array.isArray(mutation.modelMessages)) {
-    nextPayload.modelMessages = clonePluginLlmMessages(mutation.modelMessages);
-  }
+  assignClonedArrayField(nextPayload, mutation, 'modelMessages', clonePluginLlmMessages);
 
   return nextPayload;
 }
@@ -217,9 +185,7 @@ export function applyMessageCreatedMutation(
   const nextPayload = cloneMessageCreatedHookPayload(currentPayload);
 
   applyMessageContentMutation(nextPayload.message, mutation);
-  if ('modelMessages' in mutation && Array.isArray(mutation.modelMessages)) {
-    nextPayload.modelMessages = clonePluginLlmMessages(mutation.modelMessages);
-  }
+  assignClonedArrayField(nextPayload, mutation, 'modelMessages', clonePluginLlmMessages);
   applyMessageMetadataMutation(nextPayload.message, mutation);
 
   return nextPayload;
@@ -256,12 +222,8 @@ export function applyAutomationAfterRunMutation(
 ): AutomationAfterRunHookPayload {
   const nextPayload = cloneAutomationAfterRunPayload(currentPayload);
 
-  if ('status' in mutation && typeof mutation.status === 'string') {
-    nextPayload.status = mutation.status;
-  }
-  if ('results' in mutation && Array.isArray(mutation.results)) {
-    nextPayload.results = cloneJsonValueArray(mutation.results);
-  }
+  assignStringFields(nextPayload, mutation, ['status']);
+  assignClonedArrayField(nextPayload, mutation, 'results', cloneJsonValueArray);
 
   return nextPayload;
 }
@@ -272,42 +234,14 @@ export function applySubagentBeforeRunMutation(
 ): SubagentBeforeRunHookPayload {
   const nextPayload = cloneSubagentBeforeRunPayload(currentPayload);
 
-  if ('providerId' in mutation) {
-    nextPayload.request.providerId = mutation.providerId ?? undefined;
-  }
-  if ('modelId' in mutation) {
-    nextPayload.request.modelId = mutation.modelId ?? undefined;
-  }
-  if ('system' in mutation) {
-    nextPayload.request.system = mutation.system ?? undefined;
-  }
-  if ('messages' in mutation && Array.isArray(mutation.messages)) {
-    nextPayload.request.messages = clonePluginLlmMessages(mutation.messages);
-  }
+  applyCommonModelRequestMutation(nextPayload.request, mutation, {
+    systemPromptField: 'system',
+  });
+  assignClonedArrayField(nextPayload.request, mutation, 'messages', clonePluginLlmMessages);
   if ('toolNames' in mutation) {
     nextPayload.request.toolNames = mutation.toolNames === null
       ? undefined
       : [...(mutation.toolNames ?? [])];
-  }
-  if ('variant' in mutation) {
-    nextPayload.request.variant = mutation.variant ?? undefined;
-  }
-  if ('providerOptions' in mutation) {
-    nextPayload.request.providerOptions = mutation.providerOptions === null
-      ? undefined
-      : mutation.providerOptions
-        ? { ...mutation.providerOptions }
-        : undefined;
-  }
-  if ('headers' in mutation) {
-    nextPayload.request.headers = mutation.headers === null
-      ? undefined
-      : mutation.headers
-        ? { ...mutation.headers }
-        : undefined;
-  }
-  if ('maxOutputTokens' in mutation) {
-    nextPayload.request.maxOutputTokens = mutation.maxOutputTokens ?? undefined;
   }
   if ('maxSteps' in mutation && typeof mutation.maxSteps === 'number') {
     nextPayload.request.maxSteps = normalizePositiveInteger(mutation.maxSteps, 1);
@@ -322,12 +256,7 @@ export function applySubagentAfterRunMutation(
 ): SubagentAfterRunHookPayload {
   const nextPayload = cloneSubagentAfterRunPayload(currentPayload);
 
-  if ('providerId' in mutation && typeof mutation.providerId === 'string') {
-    nextPayload.result.providerId = mutation.providerId;
-  }
-  if ('modelId' in mutation && typeof mutation.modelId === 'string') {
-    nextPayload.result.modelId = mutation.modelId;
-  }
+  assignStringFields(nextPayload.result, mutation, ['providerId', 'modelId']);
   if ('text' in mutation && typeof mutation.text === 'string') {
     nextPayload.result.text = mutation.text;
     nextPayload.result.message = {
@@ -338,12 +267,13 @@ export function applySubagentAfterRunMutation(
   if ('finishReason' in mutation) {
     nextPayload.result.finishReason = mutation.finishReason ?? null;
   }
-  if ('toolCalls' in mutation && Array.isArray(mutation.toolCalls)) {
-    nextPayload.result.toolCalls = clonePluginSubagentToolCalls(mutation.toolCalls);
-  }
-  if ('toolResults' in mutation && Array.isArray(mutation.toolResults)) {
-    nextPayload.result.toolResults = clonePluginSubagentToolResults(mutation.toolResults);
-  }
+  assignClonedArrayField(nextPayload.result, mutation, 'toolCalls', clonePluginSubagentToolCalls);
+  assignClonedArrayField(
+    nextPayload.result,
+    mutation,
+    'toolResults',
+    clonePluginSubagentToolResults,
+  );
 
   return nextPayload;
 }
@@ -382,19 +312,10 @@ export function applyResponseBeforeSendMutation(
 ): ResponseBeforeSendHookPayload {
   const nextPayload = cloneResponseBeforeSendHookPayload(currentPayload);
 
-  if ('providerId' in mutation && typeof mutation.providerId === 'string') {
-    nextPayload.providerId = mutation.providerId;
-  }
-  if ('modelId' in mutation && typeof mutation.modelId === 'string') {
-    nextPayload.modelId = mutation.modelId;
-  }
+  assignStringFields(nextPayload, mutation, ['providerId', 'modelId']);
   applyAssistantOutputMutation(nextPayload, mutation);
-  if ('toolCalls' in mutation && Array.isArray(mutation.toolCalls)) {
-    nextPayload.toolCalls = cloneObjectArray(mutation.toolCalls);
-  }
-  if ('toolResults' in mutation && Array.isArray(mutation.toolResults)) {
-    nextPayload.toolResults = cloneObjectArray(mutation.toolResults);
-  }
+  assignClonedArrayField(nextPayload, mutation, 'toolCalls', cloneObjectLikeArray);
+  assignClonedArrayField(nextPayload, mutation, 'toolResults', cloneObjectLikeArray);
 
   return nextPayload;
 }
@@ -478,8 +399,83 @@ function applyAssistantOutputMutation(
   }
 }
 
-function cloneObjectArray<T extends object>(values: readonly T[]): T[] {
-  return values.map((value) => ({
-    ...value,
-  }));
+function applyCommonModelRequestMutation(
+  target: {
+    providerId?: string;
+    modelId?: string;
+    variant?: string;
+    providerOptions?: Record<string, unknown>;
+    headers?: Record<string, unknown>;
+    maxOutputTokens?: number;
+    systemPrompt?: string;
+    system?: string;
+  },
+  mutation: object,
+  input: {
+    systemPromptField: 'systemPrompt' | 'system';
+  },
+): void {
+  assignOptionalFields(target, mutation, ['providerId', 'modelId']);
+  assignOptionalFields(target, mutation, [input.systemPromptField, 'variant', 'maxOutputTokens']);
+  assignOptionalShallowObjectFields(target, mutation, ['providerOptions', 'headers']);
+}
+
+function assignStringFields<TTarget extends object>(
+  target: TTarget,
+  source: object,
+  keys: Array<Extract<keyof TTarget, string>>,
+): void {
+  const sourceRecord = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = sourceRecord[key];
+    if (typeof value === 'string') {
+      (target as Record<string, unknown>)[key] = value;
+    }
+  }
+}
+
+function assignOptionalFields<TTarget extends object>(
+  target: TTarget,
+  source: object,
+  keys: Array<Extract<keyof TTarget, string>>,
+): void {
+  const sourceRecord = source as Record<string, unknown>;
+  for (const key of keys) {
+    if (key in sourceRecord) {
+      (target as Record<string, unknown>)[key] = sourceRecord[key] ?? undefined;
+    }
+  }
+}
+
+function assignOptionalShallowObjectFields<TTarget extends object>(
+  target: TTarget,
+  source: object,
+  keys: Array<Extract<keyof TTarget, string>>,
+): void {
+  const sourceRecord = source as Record<string, unknown>;
+  for (const key of keys) {
+    if (!(key in sourceRecord)) {
+      continue;
+    }
+    const value = sourceRecord[key];
+    (target as Record<string, unknown>)[key] = value && typeof value === 'object'
+      ? { ...(value as Record<string, unknown>) }
+      : undefined;
+  }
+}
+
+function assignClonedArrayField<TTarget extends object>(
+  target: TTarget,
+  source: object,
+  key: Extract<keyof TTarget, string>,
+  clone: (values: any[]) => unknown[],
+): void {
+  const value = (source as Record<string, unknown>)[key];
+  if (Array.isArray(value)) {
+    (target as Record<string, unknown>)[key] = clone(value);
+  }
+}
+
+function cloneObjectLikeArray<T extends object>(values: T[]): T[] {
+  return cloneShallowArray(values);
 }

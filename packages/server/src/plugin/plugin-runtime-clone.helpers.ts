@@ -412,7 +412,7 @@ function cloneStructuredMessageArray<T extends { content: unknown }>(
   }));
 }
 
-function cloneShallowArray<T extends object>(values: readonly T[]): T[] {
+export function cloneShallowArray<T extends object>(values: readonly T[]): T[] {
   return values.map((value) => ({
     ...value,
   }));

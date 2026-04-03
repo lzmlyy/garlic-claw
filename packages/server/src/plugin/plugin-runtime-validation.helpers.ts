@@ -1,3 +1,7 @@
+import {
+  isJsonObjectValue as isSharedJsonObjectValue,
+  isStringRecord as isSharedStringRecord,
+} from '@garlic-claw/shared';
 import type {
   PluginHookFilterDescriptor,
   PluginLlmMessage,
@@ -5,7 +9,7 @@ import type {
 import type { JsonObject, JsonValue } from '../common/types/json-value';
 
 export function isJsonObjectValue(value: JsonValue): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return isSharedJsonObjectValue(value);
 }
 
 export function isStringArray(value: JsonValue | undefined): value is string[] {
@@ -13,8 +17,7 @@ export function isStringArray(value: JsonValue | undefined): value is string[] {
 }
 
 export function isStringRecord(value: JsonValue): value is Record<string, string> {
-  return isJsonObjectValue(value)
-    && Object.values(value).every((item) => typeof item === 'string');
+  return isSharedStringRecord(value);
 }
 
 export function isChatMessageStatus(value: JsonValue): boolean {

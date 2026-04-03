@@ -1,5 +1,7 @@
+import { isJsonValue } from '@garlic-claw/shared';
 import type { PluginRuntimeKind } from '@garlic-claw/shared';
-import type { JsonValue } from '../common/types/json-value';
+
+export { isJsonValue };
 
 export function readRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -49,25 +51,6 @@ export function readStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string')
     : [];
-}
-
-export function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean'
-  ) {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isJsonValue(entry));
-  }
-
-  return typeof value === 'object'
-    && value !== null
-    && Object.values(value).every((entry) => isJsonValue(entry));
 }
 
 export function isOneOf<T extends string>(

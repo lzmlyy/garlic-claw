@@ -248,6 +248,7 @@
   - builtin recorder / governance / tool-audit 的 manifest hook 模板与统一 `pass` 返回样板继续外移后，`packages/server/src/plugin` 已继续从 `15953` 降到 `15839`，`packages/server/src` 已继续从 `31469` 降到 `31355`
   - builtin `conversation-title / memory-context / kb-context / provider-router / persona-router / cron-heartbeat / core-tools / memory-tools / automation-tools / subagent-delegate / route-inspector` 的 full manifest 顶层继续外移后，`packages/server/src/plugin` 已继续从 `15839` 降到 `15683`，`packages/server/src` 已继续从 `31355` 降到 `31199`
   - 当前 `packages/server/src/plugin/builtin/*.plugin.ts` 实现文件里，已经不再直接手写 manifest 顶层；剩余手写 manifest 主要只在 transport spec 里做测试夹具
+  - `plugin runtime` 的 Hook mutation/Host facade/gateway payload 这批适配层样板继续压缩，并把 host method/source/permission 静态契约表与通用 JSON reader/type-guard 外移到 `shared` 后，`packages/server/src/plugin` 已继续从 `15683` 降到 `15475`，`packages/server/src` 已继续从 `31199` 降到 `30991`
   - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
   - `smoke:http` 暴露的 chat/plugin 循环注入缺口已补齐，当前后端启动烟测重新通过
   - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
@@ -255,8 +256,8 @@
 ## 最新行数快照
 
 - 2026-04-03 当前口径：
-  - `packages/server/src`: `31199`
-  - `packages/server/src/plugin`: `15683`
+  - `packages/server/src`: `30991`
+  - `packages/server/src/plugin`: `15475`
   - `packages/server/src/chat`: `3862`
   - `packages/plugin-sdk/src/index.ts`: `5063`
 

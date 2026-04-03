@@ -1,3 +1,12 @@
+import {
+  CONNECTION_SCOPED_PLUGIN_HOST_METHODS,
+  isJsonObjectValue,
+  isJsonValue,
+  isStringRecord,
+  PLUGIN_HOST_METHOD_VALUES,
+  PLUGIN_INVOCATION_SOURCE_VALUES,
+  readUnknownObject,
+} from '@garlic-claw/shared';
 import type {
   AuthPayload,
   DeviceType,
@@ -24,128 +33,16 @@ export interface ValidatedHostCallPayload {
 
 export type PluginGatewayInboundMessage = WsMessage<unknown>;
 
-const PLUGIN_HOST_METHODS: PluginHostMethod[] = [
-  'automation.create',
-  'automation.event.emit',
-  'automation.list',
-  'automation.run',
-  'automation.toggle',
-  'config.get',
-  'cron.delete',
-  'cron.list',
-  'cron.register',
-  'conversation.get',
-  'conversation.session.finish',
-  'conversation.session.get',
-  'conversation.session.keep',
-  'conversation.session.start',
-  'conversation.messages.list',
-  'conversation.title.set',
-  'kb.get',
-  'kb.list',
-  'kb.search',
-  'llm.generate',
-  'llm.generate-text',
-  'log.list',
-  'log.write',
-  'message.send',
-  'message.target.current.get',
-  'memory.search',
-  'memory.save',
-  'persona.activate',
-  'persona.current.get',
-  'persona.get',
-  'persona.list',
-  'plugin.self.get',
-  'provider.current.get',
-  'provider.get',
-  'provider.list',
-  'provider.model.get',
-  'storage.delete',
-  'storage.get',
-  'storage.list',
-  'storage.set',
-  'subagent.run',
-  'subagent.task.get',
-  'subagent.task.list',
-  'subagent.task.start',
-  'state.delete',
-  'state.get',
-  'state.list',
-  'state.set',
-  'user.get',
-];
+const CONNECTION_SCOPED_HOST_METHODS = new Set<PluginHostMethod>(
+  CONNECTION_SCOPED_PLUGIN_HOST_METHODS,
+);
 
-const CONNECTION_SCOPED_HOST_METHODS = new Set<PluginHostMethod>([
-  'config.get',
-  'cron.delete',
-  'cron.list',
-  'cron.register',
-  'kb.get',
-  'kb.list',
-  'kb.search',
-  'log.list',
-  'log.write',
-  'persona.current.get',
-  'persona.get',
-  'persona.list',
-  'plugin.self.get',
-  'provider.current.get',
-  'provider.get',
-  'provider.list',
-  'provider.model.get',
-  'state.delete',
-  'state.get',
-  'state.list',
-  'state.set',
-  'storage.delete',
-  'storage.get',
-  'storage.list',
-  'storage.set',
-]);
-
-const PLUGIN_INVOCATION_SOURCES: PluginCallContext['source'][] = [
-  'chat-tool',
-  'chat-hook',
-  'cron',
-  'automation',
-  'http-route',
-  'subagent',
-  'plugin',
-];
-
-export function isJsonObjectValue(value: unknown): value is JsonObject {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  return Object.values(value).every((entry) => isJsonValue(entry));
-}
-
-export function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean'
-  ) {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isJsonValue(entry));
-  }
-
-  return isJsonObjectValue(value);
-}
-
-export function readUnknownObject(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
-
-  return value as Record<string, unknown>;
-}
+export {
+  isJsonObjectValue,
+  isJsonValue,
+  isStringRecord,
+  readUnknownObject,
+};
 
 export function readPluginGatewayMessage(
   value: unknown,
@@ -357,16 +254,11 @@ export function readPluginRouteResponseOrThrow(
   return response;
 }
 
-export function isStringRecord(value: unknown): value is Record<string, string> {
-  const record = readUnknownObject(value);
-  return !!record && Object.values(record).every((entry) => typeof entry === 'string');
-}
-
 export function isPluginInvocationSource(
   value: unknown,
 ): value is PluginCallContext['source'] {
   return typeof value === 'string'
-    && (PLUGIN_INVOCATION_SOURCES as string[]).includes(value);
+    && (PLUGIN_INVOCATION_SOURCE_VALUES as readonly string[]).includes(value);
 }
 
 export function isConnectionScopedHostMethod(
@@ -381,7 +273,7 @@ export function readPluginHostMethod(value: unknown): PluginHostMethod | null {
 
 export function isPluginHostMethod(value: unknown): value is PluginHostMethod {
   return typeof value === 'string'
-    && PLUGIN_HOST_METHODS.includes(value as PluginHostMethod);
+    && (PLUGIN_HOST_METHOD_VALUES as readonly string[]).includes(value);
 }
 
 /**

@@ -87,6 +87,13 @@ import {
 export class PluginRuntimeService {
   private readonly records = new Map<string, PluginRuntimeRecord>();
   private readonly conversationSessions = new Map<string, ConversationSessionRecord>();
+  private readonly invokeHook = (input: {
+    pluginId: string;
+    hookName: PluginHookName;
+    context: PluginCallContext;
+    payload: JsonValue;
+    recordFailure?: boolean;
+  }) => this.invokePluginHook(input);
   private readonly invokeJsonPluginHook = (input: {
     pluginId: string;
     hookName: PluginHookName;
@@ -278,10 +285,7 @@ export class PluginRuntimeService {
       skipLifecycleHooks: input.skipLifecycleHooks,
       runToolBeforeCallHooks: (hookInput) => this.runToolBeforeCallHooks(hookInput),
       runToolAfterCallHooks: (hookInput) => this.runToolAfterCallHooks(hookInput),
-      dispatchPluginErrorHook: (payload) => this.runPluginErrorHooks({
-        context: input.context,
-        payload,
-      }),
+      dispatchPluginErrorHook: this.createPluginErrorDispatcher(input.context),
     });
   }
 
@@ -300,10 +304,7 @@ export class PluginRuntimeService {
       pluginId: input.pluginId,
       request: input.request,
       context: input.context,
-      dispatchPluginErrorHook: (payload) => this.runPluginErrorHooks({
-        context: input.context,
-        payload,
-      }),
+      dispatchPluginErrorHook: this.createPluginErrorDispatcher(input.context),
     });
   }
 
@@ -361,10 +362,7 @@ export class PluginRuntimeService {
       context: input.context,
       payload: input.payload,
       recordFailure: input.recordFailure,
-      dispatchPluginErrorHook: (payload) => this.runPluginErrorHooks({
-        context: input.context,
-        payload,
-      }),
+      dispatchPluginErrorHook: this.createPluginErrorDispatcher(input.context),
     });
   }
 
@@ -377,12 +375,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ChatBeforeModelHookPayload;
   }): Promise<ChatBeforeModelExecutionResult> {
-    return this.runtimeInboundHooksFacade.runChatBeforeModelHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeInboundHooksFacade.runChatBeforeModelHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -394,13 +389,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: MessageReceivedHookPayload;
   }): Promise<MessageReceivedExecutionResult> {
-    return this.runtimeInboundHooksFacade.runMessageReceivedHooks({
-      records: this.records,
-      conversationSessions: this.conversationSessions,
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeInboundHooksFacade.runMessageReceivedHooks(
+      this.createMessageReceivedHookInput(input),
+    );
   }
 
   /**
@@ -428,12 +419,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ChatAfterModelHookPayload;
   }): Promise<ChatAfterModelHookPayload> {
-    return this.runtimeMessageHooksFacade.runChatAfterModelHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeMessageHooksFacade.runChatAfterModelHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -461,12 +449,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: MessageCreatedHookPayload;
   }): Promise<MessageCreatedHookPayload> {
-    return this.runtimeMessageHooksFacade.runMessageCreatedHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeMessageHooksFacade.runMessageCreatedHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -478,12 +463,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: MessageUpdatedHookPayload;
   }): Promise<MessageUpdatedHookPayload> {
-    return this.runtimeMessageHooksFacade.runMessageUpdatedHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeMessageHooksFacade.runMessageUpdatedHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -511,12 +493,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: AutomationBeforeRunHookPayload;
   }): Promise<AutomationBeforeRunExecutionResult> {
-    return this.runtimeOperationHooksFacade.runAutomationBeforeRunHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeOperationHooksFacade.runAutomationBeforeRunHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -528,12 +507,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: AutomationAfterRunHookPayload;
   }): Promise<AutomationAfterRunHookPayload> {
-    return this.runtimeOperationHooksFacade.runAutomationAfterRunHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeOperationHooksFacade.runAutomationAfterRunHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -545,12 +521,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ToolBeforeCallHookPayload;
   }): Promise<ToolBeforeCallExecutionResult> {
-    return this.runtimeOperationHooksFacade.runToolBeforeCallHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeOperationHooksFacade.runToolBeforeCallHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -562,12 +535,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ToolAfterCallHookPayload;
   }): Promise<ToolAfterCallHookPayload> {
-    return this.runtimeOperationHooksFacade.runToolAfterCallHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeOperationHooksFacade.runToolAfterCallHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -579,12 +549,9 @@ export class PluginRuntimeService {
     context: PluginCallContext;
     payload: ResponseBeforeSendHookPayload;
   }): Promise<ResponseBeforeSendHookPayload> {
-    return this.runtimeOperationHooksFacade.runResponseBeforeSendHooks({
-      records: this.records.values(),
-      context: input.context,
-      payload: input.payload,
-      invokeHook: (hookInput) => this.invokePluginHook(hookInput),
-    });
+    return this.runtimeOperationHooksFacade.runResponseBeforeSendHooks(
+      this.createHookMutationInput(input),
+    );
   }
 
   /**
@@ -706,6 +673,38 @@ export class PluginRuntimeService {
       invokeHook: this.invokeJsonPluginHook,
       runAfterHooks: (afterInput) => this.runSubagentAfterRunHooks(afterInput),
     });
+  }
+
+  private createPluginErrorDispatcher(context: PluginCallContext) {
+    return (payload: PluginErrorHookPayload) => this.runPluginErrorHooks({
+      context,
+      payload,
+    });
+  }
+
+  private createHookMutationInput<TPayload>(input: {
+    context: PluginCallContext;
+    payload: TPayload;
+  }) {
+    return {
+      records: this.records.values(),
+      context: input.context,
+      payload: input.payload,
+      invokeHook: this.invokeHook,
+    };
+  }
+
+  private createMessageReceivedHookInput(input: {
+    context: PluginCallContext;
+    payload: MessageReceivedHookPayload;
+  }) {
+    return {
+      records: this.records,
+      conversationSessions: this.conversationSessions,
+      context: input.context,
+      payload: input.payload,
+      invokeHook: this.invokeHook,
+    };
   }
 
   private async dispatchBroadcastHook(

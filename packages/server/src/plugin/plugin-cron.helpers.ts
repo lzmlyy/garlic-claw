@@ -2,6 +2,7 @@ import type {
   PluginCronJobSummary,
   PluginCronSource,
 } from '@garlic-claw/shared';
+import { isJsonValue } from '@garlic-claw/shared';
 import type { JsonValue } from '../common/types/json-value';
 
 export interface PluginCronJobRecord {
@@ -99,25 +100,4 @@ export function parsePluginCronInterval(expr: string): number | null {
   const interval = value * factor;
 
   return interval >= 10000 ? interval : null;
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean'
-  ) {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isJsonValue(entry));
-  }
-
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  return Object.values(value).every((entry) => isJsonValue(entry));
 }
