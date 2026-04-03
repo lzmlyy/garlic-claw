@@ -4,6 +4,7 @@ import type {
 } from '@garlic-claw/shared';
 import { createAutomationToolsPlugin } from './automation-tools.plugin';
 import { createConversationTitlePlugin } from './conversation-title.plugin';
+import { createCoreToolsPlugin } from './core-tools.plugin';
 import { createKbContextPlugin } from './kb-context.plugin';
 import { createMemoryContextPlugin } from './memory-context.plugin';
 import { createMemoryToolsPlugin } from './memory-tools.plugin';
@@ -155,6 +156,74 @@ describe('BuiltinPluginTransport', () => {
       count: 0,
       memories: [],
     });
+  });
+
+  it('executes local core tools without going through the host facade', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-03T10:00:00.000Z'));
+
+    try {
+      const transport = new BuiltinPluginTransport(
+        createCoreToolsPlugin(),
+        hostService as never,
+      );
+
+      const currentTime = await transport.executeTool({
+        toolName: 'getCurrentTime',
+        params: {},
+        context: {
+          source: 'chat-tool',
+          userId: 'user-1',
+        },
+      });
+      const systemInfo = await transport.executeTool({
+        toolName: 'getSystemInfo',
+        params: {},
+        context: {
+          source: 'chat-tool',
+          userId: 'user-1',
+        },
+      });
+      const calculated = await transport.executeTool({
+        toolName: 'calculate',
+        params: {
+          expression: '2 + 3 * 4',
+        },
+        context: {
+          source: 'chat-tool',
+          userId: 'user-1',
+        },
+      });
+      const invalid = await transport.executeTool({
+        toolName: 'calculate',
+        params: {
+          expression: 'Math.max(1, 2)',
+        },
+        context: {
+          source: 'chat-tool',
+          userId: 'user-1',
+        },
+      });
+
+      expect(hostService.call).not.toHaveBeenCalled();
+      expect(currentTime).toEqual({
+        time: '2026-04-03T10:00:00.000Z',
+      });
+      expect(systemInfo).toEqual({
+        platform: process.platform,
+        nodeVersion: process.version,
+        uptime: expect.any(Number),
+        memoryUsage: expect.any(Number),
+      });
+      expect(calculated).toEqual({
+        expression: '2 + 3 * 4',
+        result: 14,
+      });
+      expect(invalid).toEqual({
+        error: '无效的表达式。只允许数字和 +, -, *, /, (, )。',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('records a summarized tool audit through unified storage/log host calls', async () => {

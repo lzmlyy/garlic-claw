@@ -1,4 +1,10 @@
-import { readRequiredStringParam } from '@garlic-claw/plugin-sdk';
+import {
+  createCalculateErrorResult,
+  createCalculateSuccessResult,
+  createCurrentTimeToolResult,
+  createSystemInfoToolResult,
+  readRequiredStringParam,
+} from '@garlic-claw/plugin-sdk';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -54,20 +60,20 @@ export function createCoreToolsPlugin(): BuiltinPluginDefinition {
        * 读取当前时间。
        * @returns 当前 ISO 时间字符串
        */
-      getCurrentTime: async (): Promise<JsonValue> => ({
-        time: new Date().toISOString(),
-      }),
+      getCurrentTime: async (): Promise<JsonValue> =>
+        createCurrentTimeToolResult(new Date().toISOString()),
 
       /**
        * 读取当前进程的系统信息。
        * @returns 平台、版本、运行时与内存摘要
        */
-      getSystemInfo: async (): Promise<JsonValue> => ({
-        platform: process.platform,
-        nodeVersion: process.version,
-        uptime: Math.floor(process.uptime()),
-        memoryUsage: Math.floor(process.memoryUsage().heapUsed / 1024 / 1024),
-      }),
+      getSystemInfo: async (): Promise<JsonValue> =>
+        createSystemInfoToolResult({
+          platform: process.platform,
+          nodeVersion: process.version,
+          uptime: Math.floor(process.uptime()),
+          memoryUsage: Math.floor(process.memoryUsage().heapUsed / 1024 / 1024),
+        }),
 
       /**
        * 计算简单数学表达式。
@@ -77,22 +83,17 @@ export function createCoreToolsPlugin(): BuiltinPluginDefinition {
       calculate: async (params: JsonObject): Promise<JsonValue> => {
         const expression = readRequiredStringParam(params, 'expression');
         if (!/^[\d\s+\-*/().]+$/.test(expression)) {
-          return {
-            error: '无效的表达式。只允许数字和 +, -, *, /, (, )。',
-          };
+          return createCalculateErrorResult(
+            '无效的表达式。只允许数字和 +, -, *, /, (, )。',
+          );
         }
 
         try {
           const fn = new Function(`"use strict"; return (${expression});`);
           const result = fn();
-          return {
-            expression,
-            result: Number(result),
-          };
+          return createCalculateSuccessResult(expression, Number(result));
         } catch {
-          return {
-            error: '表达式计算失败',
-          };
+          return createCalculateErrorResult('表达式计算失败');
         }
       },
     },

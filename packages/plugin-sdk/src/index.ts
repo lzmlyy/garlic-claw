@@ -1901,6 +1901,64 @@ export function createAutomationRunResult(
   return result ?? { error: '未找到自动化或已禁用' };
 }
 
+export function createMemorySaveToolResult(memoryId: string | null): JsonValue {
+  return {
+    saved: true,
+    id: memoryId,
+  };
+}
+
+export function createMemoryRecallToolResult(
+  memories: Array<{
+    content?: string;
+    category?: string;
+    createdAt?: string;
+  }>,
+): JsonValue {
+  return {
+    count: memories.length,
+    memories: memories.map((memory) => ({
+      content: memory.content ?? '',
+      category: memory.category ?? 'general',
+      date: (memory.createdAt ?? '').split('T')[0] ?? '',
+    })),
+  };
+}
+
+export function createCurrentTimeToolResult(time: string): JsonValue {
+  return { time };
+}
+
+export function createSystemInfoToolResult(input: {
+  platform: string;
+  nodeVersion: string;
+  uptime: number;
+  memoryUsage: number;
+}): JsonValue {
+  return {
+    platform: input.platform,
+    nodeVersion: input.nodeVersion,
+    uptime: input.uptime,
+    memoryUsage: input.memoryUsage,
+  };
+}
+
+export function createCalculateSuccessResult(
+  expression: string,
+  result: number,
+): JsonValue {
+  return {
+    expression,
+    result,
+  };
+}
+
+export function createCalculateErrorResult(message: string): JsonValue {
+  return {
+    error: message,
+  };
+}
+
 export function createRouteInspectorContextResponse(input: {
   plugin: unknown;
   user: unknown;

@@ -5,8 +5,14 @@ const {
   createAutomationCreatedResult,
   createAutomationEventDispatchResult,
   createAutomationListResult,
+  createCalculateErrorResult,
+  createCalculateSuccessResult,
+  createCurrentTimeToolResult,
+  createMemoryRecallToolResult,
+  createMemorySaveToolResult,
   createRouteInspectorContextResponse,
   createAutomationRunResult,
+  createSystemInfoToolResult,
   createAutomationToggleResult,
   buildAutomationRunSummary,
   buildConversationCreatedSummary,
@@ -1600,6 +1606,53 @@ test('plugin-sdk exposes shared automation tool param readers for author-side pl
       },
     },
   );
+  assert.deepEqual(createMemorySaveToolResult('memory-1'), {
+    saved: true,
+    id: 'memory-1',
+  });
+  assert.deepEqual(
+    createMemoryRecallToolResult([
+      {
+        content: '记住我喜欢喝咖啡',
+        category: 'preference',
+        createdAt: '2026-03-27T09:00:00.000Z',
+      },
+    ]),
+    {
+      count: 1,
+      memories: [
+        {
+          content: '记住我喜欢喝咖啡',
+          category: 'preference',
+          date: '2026-03-27',
+        },
+      ],
+    },
+  );
+  assert.deepEqual(createCurrentTimeToolResult('2026-04-03T10:00:00.000Z'), {
+    time: '2026-04-03T10:00:00.000Z',
+  });
+  assert.deepEqual(
+    createSystemInfoToolResult({
+      platform: 'win32',
+      nodeVersion: 'v22.0.0',
+      uptime: 123,
+      memoryUsage: 456,
+    }),
+    {
+      platform: 'win32',
+      nodeVersion: 'v22.0.0',
+      uptime: 123,
+      memoryUsage: 456,
+    },
+  );
+  assert.deepEqual(createCalculateSuccessResult('2 + 3 * 4', 14), {
+    expression: '2 + 3 * 4',
+    result: 14,
+  });
+  assert.deepEqual(createCalculateErrorResult('表达式计算失败'), {
+    error: '表达式计算失败',
+  });
 
   assert.throws(
     () => readPluginCreateAutomationParams({

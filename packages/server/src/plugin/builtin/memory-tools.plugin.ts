@@ -1,4 +1,6 @@
 import {
+  createMemoryRecallToolResult,
+  createMemorySaveToolResult,
   readMemorySearchResults,
   readMemorySaveResultId,
   readOptionalStringParam,
@@ -80,10 +82,7 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
           keywords: readOptionalStringParam(params, 'keywords') ?? undefined,
         });
 
-        return {
-          saved: true,
-          id: readMemorySaveResultId(saved),
-        };
+        return createMemorySaveToolResult(readMemorySaveResultId(saved));
       },
 
       /**
@@ -101,14 +100,7 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
           10,
         ));
 
-        return {
-          count: memories.length,
-          memories: memories.map((memory) => ({
-            content: memory.content ?? '',
-            category: memory.category ?? 'general',
-            date: (memory.createdAt ?? '').split('T')[0] ?? '',
-          })),
-        };
+        return createMemoryRecallToolResult(memories);
       },
     },
   };
