@@ -1,3 +1,4 @@
+import { readPluginHookPayload } from '@garlic-claw/plugin-sdk';
 import type {
   PluginErrorHookPayload,
   PluginLoadedHookPayload,
@@ -5,7 +6,6 @@ import type {
 } from '@garlic-claw/shared';
 import type { JsonObject } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
-import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 插件治理事件摘要。
@@ -68,7 +68,7 @@ export function createPluginGovernanceRecorderPlugin(): BuiltinPluginDefinition 
     },
     hooks: {
       'plugin:loaded': async (payload, { host }) => {
-        const loaded = readBuiltinHookPayload<PluginLoadedHookPayload>(payload);
+        const loaded = readPluginHookPayload<PluginLoadedHookPayload>(payload);
         const summary = buildGovernanceSummary({
           eventType: 'plugin:loaded',
           pluginId: loaded.plugin.id,
@@ -81,7 +81,7 @@ export function createPluginGovernanceRecorderPlugin(): BuiltinPluginDefinition 
         return undefined;
       },
       'plugin:unloaded': async (payload, { host }) => {
-        const unloaded = readBuiltinHookPayload<PluginUnloadedHookPayload>(payload);
+        const unloaded = readPluginHookPayload<PluginUnloadedHookPayload>(payload);
         const summary = buildGovernanceSummary({
           eventType: 'plugin:unloaded',
           pluginId: unloaded.plugin.id,
@@ -94,7 +94,7 @@ export function createPluginGovernanceRecorderPlugin(): BuiltinPluginDefinition 
         return undefined;
       },
       'plugin:error': async (payload, { host }) => {
-        const failed = readBuiltinHookPayload<PluginErrorHookPayload>(payload);
+        const failed = readPluginHookPayload<PluginErrorHookPayload>(payload);
         const summary = buildGovernanceSummary({
           eventType: 'plugin:error',
           pluginId: failed.plugin.id,

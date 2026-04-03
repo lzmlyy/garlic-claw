@@ -1,7 +1,11 @@
+import {
+  asChatBeforeModelPayload,
+  readLatestUserTextFromMessages,
+  sanitizeOptionalText,
+} from '@garlic-claw/plugin-sdk';
 import type { JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
-import { asChatBeforeModelPayload } from './builtin-plugin.transport';
 
 /**
  * Persona Router 插件配置。
@@ -86,9 +90,9 @@ export function createPersonaRouterPlugin(): BuiltinPluginDefinition {
       'chat:before-model': async (payload: JsonValue, context) => {
         const hookPayload = asChatBeforeModelPayload(payload);
         const config = (await context.host.getConfig()) as PersonaRouterPluginConfig;
-        const latestUserText = findLatestUserText(hookPayload.request.messages);
-        const targetPersonaId = sanitizeText(config.targetPersonaId);
-        const switchKeyword = sanitizeText(config.switchKeyword);
+        const latestUserText = readLatestUserTextFromMessages(hookPayload.request.messages);
+        const targetPersonaId = sanitizeOptionalText(config.targetPersonaId);
+        const switchKeyword = sanitizeOptionalText(config.switchKeyword);
         if (!targetPersonaId || !switchKeyword || !latestUserText.includes(switchKeyword)) {
           return toJsonValue({
             action: 'pass',
@@ -104,7 +108,8 @@ export function createPersonaRouterPlugin(): BuiltinPluginDefinition {
 
         const targetPersona = (await context.host.getPersona(targetPersonaId)) as PersonaSummary;
         const activatedPersona = (await context.host.activatePersona(targetPersonaId)) as PersonaSummary;
-        const prompt = sanitizeText(activatedPersona.prompt) || sanitizeText(targetPersona.prompt);
+        const prompt = sanitizeOptionalText(activatedPersona.prompt)
+          || sanitizeOptionalText(targetPersona.prompt);
         if (!prompt) {
           return toJsonValue({
             action: 'pass',
@@ -118,47 +123,4 @@ export function createPersonaRouterPlugin(): BuiltinPluginDefinition {
       },
     },
   };
-}
-
-/**
- * 提取最近一条用户纯文本内容。
- * @param messages 当前请求消息列表
- * @returns 最近一条用户消息的纯文本
- */
-function findLatestUserText(
-  messages: Array<{
-    role: 'user' | 'assistant' | 'system' | 'tool';
-    content: string | Array<{ type: string; text?: string }>;
-  }>,
-): string {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== 'user') {
-      continue;
-    }
-
-    if (typeof message.content === 'string') {
-      return message.content.trim();
-    }
-
-    const text = message.content
-      .filter((part) => part.type === 'text')
-      .map((part) => part.text ?? '')
-      .join('\n')
-      .trim();
-    if (text) {
-      return text;
-    }
-  }
-
-  return '';
-}
-
-/**
- * 清洗配置输入中的文本。
- * @param value 原始文本
- * @returns 清洗后的文本
- */
-function sanitizeText(value?: string): string {
-  return (value ?? '').trim();
 }

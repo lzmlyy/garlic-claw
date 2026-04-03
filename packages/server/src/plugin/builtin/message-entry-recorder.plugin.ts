@@ -1,10 +1,10 @@
+import { readPluginHookPayload } from '@garlic-claw/plugin-sdk';
 import type {
   ChatWaitingModelHookPayload,
   MessageReceivedHookPayload,
 } from '@garlic-claw/shared';
 import type { JsonObject } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
-import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 收到消息阶段摘要。
@@ -74,7 +74,7 @@ export function createMessageEntryRecorderPlugin(): BuiltinPluginDefinition {
     },
     hooks: {
       'message:received': async (payload, { host }) => {
-        const received = readBuiltinHookPayload<MessageReceivedHookPayload>(payload);
+        const received = readPluginHookPayload<MessageReceivedHookPayload>(payload);
         const summary = buildMessageReceivedSummary(received);
 
         await host.setStorage('message.received.last-entry', summary);
@@ -90,7 +90,7 @@ export function createMessageEntryRecorderPlugin(): BuiltinPluginDefinition {
         };
       },
       'chat:waiting-model': async (payload, { host }) => {
-        const waiting = readBuiltinHookPayload<ChatWaitingModelHookPayload>(payload);
+        const waiting = readPluginHookPayload<ChatWaitingModelHookPayload>(payload);
         const summary = buildWaitingModelSummary(waiting);
 
         await host.setStorage('message.waiting.last-model-request', summary);

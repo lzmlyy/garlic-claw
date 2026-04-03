@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import type {
   ChatMessagePart,
@@ -42,6 +44,7 @@ export class ChatMessagePluginTargetService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chatService: ChatService,
+    @Inject(forwardRef(() => PluginRuntimeService))
     private readonly pluginRuntime: PluginRuntimeService,
   ) {}
 

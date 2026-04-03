@@ -1,3 +1,4 @@
+import { readRequiredStringParam } from '@garlic-claw/plugin-sdk';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -74,7 +75,7 @@ export function createCoreToolsPlugin(): BuiltinPluginDefinition {
        * @returns 计算结果或错误信息
        */
       calculate: async (params: JsonObject): Promise<JsonValue> => {
-        const expression = readRequiredString(params, 'expression');
+        const expression = readRequiredStringParam(params, 'expression');
         if (!/^[\d\s+\-*/().]+$/.test(expression)) {
           return {
             error: '无效的表达式。只允许数字和 +, -, *, /, (, )。',
@@ -96,19 +97,4 @@ export function createCoreToolsPlugin(): BuiltinPluginDefinition {
       },
     },
   };
-}
-
-/**
- * 读取必填字符串字段。
- * @param params JSON 参数对象
- * @param key 字段名
- * @returns 对应字符串值
- */
-function readRequiredString(params: JsonObject, key: string): string {
-  const value = params[key];
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`${key} 必填`);
-  }
-
-  return value;
 }

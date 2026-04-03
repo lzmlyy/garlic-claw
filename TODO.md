@@ -136,12 +136,26 @@
   - AI provider runtime 已收敛到 `openai / anthropic / gemini` 三个协议族，`official / compatible / format` 等历史命名已基本清空
   - `builtin` 作者侧的 Host facade / param builder / host type 已开始从 `server` 外移到 `plugin-sdk` 共用导出
   - builtin 示例插件与 loader 已不再从 `builtin-plugin.transport.ts` 读取 definition type，参考实现继续降低对 transport 实现文件的编译期耦合
-  - `builtin-plugin.transport.ts` 现在已直接复用 SDK facade；server 侧两份薄壳 helper 与对应重复 spec 已删除
+  - builtin Hook payload reader 与 `chat:before-model` 结果 helper 已进一步外移到 `plugin-sdk`
+  - builtin 示例插件已不再从 `builtin-plugin.transport.ts` 读取作者侧 helper，`builtin-hook-payload.helpers.ts` 已删除
+  - `builtin-plugin.transport.ts` 现在已直接复用 SDK facade 与通用作者 transport executor；server 侧两份薄壳 helper 与对应重复 spec 已删除
+  - builtin 插件里重复的最近用户消息提取、可选文本清洗、逗号分隔工具名解析，已进一步外移到 `plugin-sdk`
+  - builtin 插件里重复的 `JsonValue -> object` 读取器，也已进一步外移到 `plugin-sdk`
+  - builtin 工具插件里重复的字符串/对象参数读取器，也已进一步外移到 `plugin-sdk`
+  - builtin 插件里重复的会话摘要/消息列表/文本生成结果/记忆检索结果读取器，已进一步外移到 `plugin-sdk`
+  - builtin `memory-tools` 的 save 结果 ID reader 与 `tool-audit` 的 JSON 类型摘要，也已进一步外移到 `plugin-sdk`
+  - builtin 子代理委派里的 prompt 读取、maxSteps 归一化、回写 flag 读取、执行摘要裁剪，已进一步外移到 `plugin-sdk`
+  - builtin 自动化工具插件里的 `createAutomation` 参数解析器，已进一步外移到 `plugin-sdk`
+  - builtin `provider-router` 里的工具白名单裁剪与顺序比较 helper，已进一步外移到 `plugin-sdk`
+  - `chat-message-orchestration.service.ts` 已删掉一份本地工具白名单裁剪 helper，改直接复用 SDK 导出
+  - `plugin-subagent-task-request.helpers.ts` 里重复的 `normalizePositiveInteger(...)` 已删回现有 validation helper
+  - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
+  - `smoke:http` 暴露的 chat/plugin 循环注入缺口已补齐，当前后端启动烟测重新通过
   - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
 
 ## 当前基线
 
-- `builtin-plugin.transport.ts`: `1069 -> 246`
+- `builtin-plugin.transport.ts`: `1069 -> 175`
 - `plugin-host.service.ts`: `1000+ -> 126`
 - `plugin-runtime.service.ts`: `4287 -> 684`
 - `plugin-runtime-input.helpers.ts`: `362 -> 5`
@@ -170,7 +184,19 @@
 - [x] 本轮已让 `/plugins/:name/scopes` 只保留会话级覆盖，不再写私有 `defaultEnabled`
 - [x] 本轮已把 builtin Host facade / param builder / host type 的重复作者侧语法糖收口到 `plugin-sdk`
 - [x] 本轮已把 builtin 示例插件和 loader 的 definition type import 从 transport 实现文件解耦
+- [x] 本轮已把 builtin Hook payload reader / `chat:before-model` 结果 helper 外移到 `plugin-sdk`
 - [x] 本轮已删除 server 侧两份 builtin Host helper 薄壳与对应重复 spec，`builtin-plugin.transport.ts` 改为直接复用 SDK facade
+- [x] 本轮已让 builtin 示例插件不再 import transport 实现 helper，`builtin-hook-payload.helpers.ts` 已删除
+- [x] 本轮已把 builtin `tool / hook / route` 执行壳与治理动作枚举收口到 `plugin-sdk` 的通用作者 transport executor
+- [x] 本轮已把 builtin 插件中重复的 message/config 作者侧小工具收口到 `plugin-sdk`
+- [x] 本轮已把 builtin 插件中重复的 `readJsonObjectValue(...)` 收口到 `plugin-sdk`
+- [x] 本轮已把 builtin 工具插件中重复的字符串/对象参数读取器收口到 `plugin-sdk`
+- [x] 本轮已把 builtin 会话/消息/文本生成/记忆结果读取器收口到 `plugin-sdk`
+- [x] 本轮已把 builtin 子代理委派里的作者侧值读取与执行摘要 helper 收口到 `plugin-sdk`
+- [x] 本轮已把 builtin 自动化工具插件的 `createAutomation` 参数解析器收口到 `plugin-sdk`
+- [x] 本轮已把 builtin `provider-router` 的工具白名单 helper 收口到 `plugin-sdk`
+- [x] 本轮已把 `plugin-subagent-task-request.helpers.ts` 里的重复 `normalizePositiveInteger(...)` 并回现有 validation helper
+- [x] 本轮已删掉 `builtin-plugin.types.ts` 里无人消费的 builtin 别名层，并让治理 handler 直接复用 SDK type
 - [x] 这一次切片已确认满足“core 净减少、复杂度外移到 SDK”：
   - `git diff --numstat` 显示 `packages/server/src/plugin/builtin/*host*` 与 `builtin-plugin.types.ts` 合计净减 `557` 行
   - 同一轮 `packages/plugin-sdk/src/index.ts` 净增 `70` 行，用于承接共用 facade / builder 导出

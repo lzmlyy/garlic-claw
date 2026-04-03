@@ -1,4 +1,4 @@
-import type { JsonValue } from '../../common/types/json-value';
+import { readConversationSummary } from '@garlic-claw/plugin-sdk';
 import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -72,19 +72,4 @@ export function createRouteInspectorPlugin(): BuiltinPluginDefinition {
       },
     },
   };
-}
-
-function readConversationSummary(value: JsonValue): RouteInspectorConversationSummary {
-  if (!isJsonObjectValue(value)) {
-    return {};
-  }
-
-  return {
-    ...(typeof value.id === 'string' ? { id: value.id } : {}),
-    ...(typeof value.title === 'string' ? { title: value.title } : {}),
-  };
-}
-
-function isJsonObjectValue(value: JsonValue): value is Record<string, JsonValue> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

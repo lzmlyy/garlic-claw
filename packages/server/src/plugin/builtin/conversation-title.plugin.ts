@@ -1,15 +1,11 @@
+import {
+  readConversationMessages,
+  readConversationSummary,
+  readJsonObjectValue,
+  readTextGenerationResult,
+} from '@garlic-claw/plugin-sdk';
 import type { JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
-
-/**
- * 会话标题插件使用的最小会话摘要。
- */
-interface ConversationSummary {
-  /** 会话 ID。 */
-  id?: string;
-  /** 当前标题。 */
-  title?: string;
-}
 
 /**
  * 会话标题插件的配置。
@@ -96,7 +92,7 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const generated = readGeneratedTitleResult(await context.host.generateText({
+        const generated = readTextGenerationResult(await context.host.generateText({
           system:
             '你是一个对话标题生成器。请基于给定对话生成一个简短、准确、自然的中文标题。',
           prompt,
@@ -212,60 +208,4 @@ function readConversationTitleConfig(value: JsonValue): ConversationTitlePluginC
       ? { maxMessages: object.maxMessages }
       : {}),
   };
-}
-
-function readConversationSummary(value: JsonValue): ConversationSummary {
-  const object = readJsonObjectValue(value);
-  if (!object) {
-    return {};
-  }
-
-  return {
-    ...(typeof object.id === 'string' ? { id: object.id } : {}),
-    ...(typeof object.title === 'string' ? { title: object.title } : {}),
-  };
-}
-
-function readConversationMessages(
-  value: JsonValue,
-): Array<{
-  role?: string;
-  content?: string;
-}> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((entry) => {
-    const object = readJsonObjectValue(entry);
-    if (!object) {
-      return [];
-    }
-
-    return [{
-      ...(typeof object.role === 'string' ? { role: object.role } : {}),
-      ...(typeof object.content === 'string' ? { content: object.content } : {}),
-    }];
-  });
-}
-
-function readGeneratedTitleResult(value: JsonValue): { text?: string } {
-  const object = readJsonObjectValue(value);
-  if (!object || typeof object.text !== 'string') {
-    return {};
-  }
-
-  return {
-    text: object.text,
-  };
-}
-
-function readJsonObjectValue(
-  value: JsonValue,
-): Record<string, JsonValue> | null {
-  return typeof value === 'object'
-    && value !== null
-    && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value))
-    : null;
 }

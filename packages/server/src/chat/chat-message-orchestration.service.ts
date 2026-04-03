@@ -3,6 +3,7 @@ import {
   Injectable,
   forwardRef,
 } from '@nestjs/common';
+import { filterAllowedToolNames as filterAuthorAllowedToolNames } from '@garlic-claw/plugin-sdk';
 import type {
   ChatBeforeModelRequest,
   ChatMessagePart,
@@ -189,14 +190,16 @@ export class ChatMessageOrchestrationService {
         hookResult.request.providerId,
         hookResult.request.modelId,
       ),
-      buildToolSet: ({ context, allowedToolNames }) =>
-        toolSelection.buildToolSet({
+      buildToolSet: ({ context, allowedToolNames }) => {
+        const availableToolNames = availableTools.map((tool) => tool.name);
+
+        return toolSelection.buildToolSet({
           context,
-          allowedToolNames: filterAllowedToolNames(
-            availableTools.map((tool) => tool.name),
-            allowedToolNames,
-          ),
-        }),
+          allowedToolNames:
+            filterAuthorAllowedToolNames(allowedToolNames, availableToolNames)
+            ?? availableToolNames,
+        });
+      },
     };
   }
 
@@ -248,16 +251,4 @@ function filterAvailableTools(
     }
     return true;
   });
-}
-
-function filterAllowedToolNames(
-  availableToolNames: string[],
-  requestedToolNames?: string[],
-): string[] | undefined {
-  if (!requestedToolNames) {
-    return availableToolNames;
-  }
-
-  const availableSet = new Set(availableToolNames);
-  return requestedToolNames.filter((toolName) => availableSet.has(toolName));
 }

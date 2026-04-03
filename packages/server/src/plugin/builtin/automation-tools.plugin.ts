@@ -1,7 +1,7 @@
-import type {
-  ActionConfig,
-  TriggerConfig,
-} from '@garlic-claw/shared';
+import {
+  readPluginCreateAutomationParams,
+  readRequiredStringParam,
+} from '@garlic-claw/plugin-sdk';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
@@ -111,23 +111,9 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
         params: JsonObject,
         context,
       ): Promise<JsonValue> => {
-        const triggerType = readTriggerType(params);
-        const automation = await context.host.createAutomation({
-          name: readRequiredString(params, 'name'),
-           trigger: {
-             type: triggerType,
-              ...(triggerType === 'cron'
-                ? {
-                    cron: readRequiredString(params, 'cronInterval'),
-                  }
-                : triggerType === 'event'
-                  ? {
-                      event: readRequiredString(params, 'eventName'),
-                    }
-                  : {}),
-            },
-            actions: readAutomationActions(params),
-          });
+        const automation = await context.host.createAutomation(
+          readPluginCreateAutomationParams(params),
+        );
 
         return {
           created: true,
@@ -167,7 +153,7 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
         params: JsonObject,
         context,
       ): Promise<JsonValue> =>
-        toJsonValue(await context.host.emitAutomationEvent(readRequiredString(params, 'event'))),
+        toJsonValue(await context.host.emitAutomationEvent(readRequiredStringParam(params, 'event'))),
 
       /**
        * 切换一条自动化规则的启用状态。
@@ -180,7 +166,7 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
         context,
       ): Promise<JsonValue> => {
         const result = await context.host.toggleAutomation(
-          readRequiredString(params, 'automationId'),
+          readRequiredStringParam(params, 'automationId'),
         );
 
         return result ?? { error: '未找到自动化' };
@@ -197,167 +183,11 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
         context,
       ): Promise<JsonValue> => {
         const result = await context.host.runAutomation(
-          readRequiredString(params, 'automationId'),
+          readRequiredStringParam(params, 'automationId'),
         );
 
         return result ?? { error: '未找到自动化或已禁用' };
       },
     },
   };
-}
-
-/**
- * 读取必填字符串参数。
- * @param params JSON 参数对象
- * @param key 字段名
- * @returns 对应字符串值
- */
-function readRequiredString(params: JsonObject, key: string): string {
-  const value = params[key];
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`${key} 必填`);
-  }
-
-  return value;
-}
-
-/**
- * 读取可选字符串参数。
- * @param params JSON 参数对象
- * @param key 字段名
- * @returns 字符串值；缺失时返回 null
- */
-function readOptionalString(params: JsonObject, key: string): string | null {
-  const value = params[key];
-  if (value === undefined || value === null) {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    throw new Error(`${key} 必须是字符串`);
-  }
-
-  return value;
-}
-
-/**
- * 读取可选对象参数。
- * @param params JSON 参数对象
- * @param key 字段名
- * @returns 对应对象；缺失时返回 undefined
- */
-function readOptionalObject(
-  params: JsonObject,
-  key: string,
-): JsonObject | undefined {
-  const value = params[key];
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${key} 必须是对象`);
-  }
-
-  return value;
-}
-
-/**
- * 读取触发类型。
- * @param params JSON 参数对象
- * @returns 合法的自动化触发类型
- */
-function readTriggerType(params: JsonObject): TriggerConfig['type'] {
-  const triggerType = readRequiredString(params, 'triggerType');
-  if (
-    triggerType !== 'cron'
-    && triggerType !== 'manual'
-    && triggerType !== 'event'
-  ) {
-    throw new Error('triggerType 必须是 cron/manual/event');
-  }
-
-  return triggerType;
-}
-
-/**
- * 读取自动化动作列表。
- * @param params JSON 参数对象
- * @returns 已校验的动作数组
- */
-function readAutomationActions(params: JsonObject): ActionConfig[] {
-  const value = params.actions;
-  if (!Array.isArray(value)) {
-    throw new Error('actions 必须是数组');
-  }
-
-  return value.map((action, index) => readAutomationAction(action, index));
-}
-
-/**
- * 读取单条自动化动作。
- * @param value 原始动作值
- * @param index 当前动作索引
- * @returns 已校验的动作配置
- */
-function readAutomationAction(
-  value: JsonValue,
-  index: number,
-): ActionConfig {
-  const action = readJsonObjectValue(value, `actions[${index}]`);
-  const type = readRequiredString(action, 'type');
-  if (type !== 'device_command' && type !== 'ai_message') {
-    throw new Error(`actions[${index}].type 不合法`);
-  }
-
-  if (type === 'device_command') {
-    return {
-      type,
-      plugin: readRequiredString(action, 'plugin'),
-      capability: readRequiredString(action, 'capability'),
-      params: readOptionalObject(action, 'params'),
-    };
-  }
-
-  return {
-    type,
-    message: readOptionalString(action, 'message') ?? undefined,
-    target: readOptionalActionTarget(action, `actions[${index}]`),
-  };
-}
-
-/**
- * 读取 AI 消息动作目标。
- * @param params 当前动作参数
- * @param path 当前字段路径
- * @returns 消息目标；缺失时返回 undefined
- */
-function readOptionalActionTarget(
-  params: JsonObject,
-  path: string,
-): ActionConfig['target'] | undefined {
-  const value = params.target;
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  const target = readJsonObjectValue(value, `${path}.target`);
-  const type = readRequiredString(target, 'type');
-  if (type !== 'conversation') {
-    throw new Error(`${path}.target.type 当前只支持 conversation`);
-  }
-
-  return {
-    type: 'conversation',
-    id: readRequiredString(target, 'id'),
-  };
-}
-
-function readJsonObjectValue(value: JsonValue, label: string): JsonObject {
-  if (!isJsonObjectValue(value)) {
-    throw new Error(`${label} 必须是对象`);
-  }
-
-  return value;
-}
-
-function isJsonObjectValue(value: JsonValue): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

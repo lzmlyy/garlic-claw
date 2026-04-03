@@ -4,7 +4,31 @@ const assert = require('node:assert/strict');
 const {
   DeviceType,
   PluginClient,
+  asChatBeforeModelPayload,
+  createSubagentRunSummary,
+  createPluginAuthorTransportExecutor,
   createPluginHostFacade,
+  createChatBeforeModelHookResult,
+  describeJsonValueKind,
+  filterAllowedToolNames,
+  normalizePositiveInteger,
+  parseCommaSeparatedNames,
+  readPluginCreateAutomationParams,
+  readBooleanFlag,
+  readConversationMessages,
+  readConversationSummary,
+  readMemorySearchResults,
+  readMemorySaveResultId,
+  readOptionalObjectParam,
+  readOptionalStringParam,
+  readPluginHookPayload,
+  readJsonObjectValue,
+  readLatestUserTextFromMessages,
+  readRequiredStringParam,
+  readRequiredTextValue,
+  sameToolNames,
+  readTextGenerationResult,
+  sanitizeOptionalText,
 } = require('../dist/index.js');
 
 const WS_TYPE = {
@@ -404,6 +428,487 @@ test('createPluginHostFacade normalizes host params for author-side host helpers
       },
     },
   ]);
+});
+
+test('plugin-sdk exposes generic hook payload readers and chat:before-model result helpers', () => {
+  const payload = {
+    context: {
+      source: 'chat-hook',
+      conversationId: 'conv-1',
+    },
+    request: {
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      systemPrompt: '你是 Garlic Claw',
+      messages: [
+        {
+          role: 'user',
+          content: '今天我想喝咖啡',
+        },
+      ],
+      availableTools: [],
+    },
+  };
+
+  assert.equal(readPluginHookPayload(payload), payload);
+  assert.equal(asChatBeforeModelPayload(payload), payload);
+  assert.deepEqual(
+    createChatBeforeModelHookResult(
+      payload.request.systemPrompt,
+      '已知用户记忆：\n- [preference] 用户喜欢咖啡',
+    ),
+    {
+      action: 'mutate',
+      systemPrompt: '你是 Garlic Claw\n\n已知用户记忆：\n- [preference] 用户喜欢咖啡',
+    },
+  );
+  assert.deepEqual(
+    createChatBeforeModelHookResult('', '补充系统提示词'),
+    {
+      action: 'mutate',
+      systemPrompt: '补充系统提示词',
+    },
+  );
+});
+
+test('createPluginAuthorTransportExecutor runs author definitions with shared route normalization and governance actions', async () => {
+  const seen = [];
+  const executor = createPluginAuthorTransportExecutor({
+    definition: {
+      manifest: {
+        id: 'plugin.sdk.author-transport',
+        name: 'Author Transport',
+        version: '1.0.0',
+        runtime: 'builtin',
+        permissions: [],
+        tools: [],
+      },
+      tools: {
+        echo(params, context) {
+          seen.push({
+            kind: 'tool',
+            params,
+            callContext: context.callContext,
+          });
+          return {
+            echoed: params.message,
+          };
+        },
+      },
+      hooks: {
+        'chat:before-model'(payload, context) {
+          seen.push({
+            kind: 'hook',
+            payload,
+            callContext: context.callContext,
+          });
+          return {
+            action: 'pass',
+          };
+        },
+      },
+      routes: {
+        'inspect/context': (request, context) => {
+          seen.push({
+            kind: 'route',
+            request,
+            callContext: context.callContext,
+          });
+          return {
+            status: 200,
+            body: {
+              ok: true,
+            },
+          };
+        },
+      },
+    },
+    governance: {
+      reload() {
+        seen.push({
+          kind: 'reload',
+        });
+      },
+    },
+    createExecutionContext(callContext) {
+      return {
+        callContext,
+        host: {
+          tag: 'host',
+        },
+      };
+    },
+  });
+
+  const callContext = {
+    source: 'plugin',
+    conversationId: 'conv-1',
+  };
+  const toolResult = await executor.executeTool({
+    toolName: 'echo',
+    params: {
+      message: 'hello',
+    },
+    context: callContext,
+  });
+  const hookResult = await executor.invokeHook({
+    hookName: 'chat:before-model',
+    payload: {
+      value: 1,
+    },
+    context: callContext,
+  });
+  const routeResult = await executor.invokeRoute({
+    request: {
+      path: '/inspect/context/',
+      method: 'GET',
+      headers: {},
+      query: {},
+      body: null,
+    },
+    context: callContext,
+  });
+
+  await executor.reload();
+
+  assert.deepEqual(toolResult, {
+    echoed: 'hello',
+  });
+  assert.deepEqual(hookResult, {
+    action: 'pass',
+  });
+  assert.deepEqual(routeResult, {
+    status: 200,
+    body: {
+      ok: true,
+    },
+  });
+  assert.deepEqual(executor.listSupportedActions(), [
+    'health-check',
+    'reload',
+  ]);
+  assert.equal((await executor.checkHealth()).ok, true);
+  assert.deepEqual(seen, [
+    {
+      kind: 'tool',
+      params: {
+        message: 'hello',
+      },
+      callContext,
+    },
+    {
+      kind: 'hook',
+      payload: {
+        value: 1,
+      },
+      callContext,
+    },
+    {
+      kind: 'route',
+      request: {
+        path: '/inspect/context/',
+        method: 'GET',
+        headers: {},
+        query: {},
+        body: null,
+      },
+      callContext,
+    },
+    {
+      kind: 'reload',
+    },
+  ]);
+});
+
+test('plugin-sdk exposes shared author-side text helpers for builtin plugins', () => {
+  assert.equal(
+    readLatestUserTextFromMessages([
+      {
+        role: 'system',
+        content: 'system',
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: '第一句',
+          },
+          {
+            type: 'image',
+            imageUrl: 'https://example.com/a.png',
+          },
+          {
+            type: 'text',
+            text: '第二句',
+          },
+        ],
+      },
+    ]),
+    '第一句\n第二句',
+  );
+  assert.equal(
+    readLatestUserTextFromMessages([
+      {
+        role: 'assistant',
+        content: 'assistant',
+      },
+    ]),
+    '',
+  );
+  assert.equal(sanitizeOptionalText('  hello  '), 'hello');
+  assert.equal(sanitizeOptionalText(undefined), '');
+  assert.deepEqual(parseCommaSeparatedNames(' alpha, beta ,, gamma '), [
+    'alpha',
+    'beta',
+    'gamma',
+  ]);
+  assert.equal(parseCommaSeparatedNames('   '), undefined);
+  assert.deepEqual(
+    filterAllowedToolNames(['beta', 'gamma'], ['alpha', 'beta', 'gamma']),
+    ['beta', 'gamma'],
+  );
+  assert.equal(filterAllowedToolNames(undefined, ['alpha']), null);
+  assert.equal(sameToolNames(['alpha', 'beta'], ['alpha', 'beta']), true);
+  assert.equal(sameToolNames(['alpha'], ['beta']), false);
+});
+
+test('plugin-sdk exposes shared json object readers for author-side plugins', () => {
+  assert.deepEqual(
+    readJsonObjectValue({
+      ok: true,
+      nested: {
+        value: 1,
+      },
+    }),
+    {
+      ok: true,
+      nested: {
+        value: 1,
+      },
+    },
+  );
+  assert.equal(readJsonObjectValue(['not', 'object']), null);
+  assert.equal(readJsonObjectValue(null), null);
+});
+
+test('plugin-sdk exposes shared host result readers for conversation, memory and text generation', () => {
+  assert.deepEqual(
+    readConversationSummary({
+      id: 'conversation-1',
+      title: '标题',
+    }),
+    {
+      id: 'conversation-1',
+      title: '标题',
+    },
+  );
+  assert.deepEqual(
+    readConversationMessages([
+      {
+        role: 'user',
+        content: '你好',
+      },
+      {
+        role: 'assistant',
+        content: '世界',
+      },
+      {
+        ignored: true,
+      },
+    ]),
+    [
+      {
+        role: 'user',
+        content: '你好',
+      },
+      {
+        role: 'assistant',
+        content: '世界',
+      },
+    ],
+  );
+  assert.deepEqual(
+    readTextGenerationResult({
+      text: '生成标题',
+    }),
+    {
+      text: '生成标题',
+    },
+  );
+  assert.deepEqual(
+    readMemorySearchResults([
+      {
+        content: '喝咖啡',
+        category: 'habit',
+        createdAt: '2026-04-03T00:00:00.000Z',
+      },
+      {
+        category: 'note',
+      },
+      null,
+    ]),
+    [
+      {
+        content: '喝咖啡',
+        category: 'habit',
+        createdAt: '2026-04-03T00:00:00.000Z',
+      },
+      {
+        category: 'note',
+      },
+    ],
+  );
+  assert.equal(
+    readMemorySaveResultId({
+      id: 'memory-1',
+      content: '喝咖啡',
+    }),
+    'memory-1',
+  );
+  assert.equal(readMemorySaveResultId(null), null);
+});
+
+test('plugin-sdk exposes json value kind summaries for author-side audit plugins', () => {
+  assert.equal(describeJsonValueKind(['alpha']), 'array');
+  assert.equal(describeJsonValueKind(null), 'null');
+  assert.equal(describeJsonValueKind({
+    ok: true,
+  }), 'object');
+  assert.equal(describeJsonValueKind('hello'), 'string');
+  assert.equal(describeJsonValueKind(false), 'boolean');
+});
+
+test('plugin-sdk exposes shared json param readers for author-side tool handlers', () => {
+  assert.equal(readRequiredStringParam({
+    name: 'alpha',
+  }, 'name'), 'alpha');
+  assert.equal(readOptionalStringParam({
+    name: 'alpha',
+  }, 'name'), 'alpha');
+  assert.equal(readOptionalStringParam({}, 'name'), null);
+  assert.deepEqual(readOptionalObjectParam({
+    nested: {
+      ok: true,
+    },
+  }, 'nested'), {
+    ok: true,
+  });
+  assert.equal(readOptionalObjectParam({}, 'nested'), undefined);
+
+  assert.throws(() => readRequiredStringParam({}, 'name'), /name 必填/);
+  assert.throws(() => readOptionalStringParam({
+    name: 1,
+  }, 'name'), /name 必须是字符串/);
+  assert.throws(() => readOptionalObjectParam({
+    nested: [],
+  }, 'nested'), /nested 必须是对象/);
+});
+
+test('plugin-sdk exposes shared author-side value readers for builtin and remote plugins', () => {
+  assert.equal(readRequiredTextValue('  hello  ', 'prompt'), 'hello');
+  assert.equal(normalizePositiveInteger(4.8, 2), 4);
+  assert.equal(normalizePositiveInteger(undefined, 2), 2);
+  assert.equal(readBooleanFlag(true, false), true);
+  assert.equal(readBooleanFlag('invalid', true), true);
+  assert.deepEqual(
+    createSubagentRunSummary({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      text: 'summary',
+      toolCalls: [],
+      toolResults: [],
+      finishReason: 'stop',
+    }),
+    {
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      text: 'summary',
+      toolCalls: [],
+      toolResults: [],
+      finishReason: 'stop',
+    },
+  );
+
+  assert.throws(() => readRequiredTextValue('', 'prompt'), /prompt 必须是非空字符串/);
+});
+
+test('plugin-sdk exposes shared automation tool param readers for author-side plugins', () => {
+  assert.deepEqual(
+    readPluginCreateAutomationParams({
+      name: '咖啡提醒',
+      triggerType: 'cron',
+      cronInterval: '5m',
+      actions: [
+        {
+          type: 'device_command',
+          plugin: 'builtin.memory-tools',
+          capability: 'save_memory',
+          params: {
+            category: 'habit',
+          },
+        },
+        {
+          type: 'ai_message',
+          message: '提醒喝咖啡',
+          target: {
+            type: 'conversation',
+            id: 'conversation-1',
+          },
+        },
+      ],
+    }),
+    {
+      name: '咖啡提醒',
+      trigger: {
+        type: 'cron',
+        cron: '5m',
+      },
+      actions: [
+        {
+          type: 'device_command',
+          plugin: 'builtin.memory-tools',
+          capability: 'save_memory',
+          params: {
+            category: 'habit',
+          },
+        },
+        {
+          type: 'ai_message',
+          message: '提醒喝咖啡',
+          target: {
+            type: 'conversation',
+            id: 'conversation-1',
+          },
+        },
+      ],
+    },
+  );
+
+  assert.throws(
+    () => readPluginCreateAutomationParams({
+      name: '咖啡提醒',
+      triggerType: 'invalid',
+      actions: [],
+    }),
+    /triggerType 必须是 cron\/manual\/event/,
+  );
+  assert.throws(
+    () => readPluginCreateAutomationParams({
+      name: '咖啡提醒',
+      triggerType: 'cron',
+      cronInterval: '5m',
+      actions: [
+        {
+          type: 'ai_message',
+          target: {
+            type: 'user',
+          },
+        },
+      ],
+    }),
+    /actions\[0\]\.target.type 当前只支持 conversation/,
+  );
 });
 
 test('host facade exposes plugin log listing', async () => {

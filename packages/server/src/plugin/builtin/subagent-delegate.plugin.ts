@@ -1,5 +1,11 @@
-import type { PluginSubagentRunResult } from '@garlic-claw/shared';
-import type { JsonValue } from '../../common/types/json-value';
+import {
+  createSubagentRunSummary,
+  normalizePositiveInteger,
+  parseCommaSeparatedNames,
+  readBooleanFlag,
+  readRequiredTextValue,
+  sanitizeOptionalText,
+} from '@garlic-claw/plugin-sdk';
 import { toJsonValue } from '../../common/utils/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -102,14 +108,14 @@ export function createSubagentDelegatePlugin(): BuiltinPluginDefinition {
        * @returns 子代理执行摘要
        */
       delegate_summary: async (params, context) => {
-        const prompt = sanitizePrompt(params.prompt);
+        const prompt = readRequiredTextValue(params.prompt, 'delegate_summary 的 prompt');
         const config = (await context.host.getConfig()) as SubagentDelegatePluginConfig;
         const result = await context.host.runSubagent({
-          ...(sanitizeText(config.targetProviderId)
-            ? { providerId: sanitizeText(config.targetProviderId) }
+          ...(sanitizeOptionalText(config.targetProviderId)
+            ? { providerId: sanitizeOptionalText(config.targetProviderId) }
             : {}),
-          ...(sanitizeText(config.targetModelId)
-            ? { modelId: sanitizeText(config.targetModelId) }
+          ...(sanitizeOptionalText(config.targetModelId)
+            ? { modelId: sanitizeOptionalText(config.targetModelId) }
             : {}),
           messages: [
             {
@@ -122,13 +128,13 @@ export function createSubagentDelegatePlugin(): BuiltinPluginDefinition {
               ],
             },
           ],
-          ...(parseAllowedToolNames(config.allowedToolNames)
-            ? { toolNames: parseAllowedToolNames(config.allowedToolNames) as string[] }
+          ...(parseCommaSeparatedNames(config.allowedToolNames)
+            ? { toolNames: parseCommaSeparatedNames(config.allowedToolNames) as string[] }
             : {}),
-          maxSteps: normalizeMaxSteps(config.maxSteps),
+          maxSteps: normalizePositiveInteger(config.maxSteps, 4),
         });
 
-        return toDelegateSummary(result);
+        return createSubagentRunSummary(result);
       },
       /**
        * 发起一次受控的宿主侧后台子代理总结。
@@ -137,18 +143,18 @@ export function createSubagentDelegatePlugin(): BuiltinPluginDefinition {
        * @returns 已排队的后台任务摘要
        */
       delegate_summary_background: async (params, context) => {
-        const prompt = sanitizePrompt(params.prompt);
+        const prompt = readRequiredTextValue(params.prompt, 'delegate_summary 的 prompt');
         const config = (await context.host.getConfig()) as SubagentDelegatePluginConfig;
-        const shouldWriteBack = normalizeWriteBackFlag(
+        const shouldWriteBack = readBooleanFlag(
           params.writeBack,
           Boolean(context.callContext.conversationId),
         );
         const task = await context.host.startSubagentTask({
-          ...(sanitizeText(config.targetProviderId)
-            ? { providerId: sanitizeText(config.targetProviderId) }
+          ...(sanitizeOptionalText(config.targetProviderId)
+            ? { providerId: sanitizeOptionalText(config.targetProviderId) }
             : {}),
-          ...(sanitizeText(config.targetModelId)
-            ? { modelId: sanitizeText(config.targetModelId) }
+          ...(sanitizeOptionalText(config.targetModelId)
+            ? { modelId: sanitizeOptionalText(config.targetModelId) }
             : {}),
           messages: [
             {
@@ -161,10 +167,10 @@ export function createSubagentDelegatePlugin(): BuiltinPluginDefinition {
               ],
             },
           ],
-          ...(parseAllowedToolNames(config.allowedToolNames)
-            ? { toolNames: parseAllowedToolNames(config.allowedToolNames) as string[] }
+          ...(parseCommaSeparatedNames(config.allowedToolNames)
+            ? { toolNames: parseCommaSeparatedNames(config.allowedToolNames) as string[] }
             : {}),
-          maxSteps: normalizeMaxSteps(config.maxSteps),
+          maxSteps: normalizePositiveInteger(config.maxSteps, 4),
           ...(shouldWriteBack && context.callContext.conversationId
             ? {
                 writeBack: {
@@ -181,90 +187,4 @@ export function createSubagentDelegatePlugin(): BuiltinPluginDefinition {
       },
     },
   };
-}
-
-/**
- * 清洗工具输入中的提示词。
- * @param value 原始提示词
- * @returns 清洗后的提示词
- */
-function sanitizePrompt(value: JsonValue): string {
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error('delegate_summary 的 prompt 必须是非空字符串');
-  }
-
-  return value.trim();
-}
-
-/**
- * 清洗配置文本。
- * @param value 原始文本
- * @returns 清洗后的文本
- */
-function sanitizeText(value?: string): string {
-  return (value ?? '').trim();
-}
-
-/**
- * 解析工具白名单配置。
- * @param rawAllowedToolNames 原始逗号分隔字符串
- * @returns 工具名数组；未配置时返回 undefined
- */
-function parseAllowedToolNames(rawAllowedToolNames?: string): string[] | undefined {
-  const normalized = sanitizeText(rawAllowedToolNames);
-  if (!normalized) {
-    return undefined;
-  }
-
-  const toolNames = normalized
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  return toolNames.length > 0 ? toolNames : undefined;
-}
-
-/**
- * 归一化子代理最大步数。
- * @param value 原始配置值
- * @returns 正整数步数
- */
-function normalizeMaxSteps(value?: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return 4;
-  }
-
-  return Math.max(1, Math.floor(value));
-}
-
-/**
- * 归一化后台任务的回写开关。
- * @param value 原始布尔值
- * @param fallback 默认回写策略
- * @returns 是否应该回写结果
- */
-function normalizeWriteBackFlag(value: JsonValue, fallback: boolean): boolean {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-
-  return fallback;
-}
-
-/**
- * 裁剪子代理返回结果，避免把冗余字段透给上层工具调用方。
- * @param result 原始子代理结果
- * @returns 简化后的执行摘要
- */
-function toDelegateSummary(result: PluginSubagentRunResult) {
-  return toJsonValue({
-    providerId: result.providerId,
-    modelId: result.modelId,
-    text: result.text,
-    toolCalls: result.toolCalls,
-    toolResults: result.toolResults,
-    ...(result.finishReason !== undefined
-      ? { finishReason: result.finishReason }
-      : {}),
-  });
 }

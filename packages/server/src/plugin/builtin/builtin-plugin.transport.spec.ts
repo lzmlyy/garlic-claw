@@ -10,6 +10,7 @@ import { createMemoryToolsPlugin } from './memory-tools.plugin';
 import { createProviderRouterPlugin } from './provider-router.plugin';
 import { createRouteInspectorPlugin } from './route-inspector.plugin';
 import { createSubagentDelegatePlugin } from './subagent-delegate.plugin';
+import { createToolAuditPlugin } from './tool-audit.plugin';
 import {
   BuiltinPluginTransport,
   type BuiltinPluginDefinition,
@@ -152,6 +153,108 @@ describe('BuiltinPluginTransport', () => {
     ).resolves.toEqual({
       count: 0,
       memories: [],
+    });
+  });
+
+  it('records a summarized tool audit through unified storage/log host calls', async () => {
+    hostService.call.mockResolvedValue(true);
+
+    const transport = new BuiltinPluginTransport(
+      createToolAuditPlugin(),
+      hostService as never,
+    );
+
+    await expect(
+      transport.invokeHook({
+        hookName: 'tool:after-call',
+        context: {
+          source: 'chat-tool',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+        payload: {
+          context: {
+            source: 'chat-tool',
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+          },
+          source: {
+            kind: 'plugin',
+            id: 'builtin.memory-tools',
+          },
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+          tool: {
+            toolId: 'plugin:builtin.memory-tools:save_memory',
+            callName: 'save_memory',
+            name: 'save_memory',
+          },
+          params: {
+            content: '记住我喜欢喝咖啡',
+          },
+          output: {
+            saved: true,
+            id: 'memory-1',
+          },
+        },
+      }),
+    ).resolves.toEqual({
+      action: 'pass',
+    });
+
+    expect(hostService.call).toHaveBeenNthCalledWith(1, {
+      pluginId: 'builtin.tool-audit',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'storage.set',
+      params: {
+        key: 'tool.builtin.memory-tools.save_memory.last-call',
+        value: {
+          sourceKind: 'plugin',
+          sourceId: 'builtin.memory-tools',
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+          toolId: 'plugin:builtin.memory-tools:save_memory',
+          callName: 'save_memory',
+          toolName: 'save_memory',
+          callSource: 'chat-tool',
+          paramKeys: ['content'],
+          outputKind: 'object',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+      },
+    });
+    expect(hostService.call).toHaveBeenNthCalledWith(2, {
+      pluginId: 'builtin.tool-audit',
+      context: {
+        source: 'chat-tool',
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+      },
+      method: 'log.write',
+      params: {
+        level: 'info',
+        type: 'tool:observed',
+        message: '工具 builtin.memory-tools:save_memory 执行完成',
+        metadata: {
+          sourceKind: 'plugin',
+          sourceId: 'builtin.memory-tools',
+          pluginId: 'builtin.memory-tools',
+          runtimeKind: 'builtin',
+          toolId: 'plugin:builtin.memory-tools:save_memory',
+          callName: 'save_memory',
+          toolName: 'save_memory',
+          callSource: 'chat-tool',
+          paramKeys: ['content'],
+          outputKind: 'object',
+          userId: 'user-1',
+          conversationId: 'conversation-1',
+        },
+      },
     });
   });
 

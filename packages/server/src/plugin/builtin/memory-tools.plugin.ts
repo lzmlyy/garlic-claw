@@ -1,3 +1,9 @@
+import {
+  readMemorySearchResults,
+  readMemorySaveResultId,
+  readOptionalStringParam,
+  readRequiredStringParam,
+} from '@garlic-claw/plugin-sdk';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -69,14 +75,14 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
         context,
       ): Promise<JsonValue> => {
         const saved = await context.host.saveMemory({
-          content: readRequiredString(params, 'content'),
-          category: readOptionalString(params, 'category') ?? undefined,
-          keywords: readOptionalString(params, 'keywords') ?? undefined,
+          content: readRequiredStringParam(params, 'content'),
+          category: readOptionalStringParam(params, 'category') ?? undefined,
+          keywords: readOptionalStringParam(params, 'keywords') ?? undefined,
         });
 
         return {
           saved: true,
-          id: readSavedMemoryId(saved),
+          id: readMemorySaveResultId(saved),
         };
       },
 
@@ -91,7 +97,7 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
         context,
       ): Promise<JsonValue> => {
         const memories = readMemorySearchResults(await context.host.searchMemories(
-          readRequiredString(params, 'query'),
+          readRequiredStringParam(params, 'query'),
           10,
         ));
 
@@ -106,77 +112,4 @@ export function createMemoryToolsPlugin(): BuiltinPluginDefinition {
       },
     },
   };
-}
-
-/**
- * 读取必填字符串参数。
- * @param params JSON 参数对象
- * @param key 字段名
- * @returns 对应字符串值
- */
-function readRequiredString(params: JsonObject, key: string): string {
-  const value = params[key];
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`${key} 必填`);
-  }
-
-  return value;
-}
-
-/**
- * 读取可选字符串参数。
- * @param params JSON 参数对象
- * @param key 字段名
- * @returns 字符串值；缺失时返回 null
- */
-function readOptionalString(params: JsonObject, key: string): string | null {
-  const value = params[key];
-  if (value === undefined || value === null) {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    throw new Error(`${key} 必须是字符串`);
-  }
-
-  return value;
-}
-
-function readSavedMemoryId(value: JsonValue): string | null {
-  const object = readJsonObjectValue(value);
-  return object && typeof object.id === 'string' ? object.id : null;
-}
-
-function readMemorySearchResults(
-  value: JsonValue,
-): Array<{
-  content?: string;
-  category?: string;
-  createdAt?: string;
-}> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((entry) => {
-    const object = readJsonObjectValue(entry);
-    if (!object) {
-      return [];
-    }
-
-    return [{
-      ...(typeof object.content === 'string' ? { content: object.content } : {}),
-      ...(typeof object.category === 'string' ? { category: object.category } : {}),
-      ...(typeof object.createdAt === 'string' ? { createdAt: object.createdAt } : {}),
-    }];
-  });
-}
-
-function readJsonObjectValue(
-  value: JsonValue,
-): Record<string, JsonValue> | null {
-  return typeof value === 'object'
-    && value !== null
-    && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value))
-    : null;
 }

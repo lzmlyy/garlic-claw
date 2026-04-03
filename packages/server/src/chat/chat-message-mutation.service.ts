@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from './chat.service';
@@ -21,6 +21,7 @@ export class ChatMessageMutationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chatService: ChatService,
+    @Inject(forwardRef(() => PluginRuntimeService))
     private readonly pluginRuntime: PluginRuntimeService,
     private readonly chatTaskService: ChatTaskService,
   ) {}

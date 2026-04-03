@@ -1,10 +1,13 @@
-import type { JsonValue } from '../../common/types/json-value';
-import { toJsonValue } from '../../common/utils/json-value';
-import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 import {
   asChatBeforeModelPayload,
   createChatBeforeModelHookResult,
-} from './builtin-plugin.transport';
+  readJsonObjectValue,
+  readLatestUserTextFromMessages,
+  readMemorySearchResults,
+} from '@garlic-claw/plugin-sdk';
+import type { JsonValue } from '../../common/types/json-value';
+import { toJsonValue } from '../../common/utils/json-value';
+import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
 /**
  * 创建记忆上下文注入插件。
@@ -61,7 +64,7 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
        */
       'chat:before-model': async (payload: JsonValue, context) => {
         const hookPayload = asChatBeforeModelPayload(payload);
-        const latestUserText = findLatestUserText(hookPayload.request.messages);
+        const latestUserText = readLatestUserTextFromMessages(hookPayload.request.messages);
         if (!latestUserText) {
           return null;
         }
@@ -89,39 +92,6 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
   };
 }
 
-/**
- * 从聊天消息中提取最近一条用户纯文本。
- * @param messages Hook 输入中的聊天消息
- * @returns 最近一条用户文本；没有时返回空字符串
- */
-function findLatestUserText(
-  messages: Array<{
-    role: 'user' | 'assistant' | 'system' | 'tool';
-    content: string | Array<{ type: string; text?: string }>;
-  }>,
-): string {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== 'user') {
-      continue;
-    }
-    if (typeof message.content === 'string') {
-      return message.content;
-    }
-
-    const text = message.content
-      .filter((part) => part.type === 'text')
-      .map((part) => part.text ?? '')
-      .join('\n')
-      .trim();
-    if (text) {
-      return text;
-    }
-  }
-
-  return '';
-}
-
 function readMemoryContextConfig(value: JsonValue): {
   limit?: number;
   promptPrefix?: string;
@@ -135,37 +105,4 @@ function readMemoryContextConfig(value: JsonValue): {
     ...(typeof object.limit === 'number' ? { limit: object.limit } : {}),
     ...(typeof object.promptPrefix === 'string' ? { promptPrefix: object.promptPrefix } : {}),
   };
-}
-
-function readMemorySearchResults(
-  value: JsonValue,
-): Array<{
-  content?: string;
-  category?: string;
-}> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((entry) => {
-    const object = readJsonObjectValue(entry);
-    if (!object) {
-      return [];
-    }
-
-    return [{
-      ...(typeof object.content === 'string' ? { content: object.content } : {}),
-      ...(typeof object.category === 'string' ? { category: object.category } : {}),
-    }];
-  });
-}
-
-function readJsonObjectValue(
-  value: JsonValue,
-): Record<string, JsonValue> | null {
-  return typeof value === 'object'
-    && value !== null
-    && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value))
-    : null;
 }

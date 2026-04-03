@@ -1,6 +1,6 @@
+import { readPluginHookPayload } from '@garlic-claw/plugin-sdk';
 import type { PluginCronTickPayload } from '@garlic-claw/shared';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
-import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 创建默认 cron 心跳插件。
@@ -41,7 +41,7 @@ export function createCronHeartbeatPlugin(): BuiltinPluginDefinition {
     },
     hooks: {
       'cron:tick': async (payload, { host }) => {
-        const tick = readBuiltinHookPayload<PluginCronTickPayload>(payload);
+        const tick = readPluginHookPayload<PluginCronTickPayload>(payload);
         const current = await host.getStorage(`cron.${tick.job.name}.count`);
         const nextCount = typeof current === 'number' ? current + 1 : 1;
 

@@ -3,6 +3,9 @@ import {
   type AutomationEventDispatchInfo,
   type AuthPayload,
   type AutomationInfo,
+  type ChatAfterModelHookPayload,
+  type ChatBeforeModelHookPayload,
+  type ChatBeforeModelHookResult,
   type ChatMessagePart,
   type DeviceType,
     type ExecuteErrorPayload,
@@ -16,6 +19,7 @@ import {
   type MessageReceivedHookPayload,
   type MessageReceivedHookResult,
   type PluginCallContext,
+  type PluginActionName,
   type PluginEventListResult,
   type PluginEventLevel,
   type PluginEventQuery,
@@ -699,6 +703,503 @@ export interface PluginAuthorDefinition<THost = PluginHostFacade> {
   tools?: Record<string, PluginToolHandler<THost>>;
   hooks?: Partial<Record<PluginHookName, PluginHookHandler<THost>>>;
   routes?: Record<string, PluginRouteHandler<THost>>;
+}
+
+/**
+ * 将插件 Hook 负载收口为目标类型。
+ * @param payload 原始 Hook 负载
+ * @returns 收口后的 Hook 负载
+ */
+export function readPluginHookPayload<T>(payload: JsonValue): T {
+  return payload as T;
+}
+
+/**
+ * 将 JSON 负载收口为聊天模型前 Hook 载荷。
+ * @param payload 原始 JSON 负载
+ * @returns 结构化 Hook 输入
+ */
+export function asChatBeforeModelPayload(
+  payload: JsonValue,
+): ChatBeforeModelHookPayload {
+  return readPluginHookPayload<ChatBeforeModelHookPayload>(payload);
+}
+
+/**
+ * 将 JSON 负载收口为聊天模型后 Hook 载荷。
+ * @param payload 原始 JSON 负载
+ * @returns 结构化 Hook 输入
+ */
+export function asChatAfterModelPayload(
+  payload: JsonValue,
+): ChatAfterModelHookPayload {
+  return readPluginHookPayload<ChatAfterModelHookPayload>(payload);
+}
+
+/**
+ * 构造聊天模型前 Hook 返回值。
+ * @param currentSystemPrompt 当前系统提示词
+ * @param appendedSystemPrompt 要追加的系统提示词
+ * @returns Hook 返回值对象
+ */
+export function createChatBeforeModelHookResult(
+  currentSystemPrompt: string,
+  appendedSystemPrompt: string,
+): ChatBeforeModelHookResult {
+  return {
+    action: 'mutate',
+    systemPrompt: currentSystemPrompt
+      ? [currentSystemPrompt, appendedSystemPrompt].join('\n\n')
+      : appendedSystemPrompt,
+  };
+}
+
+export interface PluginAuthorTransportGovernanceHandlers {
+  reload?: () => Promise<void> | void;
+  reconnect?: () => Promise<void> | void;
+  checkHealth?: () => Promise<{ ok: boolean }> | { ok: boolean };
+}
+
+export interface PluginAuthorTransportExecutorInput<THost = PluginHostFacade> {
+  definition: PluginAuthorDefinition<THost>;
+  governance?: PluginAuthorTransportGovernanceHandlers;
+  createExecutionContext(
+    callContext: PluginCallContext,
+  ): PluginAuthorExecutionContext<THost>;
+}
+
+export interface PluginAuthorTransportExecutor {
+  executeTool(input: {
+    toolName: string;
+    params: JsonObject;
+    context: PluginCallContext;
+  }): Promise<JsonValue> | JsonValue;
+  invokeHook(input: {
+    hookName: PluginHookName;
+    payload: JsonValue;
+    context: PluginCallContext;
+  }): Promise<JsonValue | null | undefined> | JsonValue | null | undefined;
+  invokeRoute(input: {
+    request: PluginRouteRequest;
+    context: PluginCallContext;
+  }): Promise<PluginRouteResponse> | PluginRouteResponse;
+  reload(): Promise<void>;
+  reconnect(): Promise<void>;
+  checkHealth(): Promise<{ ok: boolean }>;
+  listSupportedActions(): PluginActionName[];
+}
+
+export function createPluginAuthorTransportExecutor<THost = PluginHostFacade>(
+  input: PluginAuthorTransportExecutorInput<THost>,
+): PluginAuthorTransportExecutor {
+  const pluginId = input.definition.manifest.id;
+
+  return {
+    executeTool({ toolName, params, context }) {
+      const handler = input.definition.tools?.[toolName];
+      if (!handler) {
+        throw new Error(`未知的插件工具: ${pluginId}:${toolName}`);
+      }
+
+      return handler(params, input.createExecutionContext(context));
+    },
+    invokeHook({ hookName, payload, context }) {
+      const handler = input.definition.hooks?.[hookName];
+      if (!handler) {
+        return null;
+      }
+
+      return handler(payload, input.createExecutionContext(context));
+    },
+    invokeRoute({ request, context }) {
+      const handler = input.definition.routes?.[normalizeRoutePath(request.path)];
+      if (!handler) {
+        throw new Error(`未知的插件 Route: ${pluginId}:${request.path}`);
+      }
+
+      return handler(request, input.createExecutionContext(context));
+    },
+    async reload() {
+      if (!input.governance?.reload) {
+        throw new Error(`插件 ${pluginId} 不支持治理动作 reload`);
+      }
+
+      await input.governance.reload();
+    },
+    async reconnect() {
+      if (!input.governance?.reconnect) {
+        throw new Error(`插件 ${pluginId} 不支持治理动作 reconnect`);
+      }
+
+      await input.governance.reconnect();
+    },
+    async checkHealth() {
+      if (!input.governance?.checkHealth) {
+        return {
+          ok: true,
+        };
+      }
+
+      return input.governance.checkHealth();
+    },
+    listSupportedActions() {
+      const actions: PluginActionName[] = ['health-check'];
+      if (input.governance?.reload) {
+        actions.push('reload');
+      }
+      if (input.governance?.reconnect) {
+        actions.push('reconnect');
+      }
+
+      return actions;
+    },
+  };
+}
+
+export function sanitizeOptionalText(value?: string): string {
+  return (value ?? '').trim();
+}
+
+export function parseCommaSeparatedNames(raw?: string): string[] | undefined {
+  const normalized = sanitizeOptionalText(raw);
+  if (!normalized) {
+    return undefined;
+  }
+
+  const names = normalized
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return names.length > 0 ? names : undefined;
+}
+
+export function filterAllowedToolNames(
+  allowedToolNames: string[] | undefined,
+  currentToolNames: string[],
+): string[] | null {
+  if (!allowedToolNames || allowedToolNames.length === 0) {
+    return null;
+  }
+
+  const allowed = new Set(allowedToolNames);
+  return currentToolNames.filter((toolName) => allowed.has(toolName));
+}
+
+export function sameToolNames(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((toolName, index) => toolName === right[index]);
+}
+
+export function readLatestUserTextFromMessages(
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system' | 'tool';
+    content: string | Array<{ type: string; text?: string }>;
+  }>,
+): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== 'user') {
+      continue;
+    }
+
+    if (typeof message.content === 'string') {
+      return message.content.trim();
+    }
+
+    const text = message.content
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n')
+      .trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return '';
+}
+
+export function readConversationSummary(
+  value: JsonValue,
+): {
+  id?: string;
+  title?: string;
+} {
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    return {};
+  }
+
+  return {
+    ...(typeof object.id === 'string' ? { id: object.id } : {}),
+    ...(typeof object.title === 'string' ? { title: object.title } : {}),
+  };
+}
+
+export function readConversationMessages(
+  value: JsonValue,
+): Array<{
+  role?: string;
+  content?: string;
+}> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    const object = readJsonObjectValue(entry);
+    if (!object) {
+      return [];
+    }
+
+    const message = {
+      ...(typeof object.role === 'string' ? { role: object.role } : {}),
+      ...(typeof object.content === 'string' ? { content: object.content } : {}),
+    };
+
+    return Object.keys(message).length > 0 ? [message] : [];
+  });
+}
+
+export function readTextGenerationResult(
+  value: JsonValue,
+): {
+  text?: string;
+} {
+  const object = readJsonObjectValue(value);
+  if (!object || typeof object.text !== 'string') {
+    return {};
+  }
+
+  return {
+    text: object.text,
+  };
+}
+
+export function readMemorySearchResults(
+  value: JsonValue,
+): Array<{
+  content?: string;
+  category?: string;
+  createdAt?: string;
+}> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    const object = readJsonObjectValue(entry);
+    if (!object) {
+      return [];
+    }
+
+    return [{
+      ...(typeof object.content === 'string' ? { content: object.content } : {}),
+      ...(typeof object.category === 'string' ? { category: object.category } : {}),
+      ...(typeof object.createdAt === 'string' ? { createdAt: object.createdAt } : {}),
+    }];
+  });
+}
+
+export function readMemorySaveResultId(value: JsonValue): string | null {
+  const object = readJsonObjectValue(value);
+  return object && typeof object.id === 'string' ? object.id : null;
+}
+
+export function readJsonObjectValue(
+  value: JsonValue,
+): Record<string, JsonValue> | null {
+  return isJsonObjectValue(value)
+    ? Object.fromEntries(Object.entries(value))
+    : null;
+}
+
+export function describeJsonValueKind(value: JsonValue): string {
+  if (Array.isArray(value)) {
+    return 'array';
+  }
+  if (value === null) {
+    return 'null';
+  }
+
+  return typeof value;
+}
+
+export function readRequiredStringParam(params: JsonObject, key: string): string {
+  const value = params[key];
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${key} 必填`);
+  }
+
+  return value;
+}
+
+export function readOptionalStringParam(
+  params: JsonObject,
+  key: string,
+): string | null {
+  const value = params[key];
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`${key} 必须是字符串`);
+  }
+
+  return value;
+}
+
+export function readOptionalObjectParam(
+  params: JsonObject,
+  key: string,
+): JsonObject | undefined {
+  const value = params[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    throw new Error(`${key} 必须是对象`);
+  }
+
+  return object;
+}
+
+export function readPluginCreateAutomationParams(params: JsonObject): {
+  name: string;
+  trigger: TriggerConfig;
+  actions: ActionConfig[];
+} {
+  const triggerType = readRequiredStringParam(params, 'triggerType');
+  if (
+    triggerType !== 'cron'
+    && triggerType !== 'manual'
+    && triggerType !== 'event'
+  ) {
+    throw new Error('triggerType 必须是 cron/manual/event');
+  }
+
+  return {
+    name: readRequiredStringParam(params, 'name'),
+    trigger: {
+      type: triggerType,
+      ...(triggerType === 'cron'
+        ? {
+            cron: readRequiredStringParam(params, 'cronInterval'),
+          }
+        : triggerType === 'event'
+          ? {
+              event: readRequiredStringParam(params, 'eventName'),
+            }
+          : {}),
+    },
+    actions: readPluginAutomationActionsParam(params),
+  };
+}
+
+export function readRequiredTextValue(value: JsonValue, label: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${label} 必须是非空字符串`);
+  }
+
+  return value.trim();
+}
+
+export function normalizePositiveInteger(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.floor(value));
+}
+
+export function readBooleanFlag(value: JsonValue, fallback: boolean): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  return fallback;
+}
+
+export function createSubagentRunSummary(result: PluginSubagentRunResult): JsonValue {
+  return toHostJsonValue({
+    providerId: result.providerId,
+    modelId: result.modelId,
+    text: result.text,
+    toolCalls: result.toolCalls,
+    toolResults: result.toolResults,
+    ...(result.finishReason !== undefined
+      ? { finishReason: result.finishReason }
+      : {}),
+  });
+}
+
+function readPluginAutomationActionsParam(params: JsonObject): ActionConfig[] {
+  const value = params.actions;
+  if (!Array.isArray(value)) {
+    throw new Error('actions 必须是数组');
+  }
+
+  return value.map((action, index) =>
+    readPluginAutomationAction(action, `actions[${index}]`));
+}
+
+function readPluginAutomationAction(value: JsonValue, label: string): ActionConfig {
+  const action = requireJsonObjectValue(value, label);
+  const type = readRequiredStringParam(action, 'type');
+  if (type !== 'device_command' && type !== 'ai_message') {
+    throw new Error(`${label}.type 不合法`);
+  }
+
+  if (type === 'device_command') {
+    return {
+      type,
+      plugin: readRequiredStringParam(action, 'plugin'),
+      capability: readRequiredStringParam(action, 'capability'),
+      params: readOptionalObjectParam(action, 'params'),
+    };
+  }
+
+  return {
+    type,
+    message: readOptionalStringParam(action, 'message') ?? undefined,
+    target: readPluginAutomationActionTarget(action, label),
+  };
+}
+
+function readPluginAutomationActionTarget(
+  params: JsonObject,
+  label: string,
+): ActionConfig['target'] | undefined {
+  const value = params.target;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const target = requireJsonObjectValue(value, `${label}.target`);
+  const type = readRequiredStringParam(target, 'type');
+  if (type !== 'conversation') {
+    throw new Error(`${label}.target.type 当前只支持 conversation`);
+  }
+
+  return {
+    type: 'conversation',
+    id: readRequiredStringParam(target, 'id'),
+  };
+}
+
+function requireJsonObjectValue(value: JsonValue, label: string): JsonObject {
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    throw new Error(`${label} 必须是对象`);
+  }
+
+  return object;
 }
 
 type CommandHandler = (

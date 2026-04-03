@@ -9,6 +9,7 @@ import {
   isStringRecord,
   parseUnknownJson,
 } from './plugin-subagent-task-value.helpers';
+import { normalizePositiveInteger } from './plugin-runtime-validation.helpers';
 
 export function parseTaskRequest(raw: string): PluginSubagentRequest {
   return readPluginSubagentRequest(parseUnknownJson(raw)) ?? {
@@ -45,7 +46,10 @@ function readPluginSubagentRequest(value: unknown): PluginSubagentRequest | null
     ...(typeof value.maxOutputTokens === 'number' && Number.isFinite(value.maxOutputTokens)
       ? { maxOutputTokens: value.maxOutputTokens }
       : {}),
-    maxSteps: normalizePositiveInteger(value.maxSteps, 4),
+    maxSteps: normalizePositiveInteger(
+      typeof value.maxSteps === 'number' ? value.maxSteps : undefined,
+      4,
+    ),
   };
 }
 
@@ -174,12 +178,4 @@ function isPluginInvocationSource(value: unknown): value is PluginCallContext['s
     || value === 'http-route'
     || value === 'subagent'
     || value === 'plugin';
-}
-
-function normalizePositiveInteger(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return fallback;
-  }
-
-  return Math.max(1, Math.floor(value));
 }

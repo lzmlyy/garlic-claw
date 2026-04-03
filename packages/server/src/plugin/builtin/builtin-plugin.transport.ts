@@ -1,25 +1,23 @@
-import { createPluginHostFacade } from '@garlic-claw/plugin-sdk';
+import {
+  createPluginAuthorTransportExecutor,
+  createPluginHostFacade,
+  type PluginAuthorTransportExecutor,
+  type PluginHostFacadeMethods,
+} from '@garlic-claw/plugin-sdk';
 import type {
-  ChatAfterModelHookPayload,
-  ChatBeforeModelHookPayload,
-  ChatBeforeModelHookResult,
   HostCallPayload,
-  PluginActionName,
   PluginCallContext,
   PluginHookName,
   PluginRouteRequest,
   PluginRouteResponse,
 } from '@garlic-claw/shared';
-import { BadRequestException } from '@nestjs/common';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import type { PluginTransport } from '../plugin-runtime.types';
 import type {
   BuiltinPluginDefinition,
   BuiltinPluginGovernanceHandlers,
   BuiltinPluginHostCaller,
-  BuiltinPluginHostFacade,
 } from './builtin-plugin.types';
-import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 export type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -38,11 +36,22 @@ export type { BuiltinPluginDefinition } from './builtin-plugin.types';
  * - 通过 Host API 门面访问宿主能力，而不是直接注入服务对象
  */
 export class BuiltinPluginTransport implements PluginTransport {
+  private readonly executor: PluginAuthorTransportExecutor;
+
   constructor(
     private readonly definition: BuiltinPluginDefinition,
     private readonly hostService: BuiltinPluginHostCaller,
     private readonly governance?: BuiltinPluginGovernanceHandlers,
-  ) {}
+  ) {
+    this.executor = createPluginAuthorTransportExecutor({
+      definition: this.definition,
+      governance: this.governance,
+      createExecutionContext: (context: PluginCallContext) => ({
+        callContext: context,
+        host: this.createHostFacade(context),
+      }),
+    });
+  }
 
   /**
    * 执行一个内建插件工具。
@@ -54,17 +63,7 @@ export class BuiltinPluginTransport implements PluginTransport {
     params: JsonObject;
     context: PluginCallContext;
   }): Promise<JsonValue> {
-    const handler = this.definition.tools?.[input.toolName];
-    if (!handler) {
-      throw new BadRequestException(
-        `未知的内建插件工具: ${this.definition.manifest.id}:${input.toolName}`,
-      );
-    }
-
-    return handler(input.params, {
-      callContext: input.context,
-      host: this.createHostFacade(input.context),
-    });
+    return this.executor.executeTool(input);
   }
 
   /**
@@ -77,15 +76,7 @@ export class BuiltinPluginTransport implements PluginTransport {
     context: PluginCallContext;
     payload: JsonValue;
   }): Promise<JsonValue | null | undefined> {
-    const handler = this.definition.hooks?.[input.hookName];
-    if (!handler) {
-      return null;
-    }
-
-    return handler(input.payload, {
-      callContext: input.context,
-      host: this.createHostFacade(input.context),
-    });
+    return this.executor.invokeHook(input);
   }
 
   /**
@@ -97,17 +88,7 @@ export class BuiltinPluginTransport implements PluginTransport {
     request: PluginRouteRequest;
     context: PluginCallContext;
   }): Promise<PluginRouteResponse> {
-    const handler = this.definition.routes?.[normalizeBuiltinRoutePath(input.request.path)];
-    if (!handler) {
-      throw new BadRequestException(
-        `未知的内建插件 Route: ${this.definition.manifest.id}:${input.request.path}`,
-      );
-    }
-
-    return handler(input.request, {
-      callContext: input.context,
-      host: this.createHostFacade(input.context),
-    });
+    return this.executor.invokeRoute(input);
   }
 
   /**
@@ -115,13 +96,7 @@ export class BuiltinPluginTransport implements PluginTransport {
    * @returns 无返回值
    */
   async reload(): Promise<void> {
-    if (!this.governance?.reload) {
-      throw new BadRequestException(
-        `插件 ${this.definition.manifest.id} 不支持治理动作 reload`,
-      );
-    }
-
-    await this.governance.reload();
+    await this.executor.reload();
   }
 
   /**
@@ -129,13 +104,7 @@ export class BuiltinPluginTransport implements PluginTransport {
    * @returns 无返回值
    */
   async reconnect(): Promise<void> {
-    if (!this.governance?.reconnect) {
-      throw new BadRequestException(
-        `插件 ${this.definition.manifest.id} 不支持治理动作 reconnect`,
-      );
-    }
-
-    await this.governance.reconnect();
+    await this.executor.reconnect();
   }
 
   /**
@@ -143,29 +112,15 @@ export class BuiltinPluginTransport implements PluginTransport {
    * @returns 健康检查结果
    */
   async checkHealth(): Promise<{ ok: boolean }> {
-    if (!this.governance?.checkHealth) {
-      return {
-        ok: true,
-      };
-    }
-
-    return this.governance.checkHealth();
+    return this.executor.checkHealth();
   }
 
   /**
    * 返回当前内建插件真实支持的治理动作。
    * @returns 治理动作列表
    */
-  listSupportedActions(): PluginActionName[] {
-    const actions: PluginActionName[] = ['health-check'];
-    if (this.governance?.reload) {
-      actions.push('reload');
-    }
-    if (this.governance?.reconnect) {
-      actions.push('reconnect');
-    }
-
-    return actions;
+  listSupportedActions() {
+    return this.executor.listSupportedActions();
   }
 
   /**
@@ -208,7 +163,7 @@ export class BuiltinPluginTransport implements PluginTransport {
    * @param context 调用上下文
    * @returns 带便捷方法的 Host API 门面
    */
-  private createHostFacade(context: PluginCallContext): BuiltinPluginHostFacade {
+  private createHostFacade(context: PluginCallContext): PluginHostFacadeMethods {
     return createPluginHostFacade({
       call: (method, params) => this.invokeHost(context, method, params),
       callHost: <T>(
@@ -217,53 +172,4 @@ export class BuiltinPluginTransport implements PluginTransport {
       ) => this.callHost<T>(context, method, params),
     });
   }
-}
-
-/**
- * 将 JSON 负载收敛为聊天模型前 Hook 载荷。
- * @param payload 原始 JSON 负载
- * @returns 结构化 Hook 输入
- */
-export function asChatBeforeModelPayload(
-  payload: JsonValue,
-): ChatBeforeModelHookPayload {
-  return readBuiltinHookPayload<ChatBeforeModelHookPayload>(payload);
-}
-
-/**
- * 将 JSON 负载收敛为聊天模型后 Hook 载荷。
- * @param payload 原始 JSON 负载
- * @returns 结构化 Hook 输入
- */
-export function asChatAfterModelPayload(
-  payload: JsonValue,
-): ChatAfterModelHookPayload {
-  return readBuiltinHookPayload<ChatAfterModelHookPayload>(payload);
-}
-
-/**
- * 构造聊天模型前 Hook 返回值。
- * @param currentSystemPrompt 当前系统提示词
- * @param appendedSystemPrompt 要追加的系统提示词
- * @returns Hook 返回值对象
- */
-export function createChatBeforeModelHookResult(
-  currentSystemPrompt: string,
-  appendedSystemPrompt: string,
-): ChatBeforeModelHookResult {
-  return {
-    action: 'mutate',
-    systemPrompt: currentSystemPrompt
-      ? [currentSystemPrompt, appendedSystemPrompt].join('\n\n')
-      : appendedSystemPrompt,
-  };
-}
-
-/**
- * 归一化内建插件 Route 路径键。
- * @param path 原始路径
- * @returns 去掉首尾斜杠后的路径键
- */
-function normalizeBuiltinRoutePath(path: string): string {
-  return path.trim().replace(/^\/+|\/+$/g, '');
 }

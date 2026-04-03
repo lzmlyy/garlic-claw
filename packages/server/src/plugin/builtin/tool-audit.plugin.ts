@@ -1,7 +1,10 @@
+import {
+  describeJsonValueKind,
+  readPluginHookPayload,
+} from '@garlic-claw/plugin-sdk';
 import type { ToolAfterCallHookPayload } from '@garlic-claw/shared';
-import type { JsonObject, JsonValue } from '../../common/types/json-value';
+import type { JsonObject } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
-import { readBuiltinHookPayload } from './builtin-hook-payload.helpers';
 
 /**
  * 工具调用审计摘要。
@@ -66,7 +69,7 @@ export function createToolAuditPlugin(): BuiltinPluginDefinition {
     },
     hooks: {
       'tool:after-call': async (payload, { host }) => {
-        const afterCall = readBuiltinHookPayload<ToolAfterCallHookPayload>(payload);
+        const afterCall = readPluginHookPayload<ToolAfterCallHookPayload>(payload);
         const summary = buildToolAuditSummary(afterCall);
         const storageScope = afterCall.source.kind === 'plugin'
           ? afterCall.pluginId ?? afterCall.source.id
@@ -109,26 +112,10 @@ function buildToolAuditSummary(
     toolName: payload.tool.name,
     callSource: payload.context.source,
     paramKeys: Object.keys(payload.params),
-    outputKind: describeJsonValue(payload.output),
+    outputKind: describeJsonValueKind(payload.output),
     userId: payload.context.userId ?? null,
     conversationId: payload.context.conversationId ?? null,
   };
 
   return summary;
-}
-
-/**
- * 归一化 JSON 值类型，避免把完整输出直接灌进审计摘要。
- * @param value 任意 JSON 值
- * @returns 类型标签
- */
-function describeJsonValue(value: JsonValue): string {
-  if (Array.isArray(value)) {
-    return 'array';
-  }
-  if (value === null) {
-    return 'null';
-  }
-
-  return typeof value;
 }
