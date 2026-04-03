@@ -136,6 +136,7 @@
   - AI provider runtime 已收敛到 `openai / anthropic / gemini` 三个协议族，`official / compatible / format` 等历史命名已基本清空
   - `builtin` 作者侧的 Host facade / param builder / host type 已开始从 `server` 外移到 `plugin-sdk` 共用导出
   - builtin 示例插件与 loader 已不再从 `builtin-plugin.transport.ts` 读取 definition type，参考实现继续降低对 transport 实现文件的编译期耦合
+  - `builtin-plugin.transport.ts` 现在已直接复用 SDK facade；server 侧两份薄壳 helper 与对应重复 spec 已删除
   - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
 
 ## 当前基线
@@ -153,8 +154,8 @@
 - `chat-message-orchestration.service.ts`: `359 -> 242`
 - `chat-task.service.ts`: `443 -> 379`
 - `config-manager.loader.ts`: `426 -> 392`
-- `builtin-plugin-host-facade.helpers.ts`: `255 -> 24`
-- `builtin-plugin-host-params.helpers.ts`: `200 -> 18`
+- `builtin-plugin-host-facade.helpers.ts`: `255 -> 0`（已删）
+- `builtin-plugin-host-params.helpers.ts`: `200 -> 0`（已删）
 - `builtin-plugin.types.ts`: `215 -> 104`
 
 ## 当前下一步
@@ -169,6 +170,7 @@
 - [x] 本轮已让 `/plugins/:name/scopes` 只保留会话级覆盖，不再写私有 `defaultEnabled`
 - [x] 本轮已把 builtin Host facade / param builder / host type 的重复作者侧语法糖收口到 `plugin-sdk`
 - [x] 本轮已把 builtin 示例插件和 loader 的 definition type import 从 transport 实现文件解耦
+- [x] 本轮已删除 server 侧两份 builtin Host helper 薄壳与对应重复 spec，`builtin-plugin.transport.ts` 改为直接复用 SDK facade
 - [x] 这一次切片已确认满足“core 净减少、复杂度外移到 SDK”：
   - `git diff --numstat` 显示 `packages/server/src/plugin/builtin/*host*` 与 `builtin-plugin.types.ts` 合计净减 `557` 行
   - 同一轮 `packages/plugin-sdk/src/index.ts` 净增 `70` 行，用于承接共用 facade / builder 导出

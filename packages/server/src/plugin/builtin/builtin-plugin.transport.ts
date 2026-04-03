@@ -1,3 +1,4 @@
+import { createPluginHostFacade } from '@garlic-claw/plugin-sdk';
 import type {
   ChatAfterModelHookPayload,
   ChatBeforeModelHookPayload,
@@ -12,7 +13,6 @@ import type {
 import { BadRequestException } from '@nestjs/common';
 import type { JsonObject, JsonValue } from '../../common/types/json-value';
 import type { PluginTransport } from '../plugin-runtime.types';
-import { createBuiltinPluginHostFacade } from './builtin-plugin-host-facade.helpers';
 import type {
   BuiltinPluginDefinition,
   BuiltinPluginGovernanceHandlers,
@@ -209,7 +209,7 @@ export class BuiltinPluginTransport implements PluginTransport {
    * @returns 带便捷方法的 Host API 门面
    */
   private createHostFacade(context: PluginCallContext): BuiltinPluginHostFacade {
-    return createBuiltinPluginHostFacade({
+    return createPluginHostFacade({
       call: (method, params) => this.invokeHost(context, method, params),
       callHost: <T>(
         method: HostCallPayload['method'],
