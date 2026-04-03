@@ -1,9 +1,6 @@
 import type { ChatRuntimeMessage } from './chat-message-session';
 import type { SendMessagePartDto } from './dto/chat.dto';
-import {
-  restoreModelMessageContent,
-  type UserMessageInput,
-} from './message-parts';
+import { restoreModelMessageContent, type UserMessageInput } from './message-parts';
 import { DEFAULT_PERSONA_PROMPT } from '../persona/default-persona';
 import { ToolRegistryService } from '../tool/tool-registry.service';
 
@@ -111,14 +108,7 @@ export async function buildChatToolSet(params: {
   }
 
   return params.toolRegistry.buildToolSet({
-    context: {
-      userId: params.userId,
-      conversationId: params.conversationId,
-      source: 'chat-tool',
-      activeProviderId: params.activeProviderId,
-      activeModelId: params.activeModelId,
-      activePersonaId: params.activePersonaId,
-    },
+    context: createChatToolContext(params),
     allowedToolNames: params.allowedToolNames,
   });
 }
@@ -141,15 +131,25 @@ export async function listChatAvailableTools(params: {
   activePersonaId?: string;
 }) {
   return params.toolRegistry.listAvailableToolSummaries({
-    context: {
-      userId: params.userId,
-      conversationId: params.conversationId,
-      source: 'chat-tool',
-      activeProviderId: params.activeProviderId,
-      activeModelId: params.activeModelId,
-      activePersonaId: params.activePersonaId,
-    },
+    context: createChatToolContext(params),
   });
+}
+
+function createChatToolContext(input: {
+  userId: string;
+  conversationId: string;
+  activeProviderId: string;
+  activeModelId: string;
+  activePersonaId?: string;
+}) {
+  return {
+    userId: input.userId,
+    conversationId: input.conversationId,
+    source: 'chat-tool' as const,
+    activeProviderId: input.activeProviderId,
+    activeModelId: input.activeModelId,
+    activePersonaId: input.activePersonaId,
+  };
 }
 
 /**
@@ -157,7 +157,7 @@ export async function listChatAvailableTools(params: {
  * @param role 原始角色
  * @returns 受支持的角色
  */
-function normalizeMessageRole(role: string): ChatRuntimeMessage['role'] {
+export function normalizeMessageRole(role: string): ChatRuntimeMessage['role'] {
   return role === 'assistant' || role === 'system' || role === 'tool'
     ? role
     : 'user';

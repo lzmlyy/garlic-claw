@@ -1,28 +1,13 @@
-import {
-  Inject,
-  ForbiddenException,
-  forwardRef,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, ForbiddenException, forwardRef, Injectable, NotFoundException } from '@nestjs/common';
 import type { ConversationHostServices } from '@garlic-claw/shared';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  DEFAULT_CONVERSATION_HOST_SERVICES,
-  mergeConversationHostServices,
-  normalizeConversationHostServices,
-} from './chat-host-services';
+import { DEFAULT_CONVERSATION_HOST_SERVICES, mergeConversationHostServices, normalizeConversationHostServices } from './chat-host-services';
 import { SkillSessionService } from '../skill/skill-session.service';
 
 @Injectable()
 export class ChatService {
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => PluginRuntimeService))
-    private readonly pluginRuntime: PluginRuntimeService,
-    private readonly skillSession: SkillSessionService,
-  ) {}
+  constructor(private readonly prisma: PrismaService, @Inject(forwardRef(() => PluginRuntimeService)) private readonly pluginRuntime: PluginRuntimeService, private readonly skillSession: SkillSessionService) {}
 
   /**
    * 创建新对话。
@@ -87,21 +72,15 @@ export class ChatService {
    * @returns 带消息列表的对话详情
    */
   async getConversation(userId: string, conversationId: string) {
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
-      include: {
-        messages: { orderBy: { createdAt: 'asc' } },
-      },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation not found');
-    }
-    if (conversation.userId !== userId) {
-      throw new ForbiddenException('Not your conversation');
-    }
-
-    return conversation;
+    return this.assertOwnedConversation(
+      await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: {
+          messages: { orderBy: { createdAt: 'asc' } },
+        },
+      }),
+      userId,
+    );
   }
 
   /**
@@ -111,16 +90,12 @@ export class ChatService {
    * @returns 删除结果
    */
   async deleteConversation(userId: string, conversationId: string) {
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation not found');
-    }
-    if (conversation.userId !== userId) {
-      throw new ForbiddenException('Not your conversation');
-    }
+    this.assertOwnedConversation(
+      await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+      }),
+      userId,
+    );
 
     await this.prisma.conversation.delete({ where: { id: conversationId } });
     return { message: 'Conversation deleted' };
@@ -191,15 +166,20 @@ export class ChatService {
    * @returns 最小对话记录
    */
   private async getOwnedConversationRecord(userId: string, conversationId: string) {
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: {
-        id: true,
-        userId: true,
-        hostServicesJson: true,
-      },
-    });
+    return this.assertOwnedConversation(
+      await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: {
+          id: true,
+          userId: true,
+          hostServicesJson: true,
+        },
+      }),
+      userId,
+    );
+  }
 
+  private assertOwnedConversation<T extends { userId: string } | null>(conversation: T, userId: string): Exclude<T, null> {
     if (!conversation) {
       throw new NotFoundException('Conversation not found');
     }
@@ -207,6 +187,6 @@ export class ChatService {
       throw new ForbiddenException('Not your conversation');
     }
 
-    return conversation;
+    return conversation as Exclude<T, null>;
   }
 }

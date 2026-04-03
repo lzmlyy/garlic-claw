@@ -16,6 +16,7 @@
  * - 为聊天服务提供稳定的会话消息准备逻辑
  */
 
+import { normalizeMessageRole } from './chat-message.helpers';
 import type { ChatImagePart, ChatTextPart, PersistedChatMessage, UserMessageInput } from './message-parts';
 import {
   normalizeUserMessageInput,
@@ -82,7 +83,7 @@ export function prepareSendMessagePayload(params: {
     },
     modelMessages: [
       ...params.history.map((message) => ({
-        role: normalizeRole(message.role),
+        role: normalizeMessageRole(message.role),
         content: restoreModelMessageContent(message),
       })),
       {
@@ -95,24 +96,4 @@ export function prepareSendMessagePayload(params: {
     ],
     searchableContent: normalizedInput.content,
   };
-}
-
-/**
- * 归一化消息角色，避免异常角色进入模型调用链。
- * @param role 原始角色
- * @returns 受支持的角色
- */
-function normalizeRole(
-  role: string,
-): 'user' | 'assistant' | 'system' | 'tool' {
-  if (
-    role === 'user' ||
-    role === 'assistant' ||
-    role === 'system' ||
-    role === 'tool'
-  ) {
-    return role;
-  }
-
-  return 'user';
 }
