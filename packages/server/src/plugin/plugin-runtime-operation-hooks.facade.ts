@@ -1,3 +1,16 @@
+import {
+  applyAutomationAfterRunMutation,
+  applyAutomationBeforeRunMutation,
+  applyResponseBeforeSendMutation,
+  applyToolAfterCallMutation,
+  applyToolBeforeCallMutation,
+  cloneAutomationAfterRunPayload,
+  cloneAutomationBeforeRunPayload,
+  cloneJsonValueArray,
+  cloneResponseBeforeSendHookPayload,
+  cloneToolAfterCallHookPayload,
+  cloneToolBeforeCallHookPayload,
+} from '@garlic-claw/shared';
 import type {
   AutomationAfterRunHookPayload,
   AutomationBeforeRunHookPayload,
@@ -12,13 +25,6 @@ import type { JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import { listDispatchableHookRecords } from './plugin-runtime-dispatch.helpers';
 import {
-  applyAutomationAfterRunMutation,
-  applyAutomationBeforeRunMutation,
-  applyResponseBeforeSendMutation,
-  applyToolAfterCallMutation,
-  applyToolBeforeCallMutation,
-} from './plugin-runtime-hook-mutation.helpers';
-import {
   runMutatingHookChain,
   runShortCircuitingHookChain,
 } from './plugin-runtime-hook-runner.helpers';
@@ -29,14 +35,6 @@ import {
   normalizeToolAfterCallHookResult,
   normalizeToolBeforeCallHookResult,
 } from './plugin-runtime-hook-result.helpers';
-import {
-  cloneAutomationAfterRunPayload,
-  cloneAutomationBeforeRunPayload,
-  cloneJsonValueArray,
-  cloneResponseBeforeSendHookPayload,
-  cloneToolAfterCallHookPayload,
-  cloneToolBeforeCallHookPayload,
-} from './plugin-runtime-clone.helpers';
 
 type DispatchableOperationHookRecord = {
   manifest: import('@garlic-claw/shared').PluginManifest;

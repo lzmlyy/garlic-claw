@@ -14,7 +14,7 @@ import {
   matchesMessageCommand,
   normalizePositiveInteger,
   normalizeRoutePath,
-} from './plugin-runtime-validation.helpers';
+} from '@garlic-claw/shared';
 
 describe('plugin-runtime-validation.helpers', () => {
   it('validates json object, string array and string record values', () => {

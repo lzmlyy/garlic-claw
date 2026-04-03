@@ -14,7 +14,7 @@ import type {
   PluginSelfInfo,
 } from '@garlic-claw/shared';
 import { NotFoundException } from '@nestjs/common';
-import { normalizeRoutePath } from './plugin-runtime-validation.helpers';
+import { normalizeRoutePath } from '@garlic-claw/shared';
 
 export function buildPluginLifecycleHookInfo(input: {
   manifest: PluginManifest;

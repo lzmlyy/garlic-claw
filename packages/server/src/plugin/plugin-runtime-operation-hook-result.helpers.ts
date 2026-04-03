@@ -17,7 +17,7 @@ import {
   isActionConfigArray,
   isChatMessagePartArray,
   isJsonObjectValue,
-} from './plugin-runtime-validation.helpers';
+} from '@garlic-claw/shared';
 import {
   castValidatedHookResult,
   readHookResultObject,

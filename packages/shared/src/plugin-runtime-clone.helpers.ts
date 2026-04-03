@@ -1,10 +1,8 @@
 import type {
-  ActionConfig,
   AutomationAfterRunHookPayload,
   AutomationBeforeRunHookPayload,
   ChatAfterModelHookPayload,
   ChatBeforeModelRequest,
-  ChatMessagePart,
   MessageCreatedHookPayload,
   MessageReceivedHookPayload,
   MessageUpdatedHookPayload,
@@ -20,9 +18,11 @@ import type {
   SubagentBeforeRunHookPayload,
   ToolAfterCallHookPayload,
   ToolBeforeCallHookPayload,
-} from '@garlic-claw/shared';
-import type { JsonValue } from '../common/types/json-value';
-import { toJsonValue } from '../common/utils/json-value';
+} from './types/plugin';
+import type { ActionConfig } from './types/automation';
+import type { ChatMessagePart } from './types/chat';
+import type { JsonValue } from './types/json';
+import { toJsonValue } from './types/json';
 
 export function cloneChatBeforeModelRequest(
   request: ChatBeforeModelRequest,

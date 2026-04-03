@@ -7,7 +7,7 @@ import type {
 import {
   buildFilterRegex,
   matchesMessageCommand,
-} from './plugin-runtime-validation.helpers';
+} from '@garlic-claw/shared';
 
 export function getPluginHookPriority(hook: PluginHookDescriptor): number {
   if (typeof hook.priority !== 'number' || !Number.isFinite(hook.priority)) {

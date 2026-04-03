@@ -11,7 +11,7 @@ import {
   isChatMessagePartArray,
   isChatMessageStatus,
   isPluginLlmMessageArray,
-} from './plugin-runtime-validation.helpers';
+} from '@garlic-claw/shared';
 import {
   castValidatedHookResult,
   readHookResultObject,

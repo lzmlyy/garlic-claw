@@ -1,3 +1,9 @@
+import {
+  clonePluginSubagentToolCalls,
+  clonePluginSubagentToolResults,
+  cloneSubagentRequest,
+  hasImagePart,
+} from '@garlic-claw/shared';
 import type {
   PluginCallContext,
   PluginSubagentRequest,
@@ -14,12 +20,6 @@ import type {
 import { createStepLimit, type AiSdkToolSet } from '../ai/sdk-adapter';
 import type { ModelConfig } from '../ai/types/provider.types';
 import { toJsonValue } from '../common/utils/json-value';
-import {
-  clonePluginSubagentToolCalls,
-  clonePluginSubagentToolResults,
-  cloneSubagentRequest,
-} from './plugin-runtime-clone.helpers';
-import { hasImagePart } from './plugin-runtime-validation.helpers';
 
 type SubagentRunStreamPart = {
   type: string;

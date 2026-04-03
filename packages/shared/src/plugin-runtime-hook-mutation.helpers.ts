@@ -9,7 +9,6 @@ import type {
   ChatBeforeModelHookMutateResult,
   ChatBeforeModelRequest,
   ChatBeforeModelHookShortCircuitResult,
-  ChatMessagePart,
   MessageCreatedHookMutateResult,
   MessageCreatedHookPayload,
   MessageReceivedHookPassResult,
@@ -29,8 +28,9 @@ import type {
   ToolAfterCallHookPayload,
   ToolBeforeCallHookMutateResult,
   ToolBeforeCallHookPayload,
-} from '@garlic-claw/shared';
-import { toJsonValue } from '../common/utils/json-value';
+} from './types/plugin';
+import type { ChatMessagePart } from './types/chat';
+import { isJsonObjectValue, toJsonValue } from './types/json';
 import {
   cloneAutomationActions,
   cloneAutomationAfterRunPayload,
@@ -54,10 +54,7 @@ import {
   cloneToolBeforeCallHookPayload,
   normalizeAssistantOutput,
 } from './plugin-runtime-clone.helpers';
-import {
-  isJsonObjectValue,
-  normalizePositiveInteger,
-} from './plugin-runtime-validation.helpers';
+import { normalizePositiveInteger } from './plugin-runtime-validation';
 
 export function applyChatBeforeModelMutation(
   currentRequest: ChatBeforeModelRequest,

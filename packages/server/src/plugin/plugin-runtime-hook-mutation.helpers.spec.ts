@@ -13,7 +13,7 @@ import {
   applySubagentBeforeRunMutation,
   applyToolAfterCallMutation,
   applyToolBeforeCallMutation,
-} from './plugin-runtime-hook-mutation.helpers';
+} from '@garlic-claw/shared';
 
 describe('plugin-runtime-hook-mutation.helpers', () => {
   it('applies chat and message mutations', () => {

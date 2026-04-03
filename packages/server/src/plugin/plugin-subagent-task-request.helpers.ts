@@ -3,13 +3,13 @@ import type {
   PluginLlmMessage,
   PluginSubagentRequest,
 } from '@garlic-claw/shared';
+import { normalizePositiveInteger } from '@garlic-claw/shared';
 import {
   isJsonObjectValue,
   isStringArray,
   isStringRecord,
   parseUnknownJson,
 } from './plugin-subagent-task-value.helpers';
-import { normalizePositiveInteger } from './plugin-runtime-validation.helpers';
 
 export function parseTaskRequest(raw: string): PluginSubagentRequest {
   return readPluginSubagentRequest(parseUnknownJson(raw)) ?? {

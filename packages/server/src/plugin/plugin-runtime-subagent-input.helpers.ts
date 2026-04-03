@@ -2,8 +2,8 @@ import type {
   PluginMessageTargetRef,
   PluginSubagentRequest,
 } from '@garlic-claw/shared';
+import { normalizePositiveInteger } from '@garlic-claw/shared';
 import type { JsonObject } from '../common/types/json-value';
-import { normalizePositiveInteger } from './plugin-runtime-validation.helpers';
 import {
   readOptionalRuntimeNumber,
   readOptionalRuntimeObject,

@@ -1,3 +1,7 @@
+import {
+  cloneMessageHookInfo,
+  cloneMessageReceivedHookPayload,
+} from '@garlic-claw/shared';
 import type {
   MessageReceivedHookPayload,
   PluginCallContext,
@@ -9,10 +13,6 @@ import type {
 import type { JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import type { PluginGovernanceSnapshot } from './plugin.service';
-import {
-  cloneMessageHookInfo,
-  cloneMessageReceivedHookPayload,
-} from './plugin-runtime-clone.helpers';
 import { isRuntimeRecordEnabledForContext } from './plugin-runtime-dispatch.helpers';
 import { requireRuntimeConversationId } from './plugin-runtime-input.helpers';
 import { findManifestHookDescriptor } from './plugin-runtime-manifest.helpers';

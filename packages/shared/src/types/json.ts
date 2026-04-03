@@ -50,3 +50,41 @@ export function isStringRecord(value: unknown): value is Record<string, string> 
   const record = readUnknownObject(value);
   return !!record && Object.values(record).every((entry) => typeof entry === 'string');
 }
+
+export function toJsonValue(value: unknown): JsonValue {
+  if (
+    value === null
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => toJsonValue(entry));
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (isPlainObject(value)) {
+    const result: JsonObject = {};
+    for (const [key, entry] of Object.entries(value)) {
+      result[key] = toJsonValue(entry);
+    }
+    return result;
+  }
+
+  return String(value);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}

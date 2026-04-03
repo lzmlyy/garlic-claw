@@ -1,23 +1,11 @@
-import {
-  isJsonObjectValue as isSharedJsonObjectValue,
-  isStringRecord as isSharedStringRecord,
-} from '@garlic-claw/shared';
-import type {
-  PluginHookFilterDescriptor,
-  PluginLlmMessage,
-} from '@garlic-claw/shared';
-import type { JsonObject, JsonValue } from '../common/types/json-value';
+import { isJsonObjectValue, isStringRecord } from './types/json';
+import type { JsonValue } from './types/json';
+import type { PluginHookFilterDescriptor } from './types/plugin';
 
-export function isJsonObjectValue(value: JsonValue): value is JsonObject {
-  return isSharedJsonObjectValue(value);
-}
+export { hasImagePart, normalizePositiveInteger } from './plugin-runtime-validation';
 
 export function isStringArray(value: JsonValue | undefined): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-export function isStringRecord(value: JsonValue): value is Record<string, string> {
-  return isSharedStringRecord(value);
 }
 
 export function isChatMessageStatus(value: JsonValue): boolean {
@@ -149,22 +137,4 @@ export function matchesMessageCommand(messageText: string, command: string): boo
 
 export function normalizeRoutePath(path: string): string {
   return path.trim().replace(/^\/+|\/+$/g, '');
-}
-
-export function normalizePositiveInteger(
-  value: number | undefined,
-  fallback: number,
-): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return fallback;
-  }
-
-  return Math.max(1, Math.floor(value));
-}
-
-export function hasImagePart(messages: PluginLlmMessage[]): boolean {
-  return messages.some((message) =>
-    Array.isArray(message.content)
-    && message.content.some((part) => part.type === 'image'),
-  );
 }

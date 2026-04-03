@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '../common/types/json-value';
-import { isJsonObjectValue } from './plugin-runtime-validation.helpers';
+import { isJsonObjectValue } from '@garlic-claw/shared';
 
 export function readHookResultObject(
   result: JsonValue | null | undefined,

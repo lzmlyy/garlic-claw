@@ -1,3 +1,9 @@
+import {
+  applySubagentAfterRunMutation,
+  applySubagentBeforeRunMutation,
+  cloneSubagentAfterRunPayload,
+  cloneSubagentBeforeRunPayload,
+} from '@garlic-claw/shared';
 import type {
   PluginCallContext,
   PluginManifest,
@@ -13,10 +19,6 @@ import { ModuleRef } from '@nestjs/core';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import { toAiSdkMessages } from '../chat/sdk-message-converter';
 import { listDispatchableHookRecords } from './plugin-runtime-dispatch.helpers';
-import {
-  applySubagentAfterRunMutation,
-  applySubagentBeforeRunMutation,
-} from './plugin-runtime-hook-mutation.helpers';
 import {
   runMutatingHookChain,
   runShortCircuitingHookChain,
@@ -34,10 +36,6 @@ import {
   collectSubagentRunResult,
 } from './plugin-runtime-subagent.helpers';
 import { resolveCachedRuntimeServicePromise } from './plugin-runtime-module.helpers';
-import {
-  cloneSubagentAfterRunPayload,
-  cloneSubagentBeforeRunPayload,
-} from './plugin-runtime-clone.helpers';
 
 type DispatchableSubagentHookRecord = {
   manifest: PluginManifest;

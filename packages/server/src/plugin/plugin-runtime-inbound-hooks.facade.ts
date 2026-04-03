@@ -1,3 +1,11 @@
+import {
+  applyChatBeforeModelHookResult,
+  applyChatBeforeModelMutation,
+  applyMessageReceivedHookResult,
+  applyMessageReceivedMutation,
+  cloneChatBeforeModelRequest,
+  cloneMessageReceivedHookPayload,
+} from '@garlic-claw/shared';
 import type {
   ChatBeforeModelHookPayload,
   MessageReceivedHookPayload,
@@ -8,17 +16,7 @@ import type {
 import { Injectable } from '@nestjs/common';
 import type { JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
-import {
-  cloneChatBeforeModelRequest,
-  cloneMessageReceivedHookPayload,
-} from './plugin-runtime-clone.helpers';
 import { listDispatchableHookRecords } from './plugin-runtime-dispatch.helpers';
-import {
-  applyChatBeforeModelMutation,
-  applyChatBeforeModelHookResult,
-  applyMessageReceivedMutation,
-  applyMessageReceivedHookResult,
-} from './plugin-runtime-hook-mutation.helpers';
 import { runShortCircuitingHookChain } from './plugin-runtime-hook-runner.helpers';
 import {
   normalizeChatBeforeModelHookResult,

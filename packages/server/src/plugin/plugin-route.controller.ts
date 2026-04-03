@@ -19,7 +19,7 @@ import { toJsonValue } from '../common/utils/json-value';
 import type { PluginCallContext, PluginRouteRequest } from '@garlic-claw/shared';
 import { readUnknownObject } from './plugin-gateway-payload.helpers';
 import { PluginRuntimeService } from './plugin-runtime.service';
-import { normalizeRoutePath } from './plugin-runtime-validation.helpers';
+import { normalizeRoutePath } from '@garlic-claw/shared';
 
 const BLOCKED_PLUGIN_REQUEST_HEADERS = new Set([
   'authorization',

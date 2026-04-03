@@ -249,6 +249,8 @@
   - builtin `conversation-title / memory-context / kb-context / provider-router / persona-router / cron-heartbeat / core-tools / memory-tools / automation-tools / subagent-delegate / route-inspector` 的 full manifest 顶层继续外移后，`packages/server/src/plugin` 已继续从 `15839` 降到 `15683`，`packages/server/src` 已继续从 `31355` 降到 `31199`
   - 当前 `packages/server/src/plugin/builtin/*.plugin.ts` 实现文件里，已经不再直接手写 manifest 顶层；剩余手写 manifest 主要只在 transport spec 里做测试夹具
   - `plugin runtime` 的 Hook mutation/Host facade/gateway payload 这批适配层样板继续压缩，并把 host method/source/permission 静态契约表与通用 JSON reader/type-guard 外移到 `shared` 后，`packages/server/src/plugin` 已继续从 `15683` 降到 `15475`，`packages/server/src` 已继续从 `31199` 降到 `30991`
+  - `plugin runtime` 的 clone / hook mutation / validation 这三层纯协议 helper 已整体外移到 `shared`，`toJsonValue(...)` 也已提升到 `packages/shared/src/types/json.ts`
+  - 这次大刀后，`packages/server/src/plugin` 已继续从 `15475` 降到 `14498`，`packages/server/src` 已继续从 `30991` 降到 `29964`
   - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
   - `smoke:http` 暴露的 chat/plugin 循环注入缺口已补齐，当前后端启动烟测重新通过
   - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
@@ -256,8 +258,8 @@
 ## 最新行数快照
 
 - 2026-04-03 当前口径：
-  - `packages/server/src`: `30991`
-  - `packages/server/src/plugin`: `15475`
+  - `packages/server/src`: `29964`
+  - `packages/server/src/plugin`: `14498`
   - `packages/server/src/chat`: `3862`
   - `packages/plugin-sdk/src/index.ts`: `5063`
 
@@ -291,15 +293,17 @@
 - `plugin-runtime-subagent.facade.ts`: `243 -> 217`
 - `plugin-runtime-message-hooks.facade.ts`: `128 -> 95`
 - `plugin-runtime-inbound-hooks.facade.ts`: `198 -> 192`
-- `plugin-runtime-clone.helpers.ts`: `392 -> 387`
+- `plugin-runtime-clone.helpers.ts`: `392 -> 0`（已移至 `packages/shared/src/plugin-runtime-clone.helpers.ts`）
+- `plugin-runtime-hook-mutation.helpers.ts`: `481 -> 0`（已移至 `packages/shared/src/plugin-runtime-hook-mutation.helpers.ts`）
+- `plugin-runtime-validation.helpers.ts`: `170 -> 0`（已移至 `packages/shared/src/plugin-runtime-validation.helpers.ts`）
 - `builtin-plugin-host-facade.helpers.ts`: `255 -> 0`（已删）
 - `builtin-plugin-host-params.helpers.ts`: `200 -> 0`（已删）
 - `builtin-plugin.types.ts`: `215 -> 31`
 
 ## 当前 core 行数快照
 
-- `packages/server/src`: `31469`
-- `packages/server/src/plugin`: `15953`
+- `packages/server/src`: `29964`
+- `packages/server/src/plugin`: `14498`
 - `packages/server/src/chat`: `3862`
 - `packages/server/src/chat/chat.controller.ts`: `228`
 - `packages/server/src/chat/chat-message.helpers.ts`: `152`
@@ -334,7 +338,8 @@
 - `packages/server/src/plugin/plugin-runtime-subagent.facade.ts`: `217`
 - `packages/server/src/plugin/plugin-runtime-message-hooks.facade.ts`: `95`
 - `packages/server/src/plugin/plugin-runtime-inbound-hooks.facade.ts`: `192`
-- `packages/server/src/plugin/plugin-runtime-clone.helpers.ts`: `387`
+- `packages/server/src/plugin/plugin-runtime-session.helpers.ts`: `337`
+- `packages/server/src/plugin/plugin-runtime-transport.facade.ts`: `322`
 - `packages/server/src/plugin/plugin-host.service.ts`: `126`
 
 ## 当前下一步
@@ -368,6 +373,11 @@
 - [x] 本轮已把 builtin `provider-router / persona-router` 的 config/context reader、host result reader 与 keyword match helper 收口到 `plugin-sdk`
 - [x] 本轮已把 builtin `provider-router / persona-router / conversation-title / memory-context / kb-context` 的 manifest config fields 与默认 fallback 常量收口到 `plugin-sdk`
 - [x] 本轮已把 `plugin-subagent-task-request.helpers.ts` 里的重复 `normalizePositiveInteger(...)` 并回现有 validation helper
+- [x] 本轮已把 `plugin runtime` 的 clone / hook mutation / validation 纯协议层整体外移到 `shared`
+- [x] 这一次切片已确认满足“core 净减少、复杂度外移到 shared”：
+  - `packages/server/src` 非空生产代码：`30991 -> 29964`
+  - `packages/server/src/plugin` 非空生产代码：`15475 -> 14498`
+- [ ] 下一候选优先查看 `plugin-runtime-session.helpers.ts` 与 `plugin-runtime-transport.facade.ts`，继续判断哪些 session snapshot / route request normalization / transport protocol 纯函数还可外移到 `shared / adapter`
 - [x] 本轮已删掉 `builtin-plugin.types.ts` 里无人消费的 builtin 别名层，并让治理 handler 直接复用 SDK type
 - [x] 本轮已把 `chat-message-completion.service.ts` 的 vision fallback metadata 重复写回并回统一内部持久化入口
 - [x] 本轮已把 `chat-task.service.ts` 的 streaming/stopped 重复控制流并回统一内部流程

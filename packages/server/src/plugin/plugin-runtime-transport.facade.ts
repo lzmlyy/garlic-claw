@@ -23,7 +23,7 @@ import {
 } from './plugin-runtime-manifest.helpers';
 import { runPromiseWithTimeout } from './plugin-runtime-timeout.helpers';
 import { readRuntimeTimeoutMs } from './plugin-runtime-input.helpers';
-import { normalizeRoutePath } from './plugin-runtime-validation.helpers';
+import { normalizeRoutePath } from '@garlic-claw/shared';
 import { PluginService } from './plugin.service';
 
 type RuntimeTransportRecord = {
