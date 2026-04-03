@@ -10,6 +10,7 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
+    "ignoreDeprecations": "5.0",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

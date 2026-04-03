@@ -18,9 +18,9 @@ export class PluginCommandService {
       Promise.resolve(this.pluginRuntime.listPlugins()),
     ]);
     const runtimeByPluginId = new Map(
-      runtimePlugins.map((plugin) => [plugin.pluginId, plugin]),
+      runtimePlugins.map((plugin: RuntimePluginRecord) => [plugin.pluginId, plugin]),
     );
-    const baseCommands = persistedPlugins.flatMap((plugin) =>
+    const baseCommands = persistedPlugins.flatMap((plugin: PersistedPluginRecord) =>
       this.buildCommandInfos(plugin, runtimeByPluginId.get(plugin.name) ?? null));
     const conflicts = this.buildConflicts(baseCommands);
     const conflictTriggersByCommandId = new Map<string, string[]>();
@@ -37,11 +37,11 @@ export class PluginCommandService {
     }
 
     const commands = baseCommands
-      .map((command) => ({
+      .map((command: PluginCommandInfo) => ({
         ...command,
         conflictTriggers: dedupeStrings(conflictTriggersByCommandId.get(command.commandId) ?? []),
       }))
-      .sort((left, right) => {
+      .sort((left: PluginCommandInfo, right: PluginCommandInfo) => {
         const conflictDiff = right.conflictTriggers.length - left.conflictTriggers.length;
         if (conflictDiff !== 0) {
           return conflictDiff;
@@ -119,7 +119,7 @@ export class PluginCommandService {
     }
 
     const hooks = runtimePlugin?.manifest.hooks ?? persistedManifest.hooks ?? [];
-    return extractCommandsFromHooks(hooks).map((descriptor) => ({
+    return extractCommandsFromHooks(hooks).map((descriptor: PluginCommandDescriptor) => ({
       descriptor,
       source: 'hook-filter' as const,
     }));

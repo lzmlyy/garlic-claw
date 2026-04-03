@@ -80,9 +80,9 @@ export class AutomationService implements OnModuleDestroy {
       },
     });
 
-    return automations.map((a) => ({
+    return automations.map((a: (typeof automations)[number]) => ({
       ...this.toAutomationInfo(a),
-      logs: a.logs.map((log) => ({
+      logs: a.logs.map((log: (typeof a.logs)[number]) => ({
         id: log.id,
         status: log.status,
         result: log.result,
@@ -110,7 +110,7 @@ export class AutomationService implements OnModuleDestroy {
     }
     return {
       ...this.toAutomationInfo(automation),
-      logs: automation.logs.map((log) => ({
+      logs: automation.logs.map((log: (typeof automation.logs)[number]) => ({
         id: log.id,
         status: log.status,
         result: log.result,

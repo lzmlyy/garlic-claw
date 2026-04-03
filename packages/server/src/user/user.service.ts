@@ -3,6 +3,15 @@ import { AdminIdentityService } from '../auth/admin-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserDto, UpdateUserRoleDto } from './dto/user.dto';
 
+type UserListRecord = {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 @Injectable()
 export class UserService {
   constructor(
@@ -30,7 +39,7 @@ export class UserService {
     ]);
 
     return {
-      data: users.map((user) => this.withRuntimeRole(user)),
+      data: users.map((user: UserListRecord) => this.withRuntimeRole(user)),
       total,
       page,
       pageSize,

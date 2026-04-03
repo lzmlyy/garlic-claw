@@ -8,7 +8,17 @@ import type {
   ToolProvider,
   ToolProviderState,
   ToolProviderTool,
+  ToolSourceDescriptor,
 } from './tool.types';
+
+type PersistedPluginRecord = Awaited<ReturnType<PluginService['findAll']>>[number];
+type RuntimePluginRecord = ReturnType<PluginRuntimeService['listPlugins']>[number];
+
+interface PluginToolSourceState {
+  sources: ToolSourceDescriptor[];
+  sourceById: Map<string, ToolSourceDescriptor>;
+  pluginLabels: Map<string, string>;
+}
 
 @Injectable()
 export class PluginToolProvider implements ToolProvider {
@@ -51,15 +61,15 @@ export class PluginToolProvider implements ToolProvider {
     });
   }
 
-  private async readSourceState() {
+  private async readSourceState(): Promise<PluginToolSourceState> {
     const [persistedPlugins, runtimePlugins] = await Promise.all([
       this.pluginService.findAll(),
       Promise.resolve(this.pluginRuntime.listPlugins()),
     ]);
-    const persistedByName = new Map(
-      persistedPlugins.map((plugin) => [plugin.name, plugin]),
+    const persistedByName = new Map<string, PersistedPluginRecord>(
+      persistedPlugins.map((plugin: PersistedPluginRecord) => [plugin.name, plugin] as const),
     );
-    const sources = runtimePlugins.map((entry) => {
+    const sources: ToolSourceDescriptor[] = runtimePlugins.map((entry: RuntimePluginRecord) => {
       const persisted = persistedByName.get(entry.pluginId);
 
       return {

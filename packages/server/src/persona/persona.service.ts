@@ -15,6 +15,16 @@ import {
   DEFAULT_PERSONA_PROMPT,
 } from './default-persona';
 
+type PersonaRecord = {
+  id: string;
+  name: string;
+  prompt: string;
+  description: string | null;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 /**
  * Persona 宿主服务。
  *
@@ -74,7 +84,7 @@ export class PersonaService {
       ],
     });
 
-    return personas.map((persona) => this.toPersonaSummary(persona));
+    return personas.map((persona: PersonaRecord) => this.toPersonaSummary(persona));
   }
 
   /**

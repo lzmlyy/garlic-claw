@@ -6,6 +6,15 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_KB_ENTRIES } from './default-kb';
 
+type KbEntryRecord = {
+  id: string;
+  title: string;
+  content: string;
+  tags: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 /**
  * KB 宿主服务。
  *
@@ -48,7 +57,7 @@ export class KbService {
       take: normalizeKbLimit(limit, 20),
     });
 
-    return entries.map((entry) => this.toSummary(entry));
+    return entries.map((entry: KbEntryRecord) => this.toSummary(entry));
   }
 
   /**
@@ -99,7 +108,7 @@ export class KbService {
       take: normalizeKbLimit(limit, 5),
     });
 
-    return entries.map((entry) => this.toDetail(entry));
+    return entries.map((entry: KbEntryRecord) => this.toDetail(entry));
   }
 
   /**

@@ -17,6 +17,18 @@ import type { AuthenticatedUser } from './auth-user';
 import { AdminIdentityService } from './admin-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+type ApiKeySummaryRecord = {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  scopesJson: string;
+  lastUsedAt: Date | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 @Injectable()
 export class ApiKeyService {
   constructor(
@@ -34,7 +46,7 @@ export class ApiKeyService {
       },
     });
 
-    return rows.map((row) => this.serializeSummary(row));
+    return rows.map((row: ApiKeySummaryRecord) => this.serializeSummary(row));
   }
 
   async createKey(

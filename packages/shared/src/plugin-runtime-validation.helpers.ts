@@ -1,4 +1,4 @@
-import { isJsonObjectValue, isStringRecord } from './types/json';
+import { isJsonObjectValue } from './types/json';
 import type { JsonValue } from './types/json';
 import type { PluginHookFilterDescriptor } from './types/plugin';
 
