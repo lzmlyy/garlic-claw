@@ -11,7 +11,6 @@ import type {
   PluginScopeSettings,
   PluginStorageEntry,
 } from '@garlic-claw/shared';
-import type { Plugin as PersistedPluginRecord } from '@prisma/client';
 import {
   BadRequestException,
   Body,
@@ -37,7 +36,7 @@ import {
 } from './dto/plugin-admin.dto';
 import { PluginAdminService } from './plugin-admin.service';
 import { PluginCronService } from './plugin-cron.service';
-import { parsePluginHealthStatus } from './plugin-event.helpers';
+import { buildPluginHealthSnapshot } from './plugin-event.helpers';
 import { describePluginGovernance } from './plugin-governance-policy';
 import { parsePersistedPluginManifest } from './plugin-manifest.persistence';
 import { readNonEmptyString } from './plugin-manifest-normalize-base.helpers';
@@ -71,7 +70,17 @@ export class PluginController {
     );
     return Promise.all(plugins.map(async (p) => {
       const runtimePlugin = runtimePlugins.get(p.name);
-      const manifest = runtimePlugin?.manifest ?? buildPersistedManifest(p);
+      const manifest = runtimePlugin?.manifest ?? parsePersistedPluginManifest(
+        typeof p.manifestJson === 'string' ? p.manifestJson : null,
+        {
+          id: p.name,
+          displayName: p.displayName,
+          description: p.description,
+          version: p.version,
+          runtimeKind: p.runtimeKind,
+        },
+      );
+      const health = buildPluginHealthSnapshot({ plugin: p });
       const governance = describePluginGovernance({
         pluginId: p.name,
         runtimeKind: runtimePlugin?.runtimeKind ?? p.runtimeKind,
@@ -91,7 +100,12 @@ export class PluginController {
           ?? PERSISTED_SUPPORTED_ACTIONS,
         crons: await this.pluginCronService.listCronJobs(p.name),
         manifest,
-        health: serializePluginHealth(p, runtimePlugin?.runtimePressure ?? null),
+        health: runtimePlugin?.runtimePressure
+          ? {
+            ...health,
+            runtimePressure: runtimePlugin.runtimePressure,
+          }
+          : health,
         governance,
         lastSeenAt: p.lastSeenAt ? p.lastSeenAt.toISOString() : null,
         createdAt: p.createdAt.toISOString(),
@@ -278,54 +292,6 @@ export class PluginController {
 
     return this.pluginAdmin.runAction(name, action);
   }
-}
-
-/**
- * 为离线或未接入运行时的插件合成统一 manifest。
- * @param plugin Prisma 插件记录
- * @returns 统一插件清单
- */
-function buildPersistedManifest(plugin: PersistedPluginRecord): PluginInfo['manifest'] {
-  return parsePersistedPluginManifest(
-    typeof plugin.manifestJson === 'string' ? plugin.manifestJson : null,
-    {
-      id: plugin.name,
-      displayName: plugin.displayName,
-      description: plugin.description,
-      version: plugin.version,
-      runtimeKind: plugin.runtimeKind,
-    },
-  );
-}
-
-/**
- * 序列化插件健康摘要。
- * @param plugin 原始 Prisma 插件记录
- * @returns API 侧健康快照
- */
-function serializePluginHealth(
-  plugin: PersistedPluginRecord,
-  runtimePressure: PluginHealthSnapshot['runtimePressure'] | null = null,
-): PluginHealthSnapshot {
-  const status = plugin.status === 'offline'
-    ? 'offline'
-    : parsePluginHealthStatus(plugin.healthStatus);
-  return {
-    status,
-    failureCount: plugin.failureCount,
-    consecutiveFailures: plugin.consecutiveFailures,
-    lastError: plugin.lastError,
-    lastErrorAt: plugin.lastErrorAt instanceof Date
-      ? plugin.lastErrorAt.toISOString()
-      : null,
-    lastSuccessAt: plugin.lastSuccessAt instanceof Date
-      ? plugin.lastSuccessAt.toISOString()
-      : null,
-    lastCheckedAt: plugin.lastCheckedAt instanceof Date
-      ? plugin.lastCheckedAt.toISOString()
-      : null,
-    ...(runtimePressure ? { runtimePressure } : {}),
-  };
 }
 
 /**

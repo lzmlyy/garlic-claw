@@ -94,7 +94,9 @@ export class PluginCronService implements OnModuleDestroy {
     pluginId: string,
     input: PluginCronRegistrationInput,
   ): Promise<PluginCronJobSummary> {
-    this.assertCronExpression(input.cron, 'cron.register');
+    if (!parsePluginCronInterval(input.cron)) {
+      throw new BadRequestException('cron.register 的 cron 表达式无效');
+    }
     const mutation = buildPluginCronMutationData(input);
 
     const record = await this.prisma.pluginCronJob.upsert({
@@ -229,19 +231,6 @@ export class PluginCronService implements OnModuleDestroy {
     }
   }
 
-  /**
-   * 校验 host 注册使用的 cron 表达式是否合法。
-   * @param cronExpr cron 表达式
-   * @param method 当前方法名
-   * @returns 无返回值；非法时抛错
-   */
-  private assertCronExpression(cronExpr: string, method: string): void {
-    if (parsePluginCronInterval(cronExpr)) {
-      return;
-    }
-
-    throw new BadRequestException(`${method} 的 cron 表达式无效`);
-  }
 }
 
 function buildPluginCronMutationData(input: {

@@ -105,6 +105,15 @@
 - [ ] 不接受只把同等复杂度从大文件拆成更多 `core helper / facade / service`
 - [ ] 作者体验、协议糖和适配复杂度优先外移到 `SDK / adapter / plugin-side facade`
 - [ ] 只有在 `core` 更薄、边界更稳、且总代码更少时，才算这轮减法成立
+- 结论校正 2026-04-03：
+  - 当前这套功能不应该天然需要现在这套 `core` 体量
+  - `packages/server/src` 现在仍有 `32395` 行，`packages/server/src/plugin` 仍有 `16879` 行，这说明边界还没有真正收干净
+  - 这更像“作者侧糖、兼容层、投影层、适配层还留在 core”，不是“功能本身必须让 core 这么厚”
+  - 后续不能再接受“因为功能复杂，所以 core 上万行是正常的”这种叙事
+  - 目标区间先按下面的量级持续压：
+    - `packages/server/src`: `20000 ~ 24000`
+    - `packages/server/src/plugin`: `8000 ~ 10000`
+    - `packages/server/src/chat`: `2500 ~ 3000`
 - 状态校正 2026-04-02：
   - 当前这轮连续重构把一批大文件压薄了，但按新口径并不达标
   - 相对 `2920bea^` 到当前 `bb7d37a`，`packages/server/src` 非测试生产代码是净增 `1328` 行
@@ -119,6 +128,9 @@
 - [ ] 第三阶段：给 `MCP / skill` 做 adapter / bridge，而不是硬改其生态格式
 - [ ] 第四阶段：把更多 builtin 迁成普通扩展消费者
 - [ ] 第五阶段：删除不再必要的核心特判、专用持久化面和历史兼容层
+- 规模判断补充 2026-04-03：
+  - 第一阶段之所以还没有完成，不是因为“功能还没做完”，而是因为 `plugin core` 当前体量依旧显著偏厚
+  - 后续判断第一阶段是否接近完成，不能只看主文件是否压薄，必须同时看 `packages/server/src/plugin` 总量是否真正朝 `8000 ~ 10000` 收缩
 - 进展摘要：
   - `extension kernel contract` 已固化到 `docs/扩展内核契约说明.md`
   - 已补齐 `plugin / conversation / user` scoped `storage.*`、`state.*`、`state.list`、`state.delete`
@@ -157,9 +169,9 @@
   - `chat.service.ts` 已把三处重复的 conversation owner 校验并回统一内部断言，不再各自手写 `not found / forbidden` 分支
   - `chat-message-session.ts` 已删除本地 `normalizeRole(...)`，改复用现有 `normalizeMessageRole(...)`
   - `chat-message.helpers.ts` 已把两处 `chat-tool` context 组装并回共享本地函数
-  - `plugin-cron.service.ts` 已把 host/manifest 两处重复的 cron upsert 载荷生成并回单一 mutation builder
-  - `plugin-command.service.ts` 已把两处重复的 priority 比较并回共享本地 comparator，并继续删掉单次 `runtimeKind/path/clone` 薄壳
-  - `plugin.controller.ts` 已删掉与类级别完全重复的方法级 `@UseGuards(RolesGuard)` / `@Roles('admin', 'super_admin')` 样板，并继续删回现有健康状态与非空字符串读取 helper
+  - `plugin-cron.service.ts` 已把 host/manifest 两处重复的 cron upsert 载荷生成并回单一 mutation builder，并继续删掉单次 `assertCronExpression(...)` 薄壳
+  - `plugin-command.service.ts` 已把两处重复的 priority 比较并回共享本地 comparator，并继续删掉单次 `runtimeKind/path/clone/commandId/dedupe` 薄壳
+  - `plugin.controller.ts` 已删掉与类级别完全重复的方法级 `@UseGuards(RolesGuard)` / `@Roles('admin', 'super_admin')` 样板，并继续删回现有健康快照 helper、非空字符串读取 helper，以及单次 persisted manifest helper
   - `plugin-route.controller.ts` 已删回现有 `readUnknownObject(...)` / `normalizeRoutePath(...)`，并顺手删掉请求体与 header 屏蔽薄壳，不再在 route controller 本地维护同义 helper 副本
   - `plugin-subagent-task-request.helpers.ts` 里重复的 `normalizePositiveInteger(...)` 已删回现有 validation helper
   - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
@@ -188,9 +200,9 @@
 - `chat-message-session.ts`: `109 -> 92`
 - `chat-task.service.ts`: `443 -> 360`
 - `config-manager.loader.ts`: `426 -> 392`
-- `plugin.controller.ts`: `389 -> 345`
-- `plugin-command.service.ts`: `250 -> 233`
-- `plugin-cron.service.ts`: `244 -> 239`
+- `plugin.controller.ts`: `389 -> 313`
+- `plugin-command.service.ts`: `250 -> 229`
+- `plugin-cron.service.ts`: `244 -> 229`
 - `plugin-route.controller.ts`: `218 -> 180`
 - `builtin-plugin-host-facade.helpers.ts`: `255 -> 0`（已删）
 - `builtin-plugin-host-params.helpers.ts`: `200 -> 0`（已删）
@@ -198,8 +210,8 @@
 
 ## 当前 core 行数快照
 
-- `packages/server/src`: `32441`
-- `packages/server/src/plugin`: `16925`
+- `packages/server/src`: `32395`
+- `packages/server/src/plugin`: `16879`
 - `packages/server/src/chat`: `3862`
 - `packages/server/src/chat/chat.controller.ts`: `228`
 - `packages/server/src/chat/chat-message.helpers.ts`: `152`
@@ -211,9 +223,9 @@
 - `packages/server/src/chat/chat-message-session.ts`: `92`
 - `packages/server/src/chat/chat.service.ts`: `175`
 - `packages/server/src/chat/chat-task.service.ts`: `360`
-- `packages/server/src/plugin/plugin.controller.ts`: `345`
-- `packages/server/src/plugin/plugin-command.service.ts`: `233`
-- `packages/server/src/plugin/plugin-cron.service.ts`: `239`
+- `packages/server/src/plugin/plugin.controller.ts`: `313`
+- `packages/server/src/plugin/plugin-command.service.ts`: `229`
+- `packages/server/src/plugin/plugin-cron.service.ts`: `229`
 - `packages/server/src/plugin/plugin-route.controller.ts`: `180`
 - `packages/server/src/plugin/builtin/builtin-plugin.transport.ts`: `162`
 - `packages/server/src/plugin/builtin/builtin-plugin.types.ts`: `31`
@@ -254,9 +266,9 @@
 - [x] 本轮已把 `chat.service.ts` 的重复 conversation owner 校验并回统一内部断言
 - [x] 本轮已把 `chat-message-session.ts` 的本地角色归一化删回现有 `normalizeMessageRole(...)`
 - [x] 本轮已把 `chat-message.helpers.ts` 的两处 `chat-tool` context 组装并回共享本地函数
-- [x] 本轮已把 `plugin.controller.ts` 里与类级别完全重复的方法级 `@UseGuards(RolesGuard)` / `@Roles('admin', 'super_admin')` 样板删掉，并继续删回现有健康状态与非空字符串读取 helper
-- [x] 本轮已把 `plugin-cron.service.ts` 的 host/manifest 重复 cron upsert 载荷并回单一 mutation builder
-- [x] 本轮已把 `plugin-command.service.ts` 的两处 priority 比较并回共享本地 comparator，并继续删掉单次 `runtimeKind/path/clone` 薄壳
+- [x] 本轮已把 `plugin.controller.ts` 里与类级别完全重复的方法级 `@UseGuards(RolesGuard)` / `@Roles('admin', 'super_admin')` 样板删掉，并继续删回现有健康快照 helper、非空字符串读取 helper，以及单次 persisted manifest helper
+- [x] 本轮已把 `plugin-cron.service.ts` 的 host/manifest 重复 cron upsert 载荷并回单一 mutation builder，并继续删掉单次 `assertCronExpression(...)` 薄壳
+- [x] 本轮已把 `plugin-command.service.ts` 的两处 priority 比较并回共享本地 comparator，并继续删掉单次 `runtimeKind/path/clone/commandId/dedupe` 薄壳
 - [x] 本轮已把 `plugin-route.controller.ts` 的本地 `readUnknownObject(...)` / `normalizeRoutePath(...)` 删回现有 helper，并删掉请求体与 header 屏蔽薄壳
 - [x] 这一次切片已确认满足“core 净减少、复杂度外移到 SDK”：
   - `git diff --numstat` 显示 `packages/server/src/plugin/builtin/*host*` 与 `builtin-plugin.types.ts` 合计净减 `557` 行

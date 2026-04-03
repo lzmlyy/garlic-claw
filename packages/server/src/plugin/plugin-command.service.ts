@@ -84,7 +84,7 @@ export class PluginCommandService {
 
     return descriptors.map(({ descriptor, source }) => ({
       ...descriptor,
-      commandId: buildCommandId(plugin.name, descriptor),
+      commandId: `${plugin.name}:${descriptor.canonicalCommand}:${descriptor.kind}`,
       pluginId: plugin.name,
       pluginDisplayName: runtimePlugin?.manifest.name ?? plugin.displayName ?? plugin.name,
       runtimeKind,
@@ -142,7 +142,9 @@ export class PluginCommandService {
     return [...triggerMap.entries()]
       .map(([trigger, relatedCommands]) => ({
         trigger,
-        commands: dedupeByCommandId(relatedCommands)
+        commands: [...new Map(
+          relatedCommands.map((command) => [command.commandId, command]),
+        ).values()]
           .sort((left, right) => {
             const priorityDiff = comparePluginCommandPriority(left, right);
             if (priorityDiff !== 0) {
@@ -218,10 +220,6 @@ function extractCommandsFromHooks(hooks: PluginHookDescriptor[]): PluginCommandD
   return [...descriptors.values()];
 }
 
-function buildCommandId(pluginId: string, descriptor: PluginCommandDescriptor): string {
-  return `${pluginId}:${descriptor.canonicalCommand}:${descriptor.kind}`;
-}
-
 function normalizeCommandTrigger(command: string): string | null {
   const normalized = command
     .trim()
@@ -250,10 +248,6 @@ function comparePluginCommandPriority(left: { priority?: number }, right: { prio
 
 function dedupeStrings(values: string[]): string[] {
   return [...new Set(values)];
-}
-
-function dedupeByCommandId(commands: PluginCommandInfo[]): PluginCommandInfo[] {
-  return [...new Map(commands.map((command) => [command.commandId, command])).values()];
 }
 
 function cloneCommandDescriptor(command: PluginCommandDescriptor): PluginCommandDescriptor {
