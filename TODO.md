@@ -8,6 +8,16 @@
 > `TODO.md` 只保留长期目标、当前切片和压缩后的里程碑摘要；
 > 详细阶段流水账留在本地规划文件，不再继续堆回项目级 TODO。
 
+## 当前完成度
+
+- 当前已经完整落地的长期块，主要是 `在线接入与治理`
+- `状态与持久化` 已完成 `4 / 6` 个明确勾选项：
+  - `private scoped KV`
+  - `conversation / user scoped state`
+  - `append-only event log`
+  - `默认不再为扩展继续新增核心专用 Prisma schema`
+- 其余长期目标大多还处在“contract 已立住，但 core 还没有减到位”的阶段，不能算完成
+
 ## 北极星
 
 - [ ] 把 Garlic Claw 收敛成 `内核像 C 一样简单, SDK 像 C++ 有丰富的语法糖`
@@ -154,7 +164,11 @@
 - [ ] 重构做法默认顺序是：先删重复、删薄壳、把作者侧复杂度外移；只有少量局部重写能换来 `core` 总量继续下降时，才接受重写
 - 结论校正 2026-04-03：
   - 当前这套功能不应该天然需要现在这套 `core` 体量
-  - `packages/server/src` 现在仍有 `32395` 行，`packages/server/src/plugin` 仍有 `16879` 行，这说明边界还没有真正收干净
+  - 最新实时口径已经压到：
+    - `packages/server/src`: `32395 -> 29255`
+    - `packages/server/src/plugin`: `16879 -> 13734`
+    - `packages/server/src/chat`: `3862`
+  - 这说明减法已经开始生效，但边界还没有真正收干净
   - 这更像“作者侧糖、兼容层、投影层、适配层还留在 core”，不是“功能本身必须让 core 这么厚”
   - 后续不能再接受“因为功能复杂，所以 core 上万行是正常的”这种叙事
   - 目标区间先按下面的量级持续压：
@@ -259,6 +273,8 @@
 - 这次 manifest 切片后，`packages/server/src/plugin` 已继续从 `14311` 降到 `14182`，`packages/server/src` 已继续从 `29788` 降到 `29659`
 - `plugin gateway` 的 payload reader / envelope parser / host call context reader 已整体外移到 `shared`，`plugin-gateway-payload.helpers.ts` 已从 `256` 降到 `0`
 - 这次 gateway payload 切片后，`packages/server/src/plugin` 已继续从 `14182` 降到 `13926`，`packages/server/src` 已继续从 `29659` 降到 `29403`
+- `PluginService` 这层 read/write thin shell 已压成稳定 API 代理层，删除重复转手样板后 `plugin.service.ts` 已从 `314` 降到 `122`
+- 这次 thin shell 切片后，`packages/server/src/plugin` 已继续从 `13926` 降到 `13734`，`packages/server/src` 已继续从 `29403` 降到 `29255`
 - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
 - `smoke:http` 暴露的 chat/plugin 循环注入缺口已补齐，当前后端启动烟测重新通过
 - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
@@ -266,10 +282,11 @@
 ## 最新行数快照
 
 - 2026-04-03 当前口径：
-  - `packages/server/src`: `29403`
-  - `packages/server/src/plugin`: `13926`
+  - `packages/server/src`: `29255`
+  - `packages/server/src/plugin`: `13734`
   - `packages/server/src/chat`: `3862`
   - `packages/plugin-sdk/src/index.ts`: `5063`
+  - `packages/server/src/plugin/plugin.service.ts`: `122`
 
 ## 当前基线
 
@@ -280,7 +297,7 @@
 - `plugin-runtime-hook-result.helpers.ts`: `555 -> 4`
 - `plugin.gateway.ts`: `1269 -> 364`
 - `tool-registry.service.ts`: `487 -> 226`
-- `plugin.service.ts`: `1059 -> 342`
+- `plugin.service.ts`: `1059 -> 122`
 - `chat-message.service.ts`: `1030 -> 65`
 - `chat.controller.ts`: `266 -> 228`
 - `chat.service.ts`: `192 -> 175`
@@ -310,47 +327,18 @@
 
 ## 当前 core 行数快照
 
-- `packages/server/src`: `29403`
-- `packages/server/src/plugin`: `13926`
+- `packages/server/src`: `29255`
+- `packages/server/src/plugin`: `13734`
 - `packages/server/src/chat`: `3862`
-- `packages/server/src/chat/chat.controller.ts`: `228`
-- `packages/server/src/chat/chat-message.helpers.ts`: `152`
-- `packages/server/src/chat/chat-message-completion.service.ts`: `172`
-- `packages/server/src/chat/chat-message-generation.service.ts`: `436`
-- `packages/server/src/chat/chat-message-plugin-target.service.ts`: `228`
-- `packages/server/src/chat/chat-message-orchestration.service.ts`: `234`
-- `packages/server/src/chat/chat-message-response-hooks.service.ts`: `134`
-- `packages/server/src/chat/chat-message-session.ts`: `92`
-- `packages/server/src/chat/chat.service.ts`: `175`
-- `packages/server/src/chat/chat-task.service.ts`: `360`
-- `packages/server/src/plugin/plugin.controller.ts`: `313`
-- `packages/server/src/plugin/plugin-command.service.ts`: `229`
-- `packages/server/src/plugin/plugin-cron.service.ts`: `229`
-- `packages/server/src/plugin/plugin-route.controller.ts`: `180`
-- `packages/server/src/plugin/builtin/builtin-plugin.transport.ts`: `162`
-- `packages/server/src/plugin/builtin/builtin-plugin.types.ts`: `31`
-- `packages/server/src/plugin/builtin/automation-tools.plugin.ts`: `112`
-- `packages/server/src/plugin/builtin/core-tools.plugin.ts`: `76`
-- `packages/server/src/plugin/builtin/memory-tools.plugin.ts`: `73`
-- `packages/server/src/plugin/builtin/provider-router.plugin.ts`: `107`
-- `packages/server/src/plugin/builtin/persona-router.plugin.ts`: `84`
-- `packages/server/src/plugin/builtin/conversation-title.plugin.ts`: `90`
-- `packages/server/src/plugin/builtin/memory-context.plugin.ts`: `86`
-- `packages/server/src/plugin/builtin/kb-context.plugin.ts`: `86`
-- `packages/server/src/plugin/builtin/route-inspector.plugin.ts`: `61`
-- `packages/server/src/plugin/builtin/subagent-delegate.plugin.ts`: `80`
-- `packages/server/src/plugin/builtin/tool-audit.plugin.ts`: `58`
-- `packages/server/src/plugin/plugin-subagent-task-request.helpers.ts`: `160`
-- `packages/server/src/plugin/plugin-runtime.service.ts`: `684`
-- `packages/server/src/plugin/plugin-runtime-operation-hooks.facade.ts`: `147`
-- `packages/server/src/plugin/plugin-runtime-subagent.facade.ts`: `217`
-- `packages/server/src/plugin/plugin-runtime-message-hooks.facade.ts`: `95`
-- `packages/server/src/plugin/plugin-runtime-inbound-hooks.facade.ts`: `192`
-- `packages/server/src/plugin/plugin-runtime-session.helpers.ts`: `170`
-- `packages/server/src/plugin/plugin-runtime-transport.facade.ts`: `306`
-- `packages/server/src/plugin/plugin-runtime-manifest.helpers.ts`: `47`
-- `packages/server/src/plugin/plugin-gateway-payload.helpers.ts`: `0`（已移至 `packages/shared/src/plugin-gateway-payload.helpers.ts`）
-- `packages/server/src/plugin/plugin-host.service.ts`: `126`
+- 当前最大热点：
+  - `packages/server/src/plugin/plugin-runtime.service.ts`: `678`
+  - `packages/server/src/plugin/plugin.gateway.ts`: `364`
+  - `packages/server/src/plugin/plugin.controller.ts`: `313`
+  - `packages/server/src/plugin/plugin-runtime-transport.facade.ts`: `306`
+  - `packages/server/src/chat/chat-message-generation.service.ts`: `436`
+  - `packages/server/src/chat/chat-task.service.ts`: `360`
+  - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `284`
+  - `packages/server/src/plugin/plugin.service.ts`: `122`
 
 ## 当前下一步
 
