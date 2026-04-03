@@ -25,6 +25,7 @@ const {
   CONVERSATION_TITLE_CONFIG_FIELDS,
   CONVERSATION_TITLE_DEFAULT_TITLE,
   CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES,
+  AUTOMATION_TOOLS_MANIFEST_TOOLS,
   CORE_TOOLS_MANIFEST_TOOLS,
   KB_CONTEXT_CONFIG_FIELDS,
   KB_CONTEXT_DEFAULT_LIMIT,
@@ -67,6 +68,7 @@ const {
   PERSONA_ROUTER_CONFIG_FIELDS,
   PROVIDER_ROUTER_CONFIG_FIELDS,
   PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY,
+  ROUTE_INSPECTOR_MANIFEST_ROUTES,
   readConversationSummary,
   readConversationTitleConfig,
   readMemorySearchResults,
@@ -89,6 +91,7 @@ const {
   sanitizeConversationTitle,
   sanitizeOptionalText,
   shouldGenerateConversationTitle,
+  SUBAGENT_DELEGATE_MANIFEST_TOOLS,
   SUBAGENT_DELEGATE_CONFIG_FIELDS,
   textIncludesKeyword,
 } = require('../dist/index.js');
@@ -1659,6 +1662,12 @@ test('plugin-sdk exposes shared automation tool param readers for author-side pl
   assert.equal(MEMORY_TOOLS_MANIFEST_TOOLS[0].name, 'save_memory');
   assert.equal(CORE_TOOLS_MANIFEST_TOOLS.length, 3);
   assert.equal(CORE_TOOLS_MANIFEST_TOOLS[2].name, 'calculate');
+  assert.equal(AUTOMATION_TOOLS_MANIFEST_TOOLS.length, 5);
+  assert.equal(AUTOMATION_TOOLS_MANIFEST_TOOLS[0].name, 'create_automation');
+  assert.equal(SUBAGENT_DELEGATE_MANIFEST_TOOLS.length, 2);
+  assert.equal(SUBAGENT_DELEGATE_MANIFEST_TOOLS[1].name, 'delegate_summary_background');
+  assert.equal(ROUTE_INSPECTOR_MANIFEST_ROUTES.length, 1);
+  assert.equal(ROUTE_INSPECTOR_MANIFEST_ROUTES[0].path, 'inspect/context');
 
   assert.throws(
     () => readPluginCreateAutomationParams({

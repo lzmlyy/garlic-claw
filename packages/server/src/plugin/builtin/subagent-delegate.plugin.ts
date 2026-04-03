@@ -7,6 +7,7 @@ import {
   readSubagentDelegateConfig,
   readRequiredTextValue,
   SUBAGENT_DELEGATE_CONFIG_FIELDS,
+  SUBAGENT_DELEGATE_MANIFEST_TOOLS,
 } from '@garlic-claw/plugin-sdk';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -33,34 +34,7 @@ export function createSubagentDelegatePlugin(): BuiltinPluginDefinition {
       runtime: 'builtin',
       description: '将当前任务委派给宿主子代理执行的内建插件。',
       permissions: ['config:read', 'conversation:write', 'subagent:run'],
-      tools: [
-        {
-          name: 'delegate_summary',
-          description: '将当前任务委托给宿主子代理做简短总结',
-          parameters: {
-            prompt: {
-              type: 'string',
-              description: '要交给子代理处理的提示词',
-              required: true,
-            },
-          },
-        },
-        {
-          name: 'delegate_summary_background',
-          description: '将当前任务委托给宿主子代理后台执行，并可在完成后回写当前会话',
-          parameters: {
-            prompt: {
-              type: 'string',
-              description: '要交给后台子代理处理的提示词',
-              required: true,
-            },
-            writeBack: {
-              type: 'boolean',
-              description: '完成后是否回写到当前会话；默认在存在会话上下文时开启',
-            },
-          },
-        },
-      ],
+      tools: SUBAGENT_DELEGATE_MANIFEST_TOOLS,
       config: {
         fields: SUBAGENT_DELEGATE_CONFIG_FIELDS,
       },

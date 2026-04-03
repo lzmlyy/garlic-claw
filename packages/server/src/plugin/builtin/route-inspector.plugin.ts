@@ -1,6 +1,7 @@
 import {
   createRouteInspectorContextResponse,
   readConversationSummary,
+  ROUTE_INSPECTOR_MANIFEST_ROUTES,
 } from '@garlic-claw/plugin-sdk';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
 
@@ -27,13 +28,7 @@ export function createRouteInspectorPlugin(): BuiltinPluginDefinition {
       description: '用于查看插件 Web Route 可见上下文的内建诊断插件。',
       permissions: ['conversation:read', 'user:read'],
       tools: [],
-      routes: [
-        {
-          path: 'inspect/context',
-          methods: ['GET'],
-          description: '返回当前插件路由看到的用户与会话上下文',
-        },
-      ],
+      routes: ROUTE_INSPECTOR_MANIFEST_ROUTES,
     },
     routes: {
       /**

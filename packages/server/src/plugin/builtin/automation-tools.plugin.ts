@@ -1,4 +1,5 @@
 import {
+  AUTOMATION_TOOLS_MANIFEST_TOOLS,
   createAutomationCreatedResult,
   createAutomationEventDispatchResult,
   createAutomationListResult,
@@ -32,76 +33,7 @@ export function createAutomationToolsPlugin(): BuiltinPluginDefinition {
       runtime: 'builtin',
       description: '提供自动化创建、事件触发、启停和执行能力的内建插件。',
       permissions: ['automation:read', 'automation:write'],
-      tools: [
-        {
-          name: 'create_automation',
-          description:
-            '创建自动化规则。支持 cron 计划（例如 "5m"、"1h"、"30s"）和设备命令。当用户要求设置重复任务或自动化操作时使用此工具。',
-          parameters: {
-            name: {
-              type: 'string',
-              description: '此自动化的描述性名称',
-              required: true,
-            },
-            triggerType: {
-              type: 'string',
-              description: '触发类型：cron 为计划执行，manual 为手动触发，event 为事件触发',
-              required: true,
-            },
-            cronInterval: {
-              type: 'string',
-              description: '对于 cron 触发：间隔如 "5m"、"1h"、"30s"',
-            },
-            eventName: {
-              type: 'string',
-              description: '对于 event 触发：要监听的事件名',
-            },
-            actions: {
-              type: 'array',
-              description: '要执行的动作列表',
-              required: true,
-            },
-          },
-        },
-        {
-          name: 'emit_automation_event',
-          description: '发出一个自动化事件，触发当前用户下匹配该事件名的自动化。',
-          parameters: {
-            event: {
-              type: 'string',
-              description: '要发出的事件名',
-              required: true,
-            },
-          },
-        },
-        {
-          name: 'list_automations',
-          description: '列出当前用户的所有自动化。',
-          parameters: {},
-        },
-        {
-          name: 'toggle_automation',
-          description: '通过 ID 启用或禁用自动化。',
-          parameters: {
-            automationId: {
-              type: 'string',
-              description: '要切换的自动化 ID',
-              required: true,
-            },
-          },
-        },
-        {
-          name: 'run_automation',
-          description: '手动触发自动化立即执行。',
-          parameters: {
-            automationId: {
-              type: 'string',
-              description: '要运行的自动化 ID',
-              required: true,
-            },
-          },
-        },
-      ],
+      tools: AUTOMATION_TOOLS_MANIFEST_TOOLS,
       hooks: [],
     },
     tools: {
