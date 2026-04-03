@@ -134,7 +134,8 @@
   - 聊天链路已按职责拆成 `plugin-target / completion / mutation / generation / response-hooks / task-persistence` 等聚焦 service
   - 插件治理与持久化链路已按职责拆成 `storage / event-write / lifecycle-write / read / governance-write` 等聚焦 service
   - AI provider runtime 已收敛到 `openai / anthropic / gemini` 三个协议族，`official / compatible / format` 等历史命名已基本清空
-  - 但这批拆分主要发生在 `core` 内部，复杂度还没有充分外移到 `SDK / adapter`
+  - `builtin` 作者侧的 Host facade / param builder / host type 已开始从 `server` 外移到 `plugin-sdk` 共用导出
+  - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
 
 ## 当前基线
 
@@ -151,6 +152,9 @@
 - `chat-message-orchestration.service.ts`: `359 -> 242`
 - `chat-task.service.ts`: `443 -> 379`
 - `config-manager.loader.ts`: `426 -> 392`
+- `builtin-plugin-host-facade.helpers.ts`: `255 -> 24`
+- `builtin-plugin-host-params.helpers.ts`: `200 -> 18`
+- `builtin-plugin.types.ts`: `215 -> 104`
 
 ## 当前下一步
 
@@ -162,6 +166,10 @@
 - [x] 本轮已补齐 `MCP server` 在线添加：配置写入后定向 apply/remove，不再全量 reload 全部 server
 - [x] 本轮已补齐 `remote plugin` 在线添加：专用 bootstrap 令牌 + 在线 placeholder record
 - [x] 本轮已让 `/plugins/:name/scopes` 只保留会话级覆盖，不再写私有 `defaultEnabled`
+- [x] 本轮已把 builtin Host facade / param builder / host type 的重复作者侧语法糖收口到 `plugin-sdk`
+- [x] 这一次切片已确认满足“core 净减少、复杂度外移到 SDK”：
+  - `git diff --numstat` 显示 `packages/server/src/plugin/builtin/*host*` 与 `builtin-plugin.types.ts` 合计净减 `557` 行
+  - 同一轮 `packages/plugin-sdk/src/index.ts` 净增 `70` 行，用于承接共用 facade / builder 导出
 - [ ] 后续切片先核对是否真的让 `core` 生产代码净减少；只在 `core` 内横向搬运的切片不再优先
 - [ ] 优先把作者侧复杂度继续外移到 `SDK / adapter`，而不是继续给 `core` 增加新 helper 层
 - [ ] 如继续收口 `plugin` 私有治理，只评估 conversation override 是否还需要独立入口；不再回到双轨全局启停

@@ -19,6 +19,7 @@
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/google": "^3.0.53",
     "@ai-sdk/openai": "^3.0.41",
+    "@garlic-claw/plugin-sdk": "*",
     "@garlic-claw/shared": "*",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@nestjs/common": "^11.0.0",

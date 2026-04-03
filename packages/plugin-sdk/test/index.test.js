@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   DeviceType,
   PluginClient,
+  createPluginHostFacade,
 } = require('../dist/index.js');
 
 const WS_TYPE = {
@@ -288,6 +289,121 @@ test('PluginClient.fromBootstrap creates a client directly from bootstrap connec
     config: undefined,
     routes: [],
   });
+});
+
+test('createPluginHostFacade normalizes host params for author-side host helpers', async () => {
+  const calls = [];
+  const host = createPluginHostFacade({
+    call(method, params) {
+      calls.push({
+        kind: 'call',
+        method,
+        params,
+      });
+      return Promise.resolve({
+        ok: true,
+      });
+    },
+    callHost(method, params = {}) {
+      calls.push({
+        kind: 'callHost',
+        method,
+        params,
+      });
+      return Promise.resolve({
+        ok: true,
+      });
+    },
+  });
+
+  await host.sendMessage({
+    content: 'hello',
+    target: {
+      type: 'conversation',
+      id: 'conversation-1',
+    },
+  });
+  await host.startConversationSession({
+    timeoutMs: 30000,
+    captureHistory: true,
+  });
+  await host.getStorage('draft', {
+    scope: 'conversation',
+  });
+  await host.generate({
+    providerId: 'openai',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: 'hello',
+          },
+        ],
+      },
+    ],
+  });
+  await host.generateText({
+    prompt: 'ping',
+    maxOutputTokens: 64,
+  });
+
+  assert.deepEqual(calls, [
+    {
+      kind: 'callHost',
+      method: 'message.send',
+      params: {
+        content: 'hello',
+        target: {
+          type: 'conversation',
+          id: 'conversation-1',
+        },
+      },
+    },
+    {
+      kind: 'callHost',
+      method: 'conversation.session.start',
+      params: {
+        timeoutMs: 30000,
+        captureHistory: true,
+      },
+    },
+    {
+      kind: 'call',
+      method: 'storage.get',
+      params: {
+        key: 'draft',
+        scope: 'conversation',
+      },
+    },
+    {
+      kind: 'callHost',
+      method: 'llm.generate',
+      params: {
+        providerId: 'openai',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'hello',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      kind: 'call',
+      method: 'llm.generate-text',
+      params: {
+        prompt: 'ping',
+        maxOutputTokens: 64,
+      },
+    },
+  ]);
 });
 
 test('host facade exposes plugin log listing', async () => {

@@ -112,6 +112,17 @@ export interface PluginScopedStateOptions {
   scope?: PluginScopedStateScope;
 }
 
+export interface PluginGenerateTextParams {
+  prompt: string;
+  system?: string;
+  providerId?: string;
+  modelId?: string;
+  variant?: string;
+  maxOutputTokens?: number;
+  providerOptions?: JsonObject;
+  headers?: Record<string, string>;
+}
+
 /**
  * 插件 Host API 门面。
  */
@@ -515,16 +526,27 @@ export interface PluginHostFacade {
    * @param params 提示词与可选模型参数
    * @returns 文本生成结果
    */
-  generateText(params: {
-    prompt: string;
-    system?: string;
-    providerId?: string;
-    modelId?: string;
-    variant?: string;
-    maxOutputTokens?: number;
-    providerOptions?: JsonObject;
-    headers?: Record<string, string>;
-  }): Promise<JsonValue>;
+  generateText(params: PluginGenerateTextParams): Promise<JsonValue>;
+}
+
+export type PluginHostFacadeMethods = Omit<PluginHostFacade, 'conversationSession'>;
+
+export interface PluginHostFacadeFactoryInput {
+  call: PluginHostFacade['call'];
+  callHost<T>(
+    method: HostCallPayload['method'],
+    params?: JsonObject,
+  ): Promise<T>;
+  conversationSessionController?: {
+    start(
+      input: PluginConversationSessionStartParams,
+    ): Promise<PluginConversationSessionInfo>;
+    get(): Promise<PluginConversationSessionInfo | null>;
+    keep(
+      input: PluginConversationSessionKeepParams,
+    ): Promise<PluginConversationSessionInfo | null>;
+    finish(): Promise<boolean>;
+  };
 }
 
 /** 会话等待态控制器。 */
@@ -1422,293 +1444,12 @@ export class PluginClient {
     return {
       callContext: context,
       host: {
-        call,
+        ...createPluginHostFacade({
+          call,
+          callHost,
+          conversationSessionController: conversationSession,
+        }),
         conversationSession,
-        getCurrentProvider: () =>
-          callHost<PluginProviderCurrentInfo>('provider.current.get'),
-        listProviders: () => callHost<PluginProviderSummary[]>('provider.list'),
-        getProvider: (providerId) =>
-          callHost<PluginProviderSummary>('provider.get', { providerId }),
-        getProviderModel: (providerId, modelId) =>
-          callHost<PluginProviderModelSummary>('provider.model.get', {
-            providerId,
-            modelId,
-          }),
-        searchMemories: (query, limit = 10) =>
-          call('memory.search', { query, limit }),
-        getConversation: () => call('conversation.get', {}),
-        getCurrentMessageTarget: () =>
-          callHost<PluginMessageTargetInfo | null>('message.target.current.get'),
-        sendMessage: ({
-          target,
-          content,
-          parts,
-          provider,
-          model,
-        }) => {
-          const params: JsonObject = {};
-          if (target) {
-            params.target = toHostJsonValue(target);
-          }
-          if (typeof content === 'string') {
-            params.content = content;
-          }
-          if (parts) {
-            params.parts = toHostJsonValue(parts);
-          }
-          if (typeof provider === 'string') {
-            params.provider = provider;
-          }
-          if (typeof model === 'string') {
-            params.model = model;
-          }
-
-          return callHost<PluginMessageSendInfo>('message.send', params);
-        },
-        startConversationSession: (input) => conversationSession.start(input),
-        getConversationSession: () => conversationSession.get(),
-        keepConversationSession: (input) => conversationSession.keep(input),
-        finishConversationSession: () => conversationSession.finish(),
-        listKnowledgeBaseEntries: (limit) =>
-          callHost<PluginKbEntrySummary[]>(
-            'kb.list',
-            typeof limit === 'number' ? { limit } : {},
-          ),
-        searchKnowledgeBase: (query, limit = 5) =>
-          callHost<PluginKbEntryDetail[]>(
-            'kb.search',
-            { query, limit },
-          ),
-        getKnowledgeBaseEntry: (entryId) =>
-          callHost<PluginKbEntryDetail>('kb.get', { entryId }),
-        getCurrentPersona: () =>
-          callHost<PluginPersonaCurrentInfo>('persona.current.get'),
-        listPersonas: () => callHost<PluginPersonaSummary[]>('persona.list'),
-        getPersona: (personaId) =>
-          callHost<PluginPersonaSummary>('persona.get', { personaId }),
-        activatePersona: (personaId) =>
-          callHost<PluginPersonaCurrentInfo>('persona.activate', { personaId }),
-        registerCron: (descriptor) =>
-          callHost<PluginCronJobSummary>('cron.register', {
-            name: descriptor.name,
-            cron: descriptor.cron,
-            ...(descriptor.description ? { description: descriptor.description } : {}),
-            ...(typeof descriptor.enabled === 'boolean' ? { enabled: descriptor.enabled } : {}),
-            ...(typeof descriptor.data !== 'undefined' ? { data: descriptor.data } : {}),
-          }),
-        listCrons: () => callHost<PluginCronJobSummary[]>('cron.list'),
-        deleteCron: (jobId) =>
-          callHost<boolean>('cron.delete', {
-            jobId,
-          }),
-        createAutomation: ({ name, trigger, actions }) =>
-          callHost<AutomationInfo>('automation.create', {
-            name,
-            trigger: toHostJsonValue(trigger),
-            actions: toHostJsonValue(actions),
-          }),
-        listAutomations: () => callHost<AutomationInfo[]>('automation.list'),
-        toggleAutomation: (automationId) =>
-          callHost<{ id: string; enabled: boolean } | null>('automation.toggle', {
-            automationId,
-          }),
-        runAutomation: (automationId) =>
-          callHost<{ status: string; results: JsonValue[] } | null>('automation.run', {
-            automationId,
-          }),
-        emitAutomationEvent: (event) =>
-          callHost<AutomationEventDispatchInfo>('automation.event.emit', {
-            event,
-          }),
-        getPluginSelf: () => callHost<PluginSelfInfo>('plugin.self.get'),
-        listLogs: (query = {}) =>
-          callHost<PluginEventListResult>('log.list', {
-            ...query,
-          }),
-        writeLog: ({ level, message, type, metadata }) =>
-          callHost<boolean>('log.write', {
-            level,
-            message,
-            ...(type ? { type } : {}),
-            ...(metadata ? { metadata } : {}),
-          }),
-        saveMemory: ({ content, category, keywords }) =>
-          call('memory.save', {
-            content,
-            ...(category ? { category } : {}),
-            ...(keywords ? { keywords } : {}),
-          }),
-        listConversationMessages: () =>
-          call('conversation.messages.list', {}),
-        getStorage: (key, options) =>
-          call('storage.get', {
-            key,
-            ...toScopedStateParams(options),
-          }),
-        setStorage: (key, value, options) =>
-          call('storage.set', {
-            key,
-            value,
-            ...toScopedStateParams(options),
-          }),
-        deleteStorage: (key, options) =>
-          call('storage.delete', {
-            key,
-            ...toScopedStateParams(options),
-          }),
-        listStorage: (prefix, options) =>
-          call('storage.list', {
-            ...(prefix ? { prefix } : {}),
-            ...toScopedStateParams(options),
-          }),
-        getState: (key, options) =>
-          call('state.get', {
-            key,
-            ...toScopedStateParams(options),
-          }),
-        setState: (key, value, options) =>
-          call('state.set', {
-            key,
-            value,
-            ...toScopedStateParams(options),
-          }),
-        deleteState: (key, options) =>
-          call('state.delete', {
-            key,
-            ...toScopedStateParams(options),
-          }),
-        listState: (prefix, options) =>
-          call('state.list', {
-            ...(prefix ? { prefix } : {}),
-            ...toScopedStateParams(options),
-          }),
-        getConfig: (key) =>
-          call('config.get', key ? { key } : {}),
-        getUser: () => call('user.get', {}),
-        setConversationTitle: (title) =>
-          call('conversation.title.set', { title }),
-        generate: ({
-          providerId,
-          modelId,
-          system,
-          messages,
-          variant,
-          providerOptions,
-          headers,
-          maxOutputTokens,
-        }) =>
-          callHost<PluginLlmGenerateResult>('llm.generate', {
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-            ...(system ? { system } : {}),
-            messages: toHostJsonValue(messages),
-            ...(variant ? { variant } : {}),
-            ...(providerOptions ? { providerOptions } : {}),
-            ...(headers ? { headers } : {}),
-            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-          }),
-        runSubagent: ({
-          providerId,
-          modelId,
-          system,
-          messages,
-          toolNames,
-          variant,
-          providerOptions,
-          headers,
-          maxOutputTokens,
-          maxSteps,
-        }) =>
-          callHost<PluginSubagentRunResult>('subagent.run', {
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-            ...(system ? { system } : {}),
-            messages: toHostJsonValue(messages),
-            ...(toolNames ? { toolNames: toHostJsonValue(toolNames) } : {}),
-            ...(variant ? { variant } : {}),
-            ...(providerOptions ? { providerOptions } : {}),
-            ...(headers ? { headers: toHostJsonValue(headers) } : {}),
-            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-            ...(typeof maxSteps === 'number' ? { maxSteps } : {}),
-          }),
-        startSubagentTask: ({
-          providerId,
-          modelId,
-          system,
-          messages,
-          toolNames,
-          variant,
-          providerOptions,
-          headers,
-          maxOutputTokens,
-          maxSteps,
-          writeBack,
-        }) => {
-          const startTaskParams: JsonObject = {
-            messages: toHostJsonValue(messages),
-          };
-          if (providerId) {
-            startTaskParams.providerId = providerId;
-          }
-          if (modelId) {
-            startTaskParams.modelId = modelId;
-          }
-          if (system) {
-            startTaskParams.system = system;
-          }
-          if (toolNames) {
-            startTaskParams.toolNames = toHostJsonValue(toolNames);
-          }
-          if (variant) {
-            startTaskParams.variant = variant;
-          }
-          if (providerOptions) {
-            startTaskParams.providerOptions = providerOptions;
-          }
-          if (headers) {
-            startTaskParams.headers = toHostJsonValue(headers);
-          }
-          if (typeof maxOutputTokens === 'number') {
-            startTaskParams.maxOutputTokens = maxOutputTokens;
-          }
-          if (typeof maxSteps === 'number') {
-            startTaskParams.maxSteps = maxSteps;
-          }
-          if (writeBack) {
-            startTaskParams.writeBack = toHostJsonValue(writeBack);
-          }
-
-          return callHost<PluginSubagentTaskSummary>(
-            'subagent.task.start',
-            startTaskParams,
-          );
-        },
-        listSubagentTasks: () =>
-          callHost<PluginSubagentTaskSummary[]>('subagent.task.list'),
-        getSubagentTask: (taskId) =>
-          callHost<PluginSubagentTaskDetail>('subagent.task.get', {
-            taskId,
-          }),
-        generateText: ({
-          prompt,
-          system,
-          providerId,
-          modelId,
-          variant,
-          maxOutputTokens,
-          providerOptions,
-          headers,
-        }) =>
-          call('llm.generate-text', {
-            prompt,
-            ...(system ? { system } : {}),
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-            ...(variant ? { variant } : {}),
-            ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-            ...(providerOptions ? { providerOptions } : {}),
-            ...(headers ? { headers } : {}),
-          }),
       },
     };
   }
@@ -2921,12 +2662,341 @@ function readMessageReceivedHookPayload(
   };
 }
 
+export function createPluginHostFacade(
+  input: PluginHostFacadeFactoryInput,
+): PluginHostFacadeMethods {
+  const {
+    call,
+    callHost,
+    conversationSessionController,
+  } = input;
+
+  return {
+    call,
+    getCurrentProvider: () =>
+      callHost<PluginProviderCurrentInfo>('provider.current.get'),
+    listProviders: () => callHost<PluginProviderSummary[]>('provider.list'),
+    getProvider: (providerId) =>
+      callHost<PluginProviderSummary>('provider.get', {
+        providerId,
+      }),
+    getProviderModel: (providerId, modelId) =>
+      callHost<PluginProviderModelSummary>('provider.model.get', {
+        providerId,
+        modelId,
+      }),
+    getConversation: () => call('conversation.get', {}),
+    getCurrentMessageTarget: () =>
+      callHost<PluginMessageTargetInfo | null>('message.target.current.get'),
+    sendMessage: (params) =>
+      callHost<PluginMessageSendInfo>('message.send', buildPluginMessageSendParams(params)),
+    startConversationSession: (params) =>
+      conversationSessionController
+        ? conversationSessionController.start(params)
+        : callHost<PluginConversationSessionInfo>(
+          'conversation.session.start',
+          buildPluginConversationSessionStartParams(params),
+        ),
+    getConversationSession: () =>
+      conversationSessionController
+        ? conversationSessionController.get()
+        : callHost<PluginConversationSessionInfo | null>('conversation.session.get'),
+    keepConversationSession: (params) =>
+      conversationSessionController
+        ? conversationSessionController.keep(params)
+        : callHost<PluginConversationSessionInfo | null>(
+          'conversation.session.keep',
+          buildPluginConversationSessionKeepParams(params),
+        ),
+    finishConversationSession: () =>
+      conversationSessionController
+        ? conversationSessionController.finish()
+        : callHost<boolean>('conversation.session.finish'),
+    listKnowledgeBaseEntries: (limit) =>
+      callHost<PluginKbEntrySummary[]>(
+        'kb.list',
+        typeof limit === 'number' ? { limit } : {},
+      ),
+    searchKnowledgeBase: (query, limit = 5) =>
+      callHost<PluginKbEntryDetail[]>('kb.search', {
+        query,
+        limit,
+      }),
+    getKnowledgeBaseEntry: (entryId) =>
+      callHost<PluginKbEntryDetail>('kb.get', {
+        entryId,
+      }),
+    getCurrentPersona: () =>
+      callHost<PluginPersonaCurrentInfo>('persona.current.get'),
+    listPersonas: () => callHost<PluginPersonaSummary[]>('persona.list'),
+    getPersona: (personaId) =>
+      callHost<PluginPersonaSummary>('persona.get', {
+        personaId,
+      }),
+    activatePersona: (personaId) =>
+      callHost<PluginPersonaCurrentInfo>('persona.activate', {
+        personaId,
+      }),
+    registerCron: (descriptor) =>
+      callHost<PluginCronJobSummary>(
+        'cron.register',
+        buildPluginRegisterCronParams(descriptor),
+      ),
+    listCrons: () => callHost<PluginCronJobSummary[]>('cron.list'),
+    deleteCron: (jobId) =>
+      callHost<boolean>('cron.delete', {
+        jobId,
+      }),
+    createAutomation: (inputParams) =>
+      callHost<AutomationInfo>(
+        'automation.create',
+        buildPluginCreateAutomationParams(inputParams),
+      ),
+    listAutomations: () => callHost<AutomationInfo[]>('automation.list'),
+    toggleAutomation: (automationId) =>
+      callHost<{ id: string; enabled: boolean } | null>('automation.toggle', {
+        automationId,
+      }),
+    runAutomation: (automationId) =>
+      callHost<{ status: string; results: JsonValue[] } | null>('automation.run', {
+        automationId,
+      }),
+    emitAutomationEvent: (event) =>
+      callHost<AutomationEventDispatchInfo>('automation.event.emit', {
+        event,
+      }),
+    getPluginSelf: () => callHost<PluginSelfInfo>('plugin.self.get'),
+    listLogs: (query = {}) =>
+      callHost<PluginEventListResult>('log.list', {
+        ...(toHostJsonValue(query) as JsonObject),
+      }),
+    writeLog: ({ level, message, type, metadata }) =>
+      callHost<boolean>('log.write', {
+        level,
+        message,
+        ...(type ? { type } : {}),
+        ...(metadata ? { metadata: toHostJsonValue(metadata) } : {}),
+      }),
+    searchMemories: (query, limit = 10) =>
+      call('memory.search', {
+        query,
+        limit,
+      }),
+    saveMemory: ({ content, category, keywords }) =>
+      call('memory.save', {
+        content,
+        ...(category ? { category } : {}),
+        ...(keywords ? { keywords } : {}),
+      }),
+    listConversationMessages: () =>
+      call('conversation.messages.list', {}),
+    getStorage: (key, options) =>
+      call('storage.get', {
+        key,
+        ...toScopedStateParams(options),
+      }),
+    setStorage: (key, value, options) =>
+      call('storage.set', {
+        key,
+        value,
+        ...toScopedStateParams(options),
+      }),
+    deleteStorage: (key, options) =>
+      call('storage.delete', {
+        key,
+        ...toScopedStateParams(options),
+      }),
+    listStorage: (prefix, options) =>
+      call('storage.list', {
+        ...(prefix ? { prefix } : {}),
+        ...toScopedStateParams(options),
+      }),
+    getState: (key, options) =>
+      call('state.get', {
+        key,
+        ...toScopedStateParams(options),
+      }),
+    setState: (key, value, options) =>
+      call('state.set', {
+        key,
+        value,
+        ...toScopedStateParams(options),
+      }),
+    deleteState: (key, options) =>
+      call('state.delete', {
+        key,
+        ...toScopedStateParams(options),
+      }),
+    listState: (prefix, options) =>
+      call('state.list', {
+        ...(prefix ? { prefix } : {}),
+        ...toScopedStateParams(options),
+      }),
+    getConfig: (key) =>
+      call('config.get', key ? { key } : {}),
+    getUser: () => call('user.get', {}),
+    setConversationTitle: (title) =>
+      call('conversation.title.set', {
+        title,
+      }),
+    generate: (params) =>
+      callHost<PluginLlmGenerateResult>('llm.generate', buildPluginGenerateParams(params)),
+    runSubagent: (params) =>
+      callHost<PluginSubagentRunResult>('subagent.run', buildPluginRunSubagentParams(params)),
+    startSubagentTask: (params) =>
+      callHost<PluginSubagentTaskSummary>(
+        'subagent.task.start',
+        buildPluginStartSubagentTaskParams(params),
+      ),
+    listSubagentTasks: () =>
+      callHost<PluginSubagentTaskSummary[]>('subagent.task.list'),
+    getSubagentTask: (taskId) =>
+      callHost<PluginSubagentTaskDetail>('subagent.task.get', {
+        taskId,
+      }),
+    generateText: (params) =>
+      call('llm.generate-text', buildPluginGenerateTextParams(params)),
+  };
+}
+
+export function buildPluginMessageSendParams(
+  input: PluginMessageSendParams,
+): JsonObject {
+  return {
+    ...(input.target ? { target: toHostJsonValue(input.target) } : {}),
+    ...(typeof input.content === 'string' ? { content: input.content } : {}),
+    ...(input.parts ? { parts: toHostJsonValue(input.parts) } : {}),
+    ...(typeof input.provider === 'string' ? { provider: input.provider } : {}),
+    ...(typeof input.model === 'string' ? { model: input.model } : {}),
+  };
+}
+
+export function buildPluginConversationSessionStartParams(
+  input: PluginConversationSessionStartParams,
+): JsonObject {
+  return {
+    timeoutMs: input.timeoutMs,
+    ...(typeof input.captureHistory === 'boolean'
+      ? { captureHistory: input.captureHistory }
+      : {}),
+    ...(typeof input.metadata !== 'undefined' ? { metadata: input.metadata } : {}),
+  };
+}
+
+export function buildPluginConversationSessionKeepParams(
+  input: PluginConversationSessionKeepParams,
+): JsonObject {
+  return {
+    timeoutMs: input.timeoutMs,
+    ...(typeof input.resetTimeout === 'boolean'
+      ? { resetTimeout: input.resetTimeout }
+      : {}),
+  };
+}
+
+export function buildPluginRegisterCronParams(
+  descriptor: PluginCronDescriptor,
+): JsonObject {
+  return {
+    name: descriptor.name,
+    cron: descriptor.cron,
+    ...(descriptor.description ? { description: descriptor.description } : {}),
+    ...(typeof descriptor.enabled === 'boolean' ? { enabled: descriptor.enabled } : {}),
+    ...(typeof descriptor.data !== 'undefined' ? { data: descriptor.data } : {}),
+  };
+}
+
+export function buildPluginCreateAutomationParams(input: {
+  name: string;
+  trigger: TriggerConfig;
+  actions: ActionConfig[];
+}): JsonObject {
+  return {
+    name: input.name,
+    trigger: toHostJsonValue(input.trigger),
+    actions: toHostJsonValue(input.actions),
+  };
+}
+
+export function buildPluginGenerateParams(
+  input: PluginLlmGenerateParams,
+): JsonObject {
+  return {
+    ...(input.providerId ? { providerId: input.providerId } : {}),
+    ...(input.modelId ? { modelId: input.modelId } : {}),
+    ...(input.system ? { system: input.system } : {}),
+    messages: toHostJsonValue(input.messages),
+    ...(input.variant ? { variant: input.variant } : {}),
+    ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+    ...(input.headers ? { headers: input.headers } : {}),
+    ...(typeof input.maxOutputTokens === 'number'
+      ? { maxOutputTokens: input.maxOutputTokens }
+      : {}),
+  };
+}
+
+export function buildPluginRunSubagentParams(
+  input: PluginSubagentRunParams,
+): JsonObject {
+  return {
+    ...(input.providerId ? { providerId: input.providerId } : {}),
+    ...(input.modelId ? { modelId: input.modelId } : {}),
+    ...(input.system ? { system: input.system } : {}),
+    messages: toHostJsonValue(input.messages),
+    ...(input.toolNames ? { toolNames: toHostJsonValue(input.toolNames) } : {}),
+    ...(input.variant ? { variant: input.variant } : {}),
+    ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+    ...(input.headers ? { headers: toHostJsonValue(input.headers) } : {}),
+    ...(typeof input.maxOutputTokens === 'number'
+      ? { maxOutputTokens: input.maxOutputTokens }
+      : {}),
+    ...(typeof input.maxSteps === 'number' ? { maxSteps: input.maxSteps } : {}),
+  };
+}
+
+export function buildPluginStartSubagentTaskParams(
+  input: PluginSubagentTaskStartParams,
+): JsonObject {
+  return {
+    messages: toHostJsonValue(input.messages),
+    ...(input.providerId ? { providerId: input.providerId } : {}),
+    ...(input.modelId ? { modelId: input.modelId } : {}),
+    ...(input.system ? { system: input.system } : {}),
+    ...(input.toolNames ? { toolNames: toHostJsonValue(input.toolNames) } : {}),
+    ...(input.variant ? { variant: input.variant } : {}),
+    ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+    ...(input.headers ? { headers: toHostJsonValue(input.headers) } : {}),
+    ...(typeof input.maxOutputTokens === 'number'
+      ? { maxOutputTokens: input.maxOutputTokens }
+      : {}),
+    ...(typeof input.maxSteps === 'number' ? { maxSteps: input.maxSteps } : {}),
+    ...(input.writeBack ? { writeBack: toHostJsonValue(input.writeBack) } : {}),
+  };
+}
+
+export function buildPluginGenerateTextParams(
+  input: PluginGenerateTextParams,
+): JsonObject {
+  return {
+    prompt: input.prompt,
+    ...(input.system ? { system: input.system } : {}),
+    ...(input.providerId ? { providerId: input.providerId } : {}),
+    ...(input.modelId ? { modelId: input.modelId } : {}),
+    ...(input.variant ? { variant: input.variant } : {}),
+    ...(typeof input.maxOutputTokens === 'number'
+      ? { maxOutputTokens: input.maxOutputTokens }
+      : {}),
+    ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+    ...(input.headers ? { headers: input.headers } : {}),
+  };
+}
+
 /**
  * 将 Host API 参数归一化为 JSON，并跳过显式 undefined 字段。
  * @param value 原始值
  * @returns 适合 Host API 的 JSON 值
  */
-function toHostJsonValue(value: unknown): JsonValue {
+export function toHostJsonValue(value: unknown): JsonValue {
   if (
     value === null
     || typeof value === 'string'
@@ -2965,7 +3035,7 @@ function toHostJsonValue(value: unknown): JsonValue {
   return String(value);
 }
 
-function toScopedStateParams(
+export function toScopedStateParams(
   options?: PluginScopedStateOptions,
 ): JsonObject {
   return options?.scope
