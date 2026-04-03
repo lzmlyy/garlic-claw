@@ -2,6 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  buildConversationTitlePrompt,
+  clipContextText,
+  createChatBeforeModelLineBlockResult,
   DeviceType,
   PluginClient,
   asChatBeforeModelPayload,
@@ -17,9 +20,11 @@ const {
   readBooleanFlag,
   readConversationMessages,
   readConversationSummary,
+  readConversationTitleConfig,
   readMemorySearchResults,
   readMemorySaveResultId,
   readOptionalObjectParam,
+  readPromptBlockConfig,
   readOptionalStringParam,
   readPluginHookPayload,
   readJsonObjectValue,
@@ -28,7 +33,9 @@ const {
   readRequiredTextValue,
   sameToolNames,
   readTextGenerationResult,
+  sanitizeConversationTitle,
   sanitizeOptionalText,
+  shouldGenerateConversationTitle,
 } = require('../dist/index.js');
 
 const WS_TYPE = {
@@ -469,6 +476,21 @@ test('plugin-sdk exposes generic hook payload readers and chat:before-model resu
       systemPrompt: '补充系统提示词',
     },
   );
+  assert.deepEqual(
+    createChatBeforeModelLineBlockResult(
+      payload.request.systemPrompt,
+      '与此用户相关的记忆',
+      ['- [preference] 用户喜欢咖啡'],
+    ),
+    {
+      action: 'mutate',
+      systemPrompt: '你是 Garlic Claw\n\n与此用户相关的记忆：\n- [preference] 用户喜欢咖啡',
+    },
+  );
+  assert.equal(
+    createChatBeforeModelLineBlockResult(payload.request.systemPrompt, '前缀', []),
+    null,
+  );
 });
 
 test('createPluginAuthorTransportExecutor runs author definitions with shared route normalization and governance actions', async () => {
@@ -658,6 +680,16 @@ test('plugin-sdk exposes shared author-side text helpers for builtin plugins', (
   );
   assert.equal(sanitizeOptionalText('  hello  '), 'hello');
   assert.equal(sanitizeOptionalText(undefined), '');
+  assert.deepEqual(
+    readPromptBlockConfig({
+      limit: 4,
+      promptPrefix: '相关知识',
+    }),
+    {
+      limit: 4,
+      promptPrefix: '相关知识',
+    },
+  );
   assert.deepEqual(parseCommaSeparatedNames(' alpha, beta ,, gamma '), [
     'alpha',
     'beta',
@@ -671,6 +703,8 @@ test('plugin-sdk exposes shared author-side text helpers for builtin plugins', (
   assert.equal(filterAllowedToolNames(undefined, ['alpha']), null);
   assert.equal(sameToolNames(['alpha', 'beta'], ['alpha', 'beta']), true);
   assert.equal(sameToolNames(['alpha'], ['beta']), false);
+  assert.equal(clipContextText('  short text  '), 'short text');
+  assert.equal(clipContextText('a'.repeat(250)).length, 240);
 });
 
 test('plugin-sdk exposes shared json object readers for author-side plugins', () => {
@@ -767,6 +801,35 @@ test('plugin-sdk exposes shared host result readers for conversation, memory and
     'memory-1',
   );
   assert.equal(readMemorySaveResultId(null), null);
+  assert.deepEqual(
+    readConversationTitleConfig({
+      defaultTitle: 'New Chat',
+      maxMessages: 6,
+    }),
+    {
+      defaultTitle: 'New Chat',
+      maxMessages: 6,
+    },
+  );
+  assert.equal(shouldGenerateConversationTitle(' New Chat ', 'New Chat'), true);
+  assert.equal(shouldGenerateConversationTitle('已生成标题', 'New Chat'), false);
+  assert.match(
+    buildConversationTitlePrompt([
+      {
+        role: 'user',
+        content: '我想做一个咖啡店会员系统',
+      },
+      {
+        role: 'assistant',
+        content: '可以先设计会员等级和积分规则',
+      },
+    ], 4),
+    /用户: 我想做一个咖啡店会员系统/,
+  );
+  assert.equal(
+    sanitizeConversationTitle('「咖啡店会员系统设计」\n补充解释'),
+    '咖啡店会员系统设计',
+  );
 });
 
 test('plugin-sdk exposes json value kind summaries for author-side audit plugins', () => {

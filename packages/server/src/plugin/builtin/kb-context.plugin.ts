@@ -1,7 +1,9 @@
 import {
   asChatBeforeModelPayload,
-  createChatBeforeModelHookResult,
+  clipContextText,
+  createChatBeforeModelLineBlockResult,
   readLatestUserTextFromMessages,
+  readPromptBlockConfig,
 } from '@garlic-claw/plugin-sdk';
 import type { JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
@@ -67,10 +69,7 @@ export function createKbContextPlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const config = (await context.host.getConfig()) as {
-          limit?: number;
-          promptPrefix?: string;
-        };
+        const config = readPromptBlockConfig(await context.host.getConfig());
         const entries = await context.host.searchKnowledgeBase(
           latestUserText,
           config.limit ?? 3,
@@ -80,29 +79,14 @@ export function createKbContextPlugin(): BuiltinPluginDefinition {
         }
 
         const knowledgeLines = entries.map((entry) =>
-          `- [${entry.title}] ${clipKnowledgeContent(entry.content)}`,
+          `- [${entry.title}] ${clipContextText(entry.content)}`,
         );
-        return toJsonValue(
-          createChatBeforeModelHookResult(
-            hookPayload.request.systemPrompt,
-            `${config.promptPrefix ?? '与当前问题相关的系统知识'}：\n${knowledgeLines.join('\n')}`,
-          ),
-        );
+        return toJsonValue(createChatBeforeModelLineBlockResult(
+          hookPayload.request.systemPrompt,
+          config.promptPrefix ?? '与当前问题相关的系统知识',
+          knowledgeLines,
+        ));
       },
     },
   };
-}
-
-/**
- * 裁剪知识库正文，避免一次塞入过长上下文。
- * @param content 原始正文
- * @returns 截断后的正文
- */
-function clipKnowledgeContent(content: string): string {
-  const normalized = content.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= 240) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, 237)}...`;
 }

@@ -1,21 +1,14 @@
 import {
+  buildConversationTitlePrompt,
   readConversationMessages,
   readConversationSummary,
-  readJsonObjectValue,
+  readConversationTitleConfig,
   readTextGenerationResult,
+  sanitizeConversationTitle,
+  shouldGenerateConversationTitle,
 } from '@garlic-claw/plugin-sdk';
 import type { JsonValue } from '../../common/types/json-value';
 import type { BuiltinPluginDefinition } from './builtin-plugin.types';
-
-/**
- * 会话标题插件的配置。
- */
-interface ConversationTitlePluginConfig {
-  /** 默认标题；仍为该值时才自动改标题。 */
-  defaultTitle?: string;
-  /** 参与生成标题的最大消息条数。 */
-  maxMessages?: number;
-}
 
 /**
  * 创建会话标题生成插件。
@@ -107,105 +100,5 @@ export function createConversationTitlePlugin(): BuiltinPluginDefinition {
         return null;
       },
     },
-  };
-}
-
-/**
- * 判断当前会话是否仍需要自动生成标题。
- * @param title 当前会话标题
- * @param defaultTitle 默认标题
- * @returns 是否应继续生成标题
- */
-function shouldGenerateConversationTitle(
-  title: string | undefined,
-  defaultTitle: string,
-): boolean {
-  return (title ?? '').trim() === defaultTitle;
-}
-
-/**
- * 基于最近几条消息构造标题生成提示词。
- * @param messages 会话消息列表
- * @param maxMessages 最多使用多少条消息
- * @returns 可直接交给 `llm.generate-text` 的提示词
- */
-function buildConversationTitlePrompt(
-  messages: Array<{
-    role?: string;
-    content?: string;
-  }>,
-  maxMessages: number,
-): string {
-  const visibleMessages = messages
-    .filter((message) => typeof message.content === 'string' && message.content.trim())
-    .slice(0, Math.max(1, maxMessages))
-    .map((message) => `${mapRoleLabel(message.role)}: ${message.content?.trim() ?? ''}`);
-
-  if (visibleMessages.length === 0) {
-    return '';
-  }
-
-  return [
-    '请为下面这段对话生成一个简洁中文标题。',
-    '要求：',
-    '- 8 到 20 个字',
-    '- 不要使用引号',
-    '- 不要输出序号或解释',
-    '- 只输出标题本身',
-    '',
-    '对话：',
-    ...visibleMessages,
-  ].join('\n');
-}
-
-/**
- * 把角色标记转成更自然的提示词标签。
- * @param role 原始角色
- * @returns 标题生成提示词里的角色名称
- */
-function mapRoleLabel(role?: string): string {
-  switch (role) {
-    case 'assistant':
-      return '助手';
-    case 'system':
-      return '系统';
-    case 'tool':
-      return '工具';
-    default:
-      return '用户';
-  }
-}
-
-/**
- * 清洗模型输出，得到可直接写入会话标题的文本。
- * @param raw 模型输出原文
- * @returns 清洗后的标题
- */
-function sanitizeConversationTitle(raw?: string): string {
-  if (!raw) {
-    return '';
-  }
-
-  return raw
-    .trim()
-    .replace(/^["'`「『]+/, '')
-    .replace(/["'`」』]+$/, '')
-    .split('\n')[0]
-    .trim();
-}
-
-function readConversationTitleConfig(value: JsonValue): ConversationTitlePluginConfig {
-  const object = readJsonObjectValue(value);
-  if (!object) {
-    return {};
-  }
-
-  return {
-    ...(typeof object.defaultTitle === 'string'
-      ? { defaultTitle: object.defaultTitle }
-      : {}),
-    ...(typeof object.maxMessages === 'number'
-      ? { maxMessages: object.maxMessages }
-      : {}),
   };
 }

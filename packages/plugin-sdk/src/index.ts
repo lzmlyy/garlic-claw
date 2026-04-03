@@ -754,6 +754,31 @@ export function createChatBeforeModelHookResult(
   };
 }
 
+export interface PluginPromptBlockConfig {
+  limit?: number;
+  promptPrefix?: string;
+}
+
+export interface PluginConversationTitleConfig {
+  defaultTitle?: string;
+  maxMessages?: number;
+}
+
+export function createChatBeforeModelLineBlockResult(
+  currentSystemPrompt: string,
+  promptPrefix: string,
+  lines: string[],
+): ChatBeforeModelHookResult | null {
+  if (lines.length === 0) {
+    return null;
+  }
+
+  return createChatBeforeModelHookResult(
+    currentSystemPrompt,
+    `${promptPrefix}：\n${lines.join('\n')}`,
+  );
+}
+
 export interface PluginAuthorTransportGovernanceHandlers {
   reload?: () => Promise<void> | void;
   reconnect?: () => Promise<void> | void;
@@ -860,6 +885,18 @@ export function sanitizeOptionalText(value?: string): string {
   return (value ?? '').trim();
 }
 
+export function readPromptBlockConfig(value: JsonValue): PluginPromptBlockConfig {
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    return {};
+  }
+
+  return {
+    ...(typeof object.limit === 'number' ? { limit: object.limit } : {}),
+    ...(typeof object.promptPrefix === 'string' ? { promptPrefix: object.promptPrefix } : {}),
+  };
+}
+
 export function parseCommaSeparatedNames(raw?: string): string[] | undefined {
   const normalized = sanitizeOptionalText(raw);
   if (!normalized) {
@@ -923,6 +960,15 @@ export function readLatestUserTextFromMessages(
   return '';
 }
 
+export function clipContextText(content: string, maxLength = 240): string {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
 export function readConversationSummary(
   value: JsonValue,
 ): {
@@ -937,6 +983,24 @@ export function readConversationSummary(
   return {
     ...(typeof object.id === 'string' ? { id: object.id } : {}),
     ...(typeof object.title === 'string' ? { title: object.title } : {}),
+  };
+}
+
+export function readConversationTitleConfig(
+  value: JsonValue,
+): PluginConversationTitleConfig {
+  const object = readJsonObjectValue(value);
+  if (!object) {
+    return {};
+  }
+
+  return {
+    ...(typeof object.defaultTitle === 'string'
+      ? { defaultTitle: object.defaultTitle }
+      : {}),
+    ...(typeof object.maxMessages === 'number'
+      ? { maxMessages: object.maxMessages }
+      : {}),
   };
 }
 
@@ -978,6 +1042,71 @@ export function readTextGenerationResult(
   return {
     text: object.text,
   };
+}
+
+export function shouldGenerateConversationTitle(
+  title: string | undefined,
+  defaultTitle: string,
+): boolean {
+  return sanitizeOptionalText(title) === defaultTitle;
+}
+
+export function buildConversationTitlePrompt(
+  messages: Array<{
+    role?: string;
+    content?: string;
+  }>,
+  maxMessages: number,
+): string {
+  const visibleMessages = messages
+    .filter((message) => typeof message.content === 'string' && sanitizeOptionalText(message.content))
+    .slice(0, Math.max(1, maxMessages))
+    .map((message) => `${mapConversationRoleLabel(message.role)}: ${sanitizeOptionalText(message.content)}`);
+
+  if (visibleMessages.length === 0) {
+    return '';
+  }
+
+  return [
+    '请为下面这段对话生成一个简洁中文标题。',
+    '要求：',
+    '- 8 到 20 个字',
+    '- 不要使用引号',
+    '- 不要输出序号或解释',
+    '- 只输出标题本身',
+    '',
+    '对话：',
+    ...visibleMessages,
+  ].join('\n');
+}
+
+export function sanitizeConversationTitle(raw?: string): string {
+  if (!raw) {
+    return '';
+  }
+
+  const firstLine = raw
+    .trim()
+    .split('\n')[0]
+    .trim();
+
+  return firstLine
+    .replace(/^["'`「『]+/, '')
+    .replace(/["'`」』]+$/, '')
+    .trim();
+}
+
+function mapConversationRoleLabel(role?: string): string {
+  switch (role) {
+    case 'assistant':
+      return '助手';
+    case 'system':
+      return '系统';
+    case 'tool':
+      return '工具';
+    default:
+      return '用户';
+  }
 }
 
 export function readMemorySearchResults(

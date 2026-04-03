@@ -1,9 +1,9 @@
 import {
   asChatBeforeModelPayload,
-  createChatBeforeModelHookResult,
-  readJsonObjectValue,
+  createChatBeforeModelLineBlockResult,
   readLatestUserTextFromMessages,
   readMemorySearchResults,
+  readPromptBlockConfig,
 } from '@garlic-claw/plugin-sdk';
 import type { JsonValue } from '../../common/types/json-value';
 import { toJsonValue } from '../../common/utils/json-value';
@@ -69,7 +69,7 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
           return null;
         }
 
-        const config = readMemoryContextConfig(await context.host.getConfig());
+        const config = readPromptBlockConfig(await context.host.getConfig());
         const memories = readMemorySearchResults(await context.host.searchMemories(
           latestUserText,
           config.limit ?? 5,
@@ -81,28 +81,12 @@ export function createMemoryContextPlugin(): BuiltinPluginDefinition {
         const memoryLines = memories.map((memory) =>
           `- [${memory.category ?? 'general'}] ${memory.content ?? ''}`,
         );
-        return toJsonValue(
-          createChatBeforeModelHookResult(
-            hookPayload.request.systemPrompt,
-            `${config.promptPrefix ?? '与此用户相关的记忆'}：\n${memoryLines.join('\n')}`,
-          ),
-        );
+        return toJsonValue(createChatBeforeModelLineBlockResult(
+          hookPayload.request.systemPrompt,
+          config.promptPrefix ?? '与此用户相关的记忆',
+          memoryLines,
+        ));
       },
     },
-  };
-}
-
-function readMemoryContextConfig(value: JsonValue): {
-  limit?: number;
-  promptPrefix?: string;
-} {
-  const object = readJsonObjectValue(value);
-  if (!object) {
-    return {};
-  }
-
-  return {
-    ...(typeof object.limit === 'number' ? { limit: object.limit } : {}),
-    ...(typeof object.promptPrefix === 'string' ? { promptPrefix: object.promptPrefix } : {}),
   };
 }

@@ -160,6 +160,8 @@
   - builtin 子代理委派里的 prompt 读取、maxSteps 归一化、回写 flag 读取、执行摘要裁剪，已进一步外移到 `plugin-sdk`
   - builtin 自动化工具插件里的 `createAutomation` 参数解析器，已进一步外移到 `plugin-sdk`
   - builtin `provider-router` 里的工具白名单裁剪与顺序比较 helper，已进一步外移到 `plugin-sdk`
+  - builtin `conversation-title` 的标题 prompt / config reader / title sanitize helper，已进一步外移到 `plugin-sdk`
+  - builtin `memory-context / kb-context` 的 prompt block config、`chat:before-model` 行块结果 helper 与知识裁剪 helper，已进一步外移到 `plugin-sdk`
   - `chat-message-orchestration.service.ts` 已删掉一份本地工具白名单裁剪 helper，改直接复用 SDK 导出
   - `chat-message-generation.service.ts` 已把 start/retry 里的短路完成、任务启动、错误回写并回统一内部流程，不再保留两段近乎相同的主链控制流
   - `chat-message-completion.service.ts` 已把“双消息 metadata 写回 / 单消息 metadata 写回”并回统一内部持久化入口，不再保留两段近乎相同的 vision fallback 写回流程
@@ -181,6 +183,7 @@
   - `plugin-runtime-inbound-hooks.facade.ts` 已把 `chat/message` inbound hook 的重复 `invokeHook` 类型样板压成共享输入类型，`198 -> 192`
   - `plugin-runtime-clone.helpers.ts` 已把 automation/tool/subagent/assistant-output 的重复 clone 骨架并回共享私有函数，`392 -> 387`
   - 这轮连续两刀 `plugin runtime` 内部减法后，`packages/server/src/plugin` 已从 `16879` 降到 `16765`，`packages/server/src` 已从 `32395` 降到 `32281`
+  - builtin 标题/上下文这批作者侧 helper 再外移后，`packages/server/src/plugin` 已继续从 `16765` 降到 `16640`，`packages/server/src` 已继续从 `32281` 降到 `32156`
   - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
   - `smoke:http` 暴露的 chat/plugin 循环注入缺口已补齐，当前后端启动烟测重新通过
   - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
@@ -222,8 +225,8 @@
 
 ## 当前 core 行数快照
 
-- `packages/server/src`: `32281`
-- `packages/server/src/plugin`: `16765`
+- `packages/server/src`: `32156`
+- `packages/server/src/plugin`: `16640`
 - `packages/server/src/chat`: `3862`
 - `packages/server/src/chat/chat.controller.ts`: `228`
 - `packages/server/src/chat/chat-message.helpers.ts`: `152`
@@ -273,6 +276,8 @@
 - [x] 本轮已把 builtin 子代理委派里的作者侧值读取与执行摘要 helper 收口到 `plugin-sdk`
 - [x] 本轮已把 builtin 自动化工具插件的 `createAutomation` 参数解析器收口到 `plugin-sdk`
 - [x] 本轮已把 builtin `provider-router` 的工具白名单 helper 收口到 `plugin-sdk`
+- [x] 本轮已把 builtin `conversation-title` 的标题 prompt / config reader / title sanitize helper 收口到 `plugin-sdk`
+- [x] 本轮已把 builtin `memory-context / kb-context` 的 prompt block config、行块结果 helper 与知识裁剪 helper 收口到 `plugin-sdk`
 - [x] 本轮已把 `plugin-subagent-task-request.helpers.ts` 里的重复 `normalizePositiveInteger(...)` 并回现有 validation helper
 - [x] 本轮已删掉 `builtin-plugin.types.ts` 里无人消费的 builtin 别名层，并让治理 handler 直接复用 SDK type
 - [x] 本轮已把 `chat-message-completion.service.ts` 的 vision fallback metadata 重复写回并回统一内部持久化入口
@@ -290,8 +295,12 @@
 - [x] 这一次切片已确认满足“core 净减少、复杂度外移到 SDK”：
   - `git diff --numstat` 显示 `packages/server/src/plugin/builtin/*host*` 与 `builtin-plugin.types.ts` 合计净减 `557` 行
   - 同一轮 `packages/plugin-sdk/src/index.ts` 净增 `70` 行，用于承接共用 facade / builder 导出
+- [x] 这一轮 builtin 标题/上下文 helper 外移也已确认满足“core 净减少、复杂度外移到 SDK”：
+  - `packages/server/src` 非空生产代码：`32281 -> 32156`
+  - `packages/server/src/plugin` 非空生产代码：`16765 -> 16640`
+  - `packages/plugin-sdk/src/index.ts` 非空生产代码：`3765 -> 3876`
 - [ ] 后续切片先核对是否真的让 `core` 生产代码净减少；只在 `core` 内横向搬运的切片不再优先
 - [ ] 优先把作者侧复杂度继续外移到 `SDK / adapter`，而不是继续给 `core` 增加新 helper 层
 - [ ] 如继续收口 `plugin` 私有治理，只评估 conversation override 是否还需要独立入口；不再回到双轨全局启停
 - [ ] 复盘这轮新增的 `core helper / facade / service`，优先找出可以删回、并回，或迁到 `plugin-sdk / adapter` 的部分
-- [ ] 下一候选优先查看哪些能力还能从 `plugin/chat runtime core` 外移到 `plugin-sdk`、builtin facade 或 adapter 层
+- [ ] 下一候选优先查看 recorder 类 builtin 里的 summary / message 格式化 helper，评估是否继续外移到 `plugin-sdk`
