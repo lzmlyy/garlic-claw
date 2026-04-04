@@ -6,6 +6,22 @@
 
 ## 重构核心理念
 
+- 状态校正 2026-04-03：
+  - 当前“合并重复逻辑”还没有做完，只完成了一部分
+  - 已合并到位的主要是：
+    - `plugin-runtime-transport.facade.ts`
+    - `plugin-runtime-host.facade.ts` 的一部分
+    - `plugin.gateway.ts` 的一部分
+    - `plugin.controller.ts` / `plugin-command.service.ts` 的 persisted/runtime plugin 视图拼装第一刀
+    - `chat-message-generation.service.ts` 的 `start / retry` 共用续跑主链第一刀
+    - `chat-task.service.ts` 的 streaming / terminal 状态流第一刀
+  - 还没真正合并掉的主重复链主要是：
+    - `plugin-runtime.service.ts` 的公开 hook 入口壳
+    - `plugin.controller.ts` 剩余的 HTTP adapter / query / body 归一化样板
+    - `chat-message-generation.service.ts` 前半段的 message received / created / persisted create 主链
+    - `chat-task.service.ts` 剩余的 streaming / finish / stopped 终态控制流
+  - 所以后续禁止再把“局部删了十几二十行”当成完成，必须继续正面合并这些主重复链
+
 - `core` 要像 `C` 一样简单：
   - 只保留稳定内核边界
   - 只保留少量必须长期维护的 runtime contract
@@ -13,6 +29,13 @@
 - `SDK` 要像 `C++` 一样提供丰富语法糖：
   - 作者侧模板、payload/result builder、config reader、adapter glue 优先放到 `SDK / adapter / plugin-side facade`
   - 不把作者体验和兼容层长期堆在 `core`
+- `helper` 本身就是丑陋命名：
+  - `helper` 往往意味着“这段逻辑还没想清楚属于谁”
+  - 长期目标不是“把 helper 写优雅”，而是持续清空 `*helpers.ts`
+  - 禁止再新增泛化的 `helper/helpers` 文件名
+  - 纯协议转换改成 `codec / parser / normalizer`
+  - 纯只读投影改成 `view / summary`
+  - 带业务语义、运行时状态、持久化细节或副作用的逻辑，直接并回所属 `service / facade / module`
 - 分散在各处的重复代码要主动并回：
   - 同一语义只允许保留一份执行骨架
   - 不允许 `tool / route / hook`、`controller / gateway / runtime` 各自维护同义控制流副本
@@ -52,29 +75,194 @@
 
 ## 真正重构执行清单
 
-- [x] `plugin-runtime.service.ts`
+- [ ] `plugin-runtime.service.ts`
   - 删除按 hook 名字平铺的入口样板
   - 收口广播、mutation、subagent 三类重复调度骨架
   - 文件目标：`678 -> <= 520`
+  - 状态校正 2026-04-03：
+    - 这项目前只完成到“第一刀”
+    - 公开 hook 入口仍然按 `runChatBeforeModelHooks / runMessageCreatedHooks / runResponseAfterSendHooks ...` 平铺
+    - 这还不算真正把重复逻辑合并到位，后面还要继续收成更少的统一入口
+  - 状态校正 2026-04-04：
+    - 当前文件已来到 `401`
+    - 五类入口已经立住
+    - 前一轮已继续把 `RuntimeHookInvoker / RuntimeJsonHookInvoker` 两套类型桥并回单一泛型 invoker，并把 runner map 的样板再压一轮，`480 -> 467`
+    - 本轮又把 `runHookChain / runHookFamily` 纯执行器外移到 `shared`，并删掉 broadcast 的额外桥接，`424 -> 406`
+    - 随后又继续把 family type 别名和 transport runtime 转手样板再压一轮，`406 -> 401`
+    - 但中心文件仍然保留 subagent / transport / family type 的剩余噪音
+    - 这项只能继续视为未完成，后续还要把中心文件重新压回目标区间
+  - 状态校正 2026-04-04（本轮继续）：
+    - 已把 `plugin:error` 分发改成稳定 `dispatchPluginErrorHook({ context, payload })`
+    - 已删除 `createPluginErrorDispatcher(...) + getTransportRuntime(...)` 这组 per-call transport runtime 装配
+    - 当前 `plugin-runtime.service.ts` raw 行数：`438 -> 426`
+    - 当前 `plugin-runtime-transport.facade.ts` raw 行数：`391 -> 396`
+    - 两文件合计仍继续下降：`829 -> 822`
+    - 当前 core 行数已继续：
+      - `packages/server/src`: `24832 -> 24827`
+      - `packages/server/src/plugin`: `9637 -> 9632`
+      - `packages/server/src/chat`: `3532 -> 3532`
+    - 但 `callHost(...)` 里的 subagent 转手 lambda 和 `invokeJsonPluginHook` 类型噪音还在；下一刀要转向 `subagent` owner
+  - 状态校正 2026-04-04（subagent owner 收口后）：
+    - 已把 `runSubagentRequest` 收紧到真实 `PluginSubagentRequest => Promise<PluginSubagentRunResult>`
+    - 已把 `after-run` 调度并回 `plugin-runtime-subagent.facade.ts`
+    - 已删除 `plugin-runtime.service.ts` 里的 `invokeJsonPluginHook` 与 `callHost(...)` 的 subagent lambda/cast
+    - 中途修回了一处真实回归：同一 `records` iterator 被 `before-run / after-run` 连续消费，导致 `after-run` hook 被跳过；现已在 owner 内收成局部数组
+    - 当前 core 行数已继续：
+      - `packages/server/src`: `24827 -> 24815`
+      - `packages/server/src/plugin`: `9632 -> 9620`
+      - `packages/server/src/chat`: `3532 -> 3532`
+      - `packages/server/src/plugin/plugin-runtime.service.ts`: `426 -> 421`
+      - `packages/server/src/plugin/plugin-runtime-subagent.facade.ts`: `250 -> 248`
+      - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `309 -> 287`
+    - 但 `plugin-runtime-host.facade.ts` 和 `chat-message-generation.service.ts` 仍然是后续更大的热点
 - [ ] `plugin-runtime-host.facade.ts`
   - 删除本地大 `if` 分支里的重复读参和重复 `toJsonValue(...)`
   - 改成按 host capability family 调度
   - 文件目标：`284 -> 180 ~ 220`
-- [x] `plugin-runtime-transport.facade.ts`
+  - 状态校正 2026-04-03：
+    - runtime-managed method 的重复哨兵、默认分支和一批重复 JSON 包装已继续收掉
+    - import 样板、分支内重复包装以及 runtime-managed 结果的分散 `toJsonValue(...)` 已继续压掉
+    - 当前文件已 `284 -> 255`
+    - 但 capability family 里的读参/转手样板还没有真正压平
+  - 状态校正 2026-04-04：
+    - helper 并回 owner 后这份文件一度回涨到 `505`
+    - 后续已继续删掉 capability family 前缀分发表、runtime request codec 重复读参、顶部单点 wrapper 与缓存服务解析样板
+    - 随后又把 `conversation.session.start / keep` 的 `timeoutMs` 读取收成单点，并把 `subagent.run / subagent.task.start` 的 request 校验骨架并回局部单点
+    - 当前文件已继续压到 `505 -> 292`
+    - 但 `message.send` 的 `parts / provider / model` 读参与 `conversation.session` 剩余分支仍然偏厚，这项不能再算完成
+  - 状态校正 2026-04-04（message/session reader 再压一轮）：
+    - 已把 `message.send` 的 `content / parts / provider / model` 读取收成局部 reader
+    - 已把 `conversation.session` 的 `captureHistory / resetTimeout / metadata` 读取收成局部单点
+    - 当前 core 行数已继续：
+      - `packages/server/src`: `24815 -> 24812`
+      - `packages/server/src/plugin`: `9620 -> 9617`
+      - `packages/server/src/chat`: `3532 -> 3532`
+      - `packages/server/src/plugin/plugin-runtime-host.facade.ts` 非空行数：`287 -> 284`
+    - 但 `message.send` 与 `conversation.session` 的主分支还没压到目标区间，这项仍然未完成
+- [ ] `plugin-runtime-transport.facade.ts`
   - 合并 `tool / route / hook` 三条链路重复的超时、失败记录、slot 包装
   - 文件目标：`306 -> 220 ~ 240`
 - [ ] `plugin.gateway.ts`
   - 只保留 socket 鉴权、连接生命周期、runtime 调度
   - 文件目标：`364 -> 260 ~ 300`
+  - 状态校正 2026-04-04：
+    - gateway helper spec 已并回 `plugin.gateway.spec.ts`
+    - 前一轮已把 remote transport 三段重复请求装配收回单点，并清掉失真长注释，`488 -> 438`
+    - 本轮又把 remote transport builder 与 auth claim 判定外移到 `shared`
+    - 当前文件已 `438 -> 320`
+    - 但连接槽位与消息路由 wiring 仍然偏厚，还没有收回只保留连接生命周期与 runtime 调度的目标区间
 - [ ] `plugin.controller.ts`
   - 只保留 HTTP adapter，不继续堆 query/body 归一化和治理转手样板
   - 文件目标：`313 -> 220 ~ 260`
+  - 状态校正 2026-04-03：
+    - persisted/runtime plugin 视图拼装已并回 `plugin-read.service.ts`
+    - `plugin-record-view.ts` 已删除
+    - 动作校验、runtimePressure 合并、remote bootstrap DTO 拼装和 event query adapter 样板也已继续删薄
+    - 当前文件已 `313 -> 234`
+    - 但还没压到目标区间，HTTP adapter 本体仍然偏厚
 - [ ] `chat-message-generation.service.ts`
   - 删除消息生成主链里重复的插件前后 Hook、任务启动、错误写回分支
   - 文件目标：`436 -> 320 ~ 360`
+  - 状态校正 2026-04-03：
+    - `start / retry` 共用的模型前续跑链已并回 `continueAssistantGeneration(...)`
+    - `generation / orchestration / plugin-target / response-hooks` 的 model lifecycle context 组装已并回 `createChatModelLifecycleContext(...)`
+    - 短路完成的错误边界与完成入口也已并回统一调用
+  - 当前文件按最新口径仍有 `430`
+  - 但前半段 `message:received / message:created / user+assistant create` 仍然偏厚，后续还要继续收
+  - 状态校正 2026-04-04：
+    - 本轮已把 `message received / created` 的纯 payload builder 收口到 `shared/chat-context.ts`
+    - `chat-message-generation.service.ts` 本体暂时没有明显下降，当前 `397 -> 399`
+    - 但 `chat-message-mutation.service.ts` 与 `chat-message-plugin-target.service.ts` 的同类消息 hook 视图/载荷样板也一起改为复用 shared contract
+    - 当前 `packages/server/src/chat` 总量已继续 `3583 -> 3568`
+    - 说明这刀是 chat 子域内的真实减法，但 generation 主链本体还没压够，后续还要继续正面收
+    - 随后又把 `message:created + 持久化` 写库链并回 `ChatMessageMutationService`，并让 `chat-message-plugin-target.service.ts` 不再直接耦合 runtime message hook
+    - 同一轮也删掉了 `chat-message-session.ts` 里无用的 `searchableContent` 与一段低价值长注释
+    - 当前文件已 `399 -> 382`
+    - 当前 `chat-message-plugin-target.service.ts` 已 `219 -> 197`
+    - 当前 `chat-message-mutation.service.ts` 因承接 owner 写库链回涨到 `289`，但 `packages/server/src/chat` 总量仍继续 `3568 -> 3552`
+  - 状态校正 2026-04-04（当前工作树最新口径）：
+    - `chat-message-mutation.service.ts` 已继续删掉 `createPendingAssistantMessage(...)`，把 pending assistant 落库直接并回 owner
+    - `chat-message-plugin-target.service.ts` 已删掉空的 append 包装，只保留 target 解析 + send info 投影
+    - `chat-message-session.ts` 已继续只保留结构化 `parts`
+    - `message.send` 当前返回的是 `message:created` hook 后真正落库的 assistant 视图，不再回传 hook 前的原始 `parts/provider/model`
+    - 当前 core 行数已继续：
+      - `packages/server/src`: `24032 -> 24014`
+      - `packages/server/src/chat`: `3471 -> 3453`
+      - `packages/server/src/chat/chat-message-generation.service.ts`: `372 -> 372`
+      - `packages/server/src/chat/chat-message-mutation.service.ts`: `399 -> 393`
+      - `packages/server/src/chat/chat-message-plugin-target.service.ts`: `136 -> 125`
+      - `packages/server/src/chat/chat-message-session.ts`: `51 -> 50`
+      - `generation + mutation + plugin-target`: `907 -> 890`
+    - 这说明 owner 回正后仍然有效，但下一刀不能回到外围；还要继续正面压 `generation + mutation` 的剩余主链
+  - 状态校正 2026-04-04（阶段 201 owner 内减法）：
+    - `chat-message-mutation.service.ts` 已删掉只服务单一 owner 的 `createMessageHookInfo(...)` 与 `createStoredMessageData(...)`
+    - `updateMessage(...)` 已把 user / assistant 双分支写回收成共享 `baseData`
+    - `chat-message-generation.service.ts` 已把 start / retry 的返回骨架再压一轮
+    - 同轮已修平 `chat-message-mutation.service.spec.ts` 里断裂的 assistant create 测试块
+    - 当前已验证文件级净减：
+      - `packages/server/src/chat/chat-message-generation.service.ts`: `372 -> 371`
+      - `packages/server/src/chat/chat-message-mutation.service.ts`: `393 -> 370`
+      - `packages/server/src/chat/chat-message-plugin-target.service.ts`: `125 -> 125`
+      - `packages/server/src/chat/chat-message-session.ts`: `50 -> 50`
+      - `generation + mutation`: `765 -> 741`
+      - `generation + mutation + plugin-target`: `890 -> 866`
+    - 当前工作树 aggregate（含其它未收口 chat 变动，只作实时参考）：
+      - `packages/server/src`: `24807`
+      - `packages/server/src/chat`: `3527`
+    - 已验证：
+      - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts src\\chat\\chat-message-plugin-target.service.spec.ts src\\chat\\chat-message-session.spec.ts --runInBand`
+      - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+      - `cd packages/server && npm run build`
+      - `cd packages/server && npm run smoke:http`
+      - `git diff --check -- packages/server/src/chat/chat-message-generation.service.ts packages/server/src/chat/chat-message-mutation.service.ts packages/server/src/chat/chat-message-mutation.service.spec.ts`
+    - 这说明本轮 owner 内减法成立，但 chat 总盘子在脏工作树里仍偏大；后续还要继续收 `generation` 的 turn-start 预备链，并压 `mutation` 里剩余 assistant create / view 投影
+  - 状态校正 2026-04-04（阶段 202 owner 内继续减法）：
+    - `chat-message-generation.service.ts` 已把 skill short-circuit 结果改成直接复用 `SkillCommandResponse`，并删掉一段多余的 `receivedMessagePayload` 局部转手
+    - `chat-message-mutation.service.ts` 已把 `message.send` 的 assistant 视图投影改成基于 persisted hook info 的单点表达
+    - 当前已验证文件级净减：
+      - `packages/server/src/chat/chat-message-generation.service.ts`: `371 -> 367`
+      - `packages/server/src/chat/chat-message-mutation.service.ts`: `370 -> 364`
+      - `packages/server/src/chat/chat-message-plugin-target.service.ts`: `125 -> 125`
+      - `packages/server/src/chat/chat-message-session.ts`: `50 -> 50`
+      - `generation + mutation`: `741 -> 731`
+      - `generation + mutation + plugin-target`: `866 -> 856`
+    - 当前工作树 aggregate（含其它未收口 chat 变动，只作实时参考）：
+      - `packages/server/src`: `24797`
+      - `packages/server/src/chat`: `3517`
+    - 已验证：
+      - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts src\\chat\\chat-message-plugin-target.service.spec.ts src\\chat\\chat-message-session.spec.ts --runInBand`
+      - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+      - `cd packages/server && npm run build`
+      - `cd packages/server && npm run smoke:http`
+      - `git diff --check -- packages/server/src/chat/chat-message-generation.service.ts packages/server/src/chat/chat-message-mutation.service.ts`
+    - 这说明 owner 内减法还在继续成立；下一刀仍然要正面压 `generation` 的 turn-start 预备链，并收掉 `mutation` 里剩余的 hook context / modelMessages 装配
+  - 状态校正 2026-04-04（阶段 203 contract 真相源收口）：
+    - `chat-message-completion.service.ts` 已改成直接接收 short-circuit `completion` contract，不再让 `chat-message-generation.service.ts` 在 start / continue 两处重抄 `assistantContent / assistantParts / providerId / modelId`
+    - `chat-message-mutation.service.ts` 已让 `createHookedStoredMessage(...)` 默认复用当前 `message.parts` 生成 `modelMessages`
+    - `createConversationTargetAssistantMessage(...)` 不再手写单次 assistant `modelMessages` / `message` 局部装配
+    - 当前已验证文件级净减：
+      - `packages/server/src/chat/chat-message-generation.service.ts`: `367 -> 357`
+      - `packages/server/src/chat/chat-message-mutation.service.ts`: `364 -> 360`
+      - `packages/server/src/chat/chat-message-completion.service.ts`: `161 -> 164`
+      - `generation + mutation`: `731 -> 717`
+      - `generation + mutation + completion`: `892 -> 881`
+    - 当前工作树 aggregate（含其它未收口 chat 变动，仅作实时参考）：
+      - `packages/server/src`: `24797 -> 24786`
+      - `packages/server/src/chat`: `3517 -> 3506`
+    - 已验证：
+      - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts src\\chat\\chat-message-plugin-target.service.spec.ts src\\chat\\chat-message-session.spec.ts src\\chat\\chat-message-completion.service.spec.ts --runInBand`
+      - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+      - `cd packages/server && npm run build`
+      - `cd packages/server && npm run smoke:http`
+      - `git diff --check -- packages/server/src/chat/chat-message-generation.service.ts packages/server/src/chat/chat-message-mutation.service.ts packages/server/src/chat/chat-message-completion.service.ts packages/server/src/chat/chat-message-completion.service.spec.ts`
+    - 这说明 `generation` 已压进目标区间，但 chat 下一刀仍然更该继续打 `mutation` owner，而不是回到外围搬运代码
 - [ ] `chat-task.service.ts`
   - 删除 streaming / finish / stopped 终态分支重复控制流
   - 文件目标：`360 -> 280 ~ 320`
+  - 状态校正 2026-04-03：
+    - streaming 起始状态、三类流片段写回、completed/stopped/error 终态、completed patch 与回调薄壳已并回更少入口
+    - 当前文件已 `360 -> 327`
+    - 但最终完成态、message patch 与事件发射链还可以继续收
 - [ ] 每完成一刀都要同时满足：
   - `packages/server/src` 总量继续下降
   - `packages/server/src/plugin` 或 `packages/server/src/chat` 总量继续下降
@@ -228,9 +416,9 @@
 - 结论校正 2026-04-03：
   - 当前这套功能不应该天然需要现在这套 `core` 体量
   - 最新实时口径已经压到：
-    - `packages/server/src`: `32395 -> 29255`
-    - `packages/server/src/plugin`: `16879 -> 13734`
-    - `packages/server/src/chat`: `3862`
+    - `packages/server/src`: `32395 -> 28741`
+    - `packages/server/src/plugin`: `16879 -> 13241`
+    - `packages/server/src/chat`: `3841`
   - 这说明减法已经开始生效，但边界还没有真正收干净
   - 这更像“作者侧糖、兼容层、投影层、适配层还留在 core”，不是“功能本身必须让 core 这么厚”
   - 后续不能再接受“因为功能复杂，所以 core 上万行是正常的”这种叙事
@@ -273,7 +461,7 @@
   - `builtin` 作者侧的 Host facade / param builder / host type 已开始从 `server` 外移到 `plugin-sdk` 共用导出
   - builtin 示例插件与 loader 已不再从 `builtin-plugin.transport.ts` 读取 definition type，参考实现继续降低对 transport 实现文件的编译期耦合
   - builtin Hook payload reader 与 `chat:before-model` 结果 helper 已进一步外移到 `plugin-sdk`
-  - builtin 示例插件已不再从 `builtin-plugin.transport.ts` 读取作者侧 helper，`builtin-hook-payload.helpers.ts` 已删除
+  - builtin 示例插件已不再从 `builtin-plugin.transport.ts` 读取作者侧 helper，`builtin-hook-payload.ts` 已删除
   - `builtin-plugin.transport.ts` 现在已直接复用 SDK facade 与通用作者 transport executor；server 侧两份薄壳 helper 与对应重复 spec 已删除
   - builtin 插件里重复的最近用户消息提取、可选文本清洗、逗号分隔工具名解析，已进一步外移到 `plugin-sdk`
   - builtin 插件里重复的 `JsonValue -> object` 读取器，也已进一步外移到 `plugin-sdk`
@@ -349,18 +537,36 @@
 - 这次 gateway 切片后，`packages/server/src/plugin` 已继续从 `13439` 降到 `13398`，`packages/server/src` 已继续从 `28960` 降到 `28919`
 - `plugin-runtime-host.facade.ts` 已继续删掉 runtime-managed method 分发中的重复哨兵和无意义默认分支，`305 -> 290`
 - 这次 host 继续压缩后，`packages/server/src/plugin` 已继续从 `13398` 降到 `13383`，`packages/server/src` 已继续从 `28919` 降到 `28904`
-- `chat-message-generation.service.ts` 这轮尝试过继续把 `start / retry` 后半段合并成一套公共骨架
-- 但该版本虽然结构更统一，总代码没有继续下降，所以已撤回，不计入有效减法成果
+- `plugin-runtime.service.ts` 已继续把一整排重复的 hook/governance 公开入口壳压回更少样板，`435 -> 364`
+- 这次 runtime service 继续压缩后，`packages/server/src/plugin` 已继续从 `13383` 降到 `13312`，`packages/server/src` 已继续从 `28904` 降到 `28833`
+- `chat-message-generation.service.ts` 第一版“统一 `start / retry` 后半段骨架”的尝试因为总代码没有继续下降，已撤回
+- 第二版已把 `start / retry` 共用的模型前续跑链并回 `continueAssistantGeneration(...)`，`436 -> 422`
+- `chat-message-completion.service.ts` 的双消息/单消息 vision fallback metadata 写回，现已统一复用同一持久化入口，并保持原消息类型不被抹平成通用记录
+- 这次 chat 续跑链切片后，`packages/server/src/chat` 已继续从 `3862` 降到 `3856`，`packages/server/src` 已继续从 `28840` 降到 `28834`
+- `chat-task.service.ts` 已继续把 streaming 起始状态、三类流片段写回、completed/stopped/error 终态和回调告警包装并回更少入口，`360 -> 345`
+- `plugin-runtime-host.facade.ts` 已继续删掉一批 runtime host JSON 包装薄壳与 finish session 转手样板，当前维持在 `284`
+- 这次 `chat-task / host facade` 切片后，`packages/server/src/chat` 已继续从 `3856` 降到 `3841`，`packages/server/src/plugin` 已继续从 `13319` 降到 `13313`，`packages/server/src` 已继续从 `28834` 降到 `28813`
+- `plugin.controller.ts` 已继续把动作校验、runtimePressure 合并与存储 key 归一化删回更少入口，`299 -> 291`
+- 这次 `plugin.controller` 继续压缩后，`packages/server/src/plugin` 已继续从 `13313` 降到 `13305`，`packages/server/src` 已继续从 `28813` 降到 `28805`
+- `chat-message-common.helpers.ts` 已新增 `createChatModelLifecycleContext(...)`，把 `generation / orchestration / plugin-target / response-hooks` 里重复的 model lifecycle context 组装并回单一入口
+- `plugin-runtime-host.facade.ts` 这轮继续删掉 import/包装样板与低价值转手，`284 -> 262`
+- `chat-message-generation.service.ts` 这轮继续靠共享 lifecycle context 入口收薄，`422 -> 419`
+- 这次 `chat lifecycle context / host facade` 切片后，`packages/server/src/plugin` 已继续从 `13305` 降到 `13283`，`packages/server/src` 已继续从 `28805` 降到 `28790`
+- `plugin-runtime-host.facade.ts` 已把 runtime-managed method 的分散 `toJsonValue(...)` 收回 `call(...)` 单点序列化，并继续删掉单次 `plugin.self.get` 转手壳，`262 -> 255`
+- `plugin.controller.ts` 已继续把 remote bootstrap DTO 拼装与 event query 入口样板删回直接透传，`250 -> 234`
+- `chat-task.service.ts` 已继续把 completed patch / wait / callback 薄壳并回主流程，`339 -> 327`
+- `chat-message-generation.service.ts` 已把短路完成错误边界并回统一入口；虽然主文件仍厚，但这次配合 `chat-task` 继续让 `chat` 总量重新压回前一轮基线以下
+- 这次 `host/controller/chat-task` 切片后，`packages/server/src` 已继续从 `28765` 降到 `28741`，`packages/server/src/plugin` 已继续从 `13264` 降到 `13241`，`packages/server/src/chat` 已继续从 `3842` 降到 `3841`
 - `builtin-plugin.types.ts` 里无人消费的 builtin 别名层已继续删薄，治理 handler 已改成复用 SDK transport governance type
 - `smoke:http` 暴露的 chat/plugin 循环注入缺口已补齐，当前后端启动烟测重新通过
 - 这说明当前已经不只是 `core` 内部横向拆分，但还需要继续找下一批能外移到 `SDK / adapter` 的重复面
 
 ## 最新行数快照
 
-- 2026-04-03 当前口径：
-  - `packages/server/src`: `28904`
-  - `packages/server/src/plugin`: `13383`
-  - `packages/server/src/chat`: `3862`
+- 2026-04-04 当前口径：
+  - `packages/server/src`: `27470`
+  - `packages/server/src/plugin`: `11978`
+  - `packages/server/src/chat`: `3829`
   - `packages/plugin-sdk/src/index.ts`: `5063`
   - `packages/server/src/plugin/plugin.service.ts`: `122`
 
@@ -368,58 +574,69 @@
 
 - `builtin-plugin.transport.ts`: `1069 -> 162`
 - `plugin-host.service.ts`: `1000+ -> 126`
-- `plugin-runtime.service.ts`: `4287 -> 684`
-- `plugin-runtime-input.helpers.ts`: `362 -> 5`
-- `plugin-runtime-hook-result.helpers.ts`: `555 -> 4`
+- `plugin-runtime.service.ts`: `4287 -> 402`
+- `plugin-runtime-input.ts`: `362 -> 5`
+- `plugin-runtime-hook-result.ts`: `555 -> 0`（已移至 `packages/shared/src/plugin-runtime-hook-result.ts`）
+- `plugin-runtime-hook-runner.ts`: `109 -> 0`（已移至 `packages/shared/src/plugin-runtime-hook-chain.ts`）
+- `plugin-runtime-hook-filter.ts`: `76 -> 0`（已并入 `packages/shared/src/plugin-runtime-hook-dispatch.ts`）
+- `plugin-runtime-scope.ts`: `50 -> 0`（已并入 `packages/shared/src/plugin-runtime-hook-dispatch.ts`）
 - `plugin.gateway.ts`: `1269 -> 323`
 - `tool-registry.service.ts`: `487 -> 226`
 - `plugin.service.ts`: `1059 -> 122`
 - `chat-message.service.ts`: `1030 -> 65`
 - `chat.controller.ts`: `266 -> 228`
 - `chat.service.ts`: `192 -> 175`
-- `chat-message-completion.service.ts`: `180 -> 172`
-- `chat-message-generation.service.ts`: `503 -> 436`
+- `chat-message-completion.service.ts`: `180 -> 180`
+- `chat-message-generation.service.ts`: `503 -> 409`
+- `chat-task.service.ts`: `360 -> 327`
 - `chat-message.helpers.ts`: `153 -> 152`
 - `chat-message-orchestration.service.ts`: `359 -> 234`
 - `chat-message-plugin-target.service.ts`: `259 -> 228`
 - `chat-message-response-hooks.service.ts`: `154 -> 134`
 - `chat-message-session.ts`: `109 -> 92`
-- `chat-task.service.ts`: `443 -> 360`
+- `chat-task.service.ts`: `443 -> 327`
 - `config-manager.loader.ts`: `426 -> 392`
-- `plugin.controller.ts`: `389 -> 313`
+- `plugin.controller.ts`: `389 -> 234`
 - `plugin-command.service.ts`: `250 -> 229`
 - `plugin-cron.service.ts`: `244 -> 229`
 - `plugin-route.controller.ts`: `218 -> 180`
+- `plugin-runtime-host.facade.ts`: `321 -> 240`
 - `plugin-runtime-operation-hooks.facade.ts`: `216 -> 147`
-- `plugin-runtime-subagent.facade.ts`: `243 -> 217`
+- `plugin-runtime-subagent.facade.ts`: `243 -> 211`
 - `plugin-runtime-message-hooks.facade.ts`: `128 -> 95`
 - `plugin-runtime-inbound-hooks.facade.ts`: `198 -> 192`
 - `plugin-runtime-clone.helpers.ts`: `392 -> 0`（已移至 `packages/shared/src/plugin-runtime-clone.helpers.ts`）
 - `plugin-runtime-hook-mutation.helpers.ts`: `481 -> 0`（已移至 `packages/shared/src/plugin-runtime-hook-mutation.helpers.ts`）
-- `plugin-runtime-validation.helpers.ts`: `170 -> 0`（已移至 `packages/shared/src/plugin-runtime-validation.helpers.ts`）
-- `builtin-plugin-host-facade.helpers.ts`: `255 -> 0`（已删）
+- `plugin-runtime-validation.ts`: `170 -> 0`（已移至 `packages/shared/src/plugin-runtime-validation.ts`）
+- `plugin-runtime-subagent.ts`: `242 -> 0`（纯协议 builder 已移至 `packages/shared/src/plugin-runtime-subagent.ts`，宿主判断与 stream input 已并回 `plugin-runtime-subagent.facade.ts`）
+- `builtin-plugin-host-facade.ts`: `255 -> 0`（已删）
 - `builtin-plugin-host-params.helpers.ts`: `200 -> 0`（已删）
 - `builtin-plugin.types.ts`: `215 -> 31`
 
 ## 当前 core 行数快照
 
-- `packages/server/src`: `28904`
-- `packages/server/src/plugin`: `13383`
-- `packages/server/src/chat`: `3862`
+- `packages/server/src`: `24014`
+- `packages/server/src/plugin`: `9359`
+- `packages/server/src/chat`: `3453`
+- `packages/server/src` 当前生产 `*helper*.ts`: `31`
 - 当前最大热点：
-  - `packages/server/src/plugin/plugin-runtime.service.ts`: `435`
-  - `packages/server/src/chat/chat-message-generation.service.ts`: `436`
-  - `packages/server/src/chat/chat-task.service.ts`: `360`
-  - `packages/server/src/plugin/plugin.gateway.ts`: `323`
-  - `packages/server/src/plugin/plugin.controller.ts`: `313`
-  - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `290`
-  - `packages/server/src/plugin/plugin-runtime-transport.facade.ts`: `233`
-  - `packages/server/src/plugin/plugin.service.ts`: `122`
+  - `packages/server/src/chat/chat-message-mutation.service.ts`: `393`
+  - `packages/server/src/plugin/plugin-runtime.service.ts`: `386`
+  - `packages/server/src/chat/chat-message-generation.service.ts`: `372`
+  - `packages/server/src/plugin/plugin-runtime-transport.facade.ts`: `363`
+  - `packages/server/src/plugin/plugin.gateway.ts`: `320`
+  - `packages/server/src/chat/chat-task.service.ts`: `327`
+  - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `284`
+  - `packages/server/src/plugin/plugin-host-conversation.facade.ts`: `264`
+  - `packages/server/src/plugin/plugin-host-state.facade.ts`: `244`
+  - `packages/server/src/plugin/plugin.controller.ts`: `235`
+  - `packages/server/src/plugin/plugin-subagent-task.service.ts`: `230`
+  - `packages/server/src/chat/chat-message-plugin-target.service.ts`: `125`
 
 ## 当前下一步
 
-- [x] 本轮已完成 `plugin-runtime-input.helpers.ts` 的按域拆分，并保留 barrel 导出面不变
-- [x] 本轮已完成 `plugin-runtime-hook-result.helpers.ts` 的按域拆分，并保留 barrel 导出面不变
+- [x] 本轮已完成 `plugin-runtime-input.ts` 的按域拆分，并保留 barrel 导出面不变
+- [x] 本轮已完成 `plugin-runtime-hook-result.ts` 的按域拆分，并保留 barrel 导出面不变
 - [x] 本轮已让 `MCP` source enabled/disabled 接入统一工具治理运行时，不再只是工具列表过滤
 - [x] 本轮已让 `plugin` source enabled/disabled 接入现有 `plugin scope.defaultEnabled`
 - [x] 本轮已让 `skill` source enabled/disabled 接入 skill package tool access / prompt guidance / allowedToolNames
@@ -430,7 +647,7 @@
 - [x] 本轮已把 builtin 示例插件和 loader 的 definition type import 从 transport 实现文件解耦
 - [x] 本轮已把 builtin Hook payload reader / `chat:before-model` 结果 helper 外移到 `plugin-sdk`
 - [x] 本轮已删除 server 侧两份 builtin Host helper 薄壳与对应重复 spec，`builtin-plugin.transport.ts` 改为直接复用 SDK facade
-- [x] 本轮已让 builtin 示例插件不再 import transport 实现 helper，`builtin-hook-payload.helpers.ts` 已删除
+- [x] 本轮已让 builtin 示例插件不再 import transport 实现 helper，`builtin-hook-payload.ts` 已删除
 - [x] 本轮已把 builtin `tool / hook / route` 执行壳与治理动作枚举收口到 `plugin-sdk` 的通用作者 transport executor
 - [x] 本轮已把 builtin 插件中重复的 message/config 作者侧小工具收口到 `plugin-sdk`
 - [x] 本轮已把 builtin 插件中重复的 `readJsonObjectValue(...)` 收口到 `plugin-sdk`
@@ -444,6 +661,134 @@
 - [x] 本轮已把 builtin observer recorder 的执行/消息/回复摘要 builder 收口到 `plugin-sdk`
 - [x] 本轮已把 builtin `plugin-governance-recorder` 的治理摘要/日志文案与 `tool-audit` 的工具审计摘要收口到 `plugin-sdk`
 - [x] 本轮已把 builtin observer / governance / tool-audit 里重复的 `storage.set + log.write` 作者侧持久化语法糖收口到 `plugin-sdk` 的 `persistPluginObservation(...)`
+- [x] 2026-04-04 已把下面 5 个 runtime helper 直接并回 owner 文件并删除：
+  - `plugin-runtime-manifest.helpers.ts`
+  - `plugin-runtime-failure.helpers.ts`
+  - `plugin-runtime-record.helpers.ts`
+  - `plugin-runtime-automation-input.helpers.ts`
+  - `plugin-runtime-subagent-input.helpers.ts`
+- [x] 2026-04-04 已把下面 3 个 host helper 直接并回 owner facade 并删除：
+  - `plugin-host-params.helpers.ts`
+  - `plugin-host-provider.helpers.ts`
+  - `plugin-host-record.helpers.ts`
+- [x] 2026-04-04 已把 `plugin-runtime-message.helpers.ts` 与 `plugin-runtime-params.helpers.ts` 直接并回 `plugin-runtime-host.facade.ts` / `plugin-runtime-automation.facade.ts` 并删除
+- [x] 这一轮 `packages/server/src` 当前生产 `*helper*.ts` 已继续从 `41` 降到 `31`
+- [x] 2026-04-04 本轮已继续把 owner 回涨压回去：
+  - `plugin-runtime-host.facade.ts`: `505 -> 465`
+  - `plugin-runtime-transport.facade.ts`: `408 -> 358`
+  - `plugin.gateway.ts`: `488 -> 438`
+  - `packages/server/src`: `26366 -> 26226`
+  - `packages/server/src/plugin`: `10874 -> 10734`
+- [x] 2026-04-04 本轮已把 `chat` 里一整块纯 contract / pure utility 外移到 `shared`：
+  - 新增：
+    - `packages/shared/src/chat-context.ts`
+    - `packages/shared/src/chat-host-services.ts`
+  - 删除：
+    - `packages/server/src/chat/chat-host-services.ts`
+  - 直接改用 shared 的文件：
+    - `chat-message-generation.service.ts`
+    - `chat-message-mutation.service.ts`
+    - `chat-message-orchestration.service.ts`
+    - `chat-message-plugin-target.service.ts`
+    - `chat-message-response-hooks.service.ts`
+    - `chat.service.ts`
+    - `chat-message-common.helpers.ts`
+- [x] 这一轮 chat 纯逻辑外移已再次满足“core 净减少、复杂度外移到 shared”：
+  - `packages/server/src`: `25871 -> 25766`
+  - `packages/server/src/plugin`: `10304 -> 10304`
+  - `packages/server/src/chat`: `3904 -> 3799`
+  - `packages/server/src/chat/chat-message-common.helpers.ts`: `73 -> 37`
+  - `packages/server/src/chat/chat-message-orchestration.service.ts`: `236 -> 218`
+- [x] `packages/server/src/chat` 已重新低于旧基线 `3829`
+- [ ] `plugin-runtime-message/helpers` 虽然已经删掉，owner 文件仍明显偏厚；下一轮要继续直接减少 `plugin-runtime.service.ts` / `plugin-runtime-host.facade.ts` / `plugin-subagent-task.service.ts` 的内部重复样板
+- [ ] 下一轮优先继续减少 `plugin-runtime.service.ts`、`plugin-runtime-host.facade.ts` 和 `plugin-subagent-task.service.ts` 的重复控制流，优先看 `subagent.*` 这一整条切片，不再回到只做零散改名或转手壳
+- [x] 2026-04-04 本轮已继续直接压 `runtime / host` 中心文件，而不是再搬外围：
+  - `plugin-runtime.service.ts`: `480 -> 467`
+  - `plugin-runtime-host.facade.ts`: `461 -> 454`
+  - `packages/server/src`: `25778 -> 25729`
+  - `packages/server/src/plugin`: `10314 -> 10265`
+  - `packages/server/src/chat`: `3801 -> 3801`
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\plugin\\plugin-subagent-task.service.spec.ts src\\plugin\\builtin\\builtin-plugin.transport.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+- [x] 2026-04-04 本轮已把 `plugin-host-ai/state/conversation` 三处重复 Host 请求读取器收成 `plugin-host-request.codec.ts`：
+  - `plugin-host-ai.facade.ts`: `344 -> 303`
+  - `plugin-host-state.facade.ts`: `276 -> 246`
+  - `plugin-host-conversation.facade.ts`: `372 -> 336`
+  - `packages/server/src`: `25766 -> 25729`
+  - `packages/server/src/plugin`: `10304 -> 10265`
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-subagent-task.service.spec.ts src\\plugin\\builtin\\builtin-plugin.transport.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+- [x] 2026-04-04 本轮已把 `plugin-runtime-host/automation` 的重复请求解析骨架收成 `plugin-runtime-request.codec.ts`：
+  - `plugin-runtime-host.facade.ts`: `454 -> 398`
+  - `plugin-runtime-automation.facade.ts`: `335 -> 279`
+  - `plugin-runtime-request.codec.ts`: `81`
+  - `packages/server/src`: `25729 -> 25698`
+  - `packages/server/src/plugin`: `10265 -> 10234`
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-subagent-task.service.spec.ts src\\plugin\\builtin\\builtin-plugin.transport.spec.ts src\\automation\\automation.service.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+- [x] 2026-04-04 本轮已继续把 `chat/plugin` 的纯消息部件、纯 host 视图和纯事件视图外移到 `shared`：
+  - 新增：
+    - `packages/shared/src/chat-message-parts.ts`
+    - `packages/shared/src/plugin-host-view.ts`
+    - `packages/shared/src/plugin-event-view.ts`
+  - 删除：
+    - `packages/server/src/chat/message-parts.ts`
+  - 直接改用 shared 的文件：
+    - `chat-message-generation.service.ts`
+    - `chat-message-completion.service.ts`
+    - `chat-message-response-hooks.service.ts`
+    - `chat-message-orchestration.service.ts`
+    - `chat-message-mutation.service.ts`
+    - `chat-message-plugin-target.service.ts`
+    - `chat-task-persistence.service.ts`
+    - `chat-message.helpers.ts`
+    - `chat-message-session.ts`
+    - `plugin-host-conversation.facade.ts`
+    - `plugin-read.service.ts`
+    - `plugin.controller.ts`
+  - 当前效果：
+    - `plugin-host-conversation.facade.ts`: `336 -> 266`
+    - `plugin-event.helpers.ts`: `215 -> 65`
+    - `packages/server/src`: `25698 -> 25239`
+    - `packages/server/src/plugin`: `10234 -> 9993`
+    - `packages/server/src/chat`: `3801 -> 3583`
+    - `packages/server/src` 当前生产 `*helper*.ts`: `31`
+  - 已验证：
+    - `cd packages/shared && npm run build`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\chat\\message-parts.spec.ts src\\plugin\\plugin-event.helpers.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-read.service.spec.ts src\\plugin\\plugin.controller.spec.ts src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts src\\chat\\chat-message-plugin-target.service.spec.ts src\\chat\\chat-message-response-hooks.service.spec.ts --runInBand`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+- [x] `packages/server/src/plugin` 已重新压到 `10000` 以下：
+  - 当前实时口径：`9993`
+  - 但这不代表 `plugin core` 已经收干净；`plugin-runtime.service.ts / plugin.gateway.ts / plugin-runtime-host.facade.ts` 仍然是下一轮主热点
+- [x] 2026-04-04 本轮已继续把 `plugin-host-ai.facade.ts` 顶部 pure provider/view/result 逻辑外移到 `shared`：
+  - 新增：
+    - `packages/shared/src/plugin-host-ai-view.ts`
+  - 直接改用 shared 的文件：
+    - `plugin-host-ai.facade.ts`
+    - `plugin-host.helpers.spec.ts`
+  - 当前效果：
+    - `plugin-host-ai.facade.ts`: `303 -> 212`
+    - `packages/server/src`: `25239 -> 25148`
+    - `packages/server/src/plugin`: `9993 -> 9902`
+    - `packages/server/src/chat`: `3583 -> 3583`
+  - 已验证：
+    - `cd packages/shared && npm run build`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-host.helpers.spec.ts src\\plugin\\plugin-host.service.spec.ts --runInBand`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
 - [x] 本轮已把 builtin `provider-router / persona-router` 的 config/context reader、host result reader 与 keyword match helper 收口到 `plugin-sdk`
 - [x] 本轮已把 builtin `provider-router / persona-router / conversation-title / memory-context / kb-context` 的 manifest config fields 与默认 fallback 常量收口到 `plugin-sdk`
 - [x] 本轮已把 `plugin-subagent-task-request.helpers.ts` 里的重复 `normalizePositiveInteger(...)` 并回现有 validation helper
@@ -451,6 +796,33 @@
 - [x] 这一次切片已确认满足“core 净减少、复杂度外移到 shared”：
   - `packages/server/src` 非空生产代码：`30991 -> 29964`
   - `packages/server/src/plugin` 非空生产代码：`15475 -> 14498`
+- [x] 本轮已把 `plugin runtime` 的 hook result / hook chain / hook dispatch 协议层整体外移到 `shared`
+- [x] 本轮已删掉 `server/plugin` 里这批纯协议仓库文件，不保留兼容转发层：
+  - `plugin-runtime-hook-result.ts`
+  - `plugin-runtime-hook-runner.ts`
+  - `plugin-runtime-hook-filter.ts`
+  - `plugin-runtime-scope.ts`
+  - 以及四个 `plugin-runtime-*-hook-result.ts`
+- [x] 这一轮 hook 协议层外移已再次满足“core 净减少、复杂度外移到 shared”：
+  - `packages/server/src`: `28741 -> 27695`
+  - `packages/server/src/plugin`: `13241 -> 12195`
+- [x] 本轮已把 `plugin-runtime-subagent.ts` 的纯协议 builder 外移到 `shared`，并把宿主判断/stream input 直接并回 `plugin-runtime-subagent.facade.ts`
+- [x] 这一轮 subagent builder 外移已继续满足“core 净减少、复杂度外移到 shared”：
+  - `packages/server/src`: `27695 -> 27488`
+  - `packages/server/src/plugin`: `12195 -> 11988`
+- [x] 本轮已把 `plugin-runtime.service.ts` 的旧 `runChatBeforeModelHooks / runMessageCreatedHooks / runResponseAfterSendHooks ...` 平铺公开面删成五类入口：
+  - `runInboundHook(...)`
+  - `runMessageHook(...)`
+  - `runOperationHook(...)`
+  - `runBroadcastHook(...)`
+  - `runSubagentHook(...)`
+- [x] 这一轮公开面收口不保留兼容层；虽然 `plugin-runtime.service.ts` 局部从 `364 -> 402`，但总量重新回到下降：
+  - `packages/server/src`: `27488 -> 27470`
+  - `packages/server/src/plugin`: `11988 -> 11978`
+  - `packages/server/src/chat`: `3841 -> 3829`
+  - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `255 -> 240`
+  - `packages/server/src/plugin/plugin-runtime-subagent.facade.ts`: `246 -> 211`
+  - `packages/server/src/chat/chat-message-generation.service.ts`: `430 -> 409`
 - [x] 本轮已把 `plugin-runtime-session.helpers.ts` 里的会话状态模型外移到 `shared`：
   - `ConversationSessionRecord`
   - `createConversationSessionRecord(...)`
@@ -538,6 +910,9 @@
 - [ ] 优先把作者侧复杂度继续外移到 `SDK / adapter`，而不是继续给 `core` 增加新 helper 层
 - [ ] 如继续收口 `plugin` 私有治理，只评估 conversation override 是否还需要独立入口；不再回到双轨全局启停
 - [ ] 复盘这轮新增的 `core helper / facade / service`，优先找出可以删回、并回，或迁到 `plugin-sdk / adapter` 的部分
+- [ ] 下一刀继续正面压 `chat-message-generation.service.ts` 的 `message received / message created / persisted create` 主链，不再回到外围整理
+- [ ] 下一刀继续压 `plugin-runtime.service.ts` 的五类入口实现，删掉类型噪音与分发样板，把中心文件重新压回去
+- [ ] 下一刀继续压 `plugin-runtime-host.facade.ts` 与 `plugin-runtime-subagent.facade.ts` 的 capability / AI 专用样板
 - [x] 上一候选里 recorder / router builtin 的短路结果 builder、路由结果装配和 `tool-audit` storage key 已继续外移到 `plugin-sdk`
 - [x] 上一候选里 `subagent-delegate` 的 manifest config fields、subagent request 装配与后台任务 writeBack 结果样板已继续外移到 `plugin-sdk`
 - [x] 上一候选里 `automation-tools / route-inspector` 的工具结果投影、route body builder 与 JSON 包装样板已继续外移到 `plugin-sdk`
@@ -545,3 +920,256 @@
 - [x] 上一候选里 `memory-tools / core-tools` 的工具参数模板与 manifest authoring 样板已继续外移到 `plugin-sdk`
 - [x] 上一候选里 `automation-tools / subagent-delegate / route-inspector` 的 manifest tool/route 模板与 authoring 样板已继续外移到 `plugin-sdk`
 - [ ] 下一候选优先查看 recorder builtin 的 hook 描述模板与统一 `pass` 返回样板，评估是否继续外移到 `plugin-sdk`
+- 状态校正 2026-04-04：
+  - `helper/helpers` 远没有删干净，当前 `packages/server/src` 里仍有 `59` 个生产 `*helper*.ts`
+  - 这轮已经继续删掉：
+    - `packages/server/src/plugin/plugin-runtime-session.helpers.ts`
+    - `packages/server/src/plugin/plugin-runtime-input.ts`
+    - `packages/server/src/plugin/plugin-subagent-task.ts`
+    - `packages/server/src/plugin/plugin-subagent-task-request.helpers.ts`
+    - `packages/server/src/plugin/plugin-subagent-task-result.helpers.ts`
+    - `packages/server/src/plugin/plugin-subagent-task-summary.helpers.ts`
+    - `packages/server/src/plugin/plugin-subagent-task-value.helpers.ts`
+  - 这轮也顺手修平了当前 chat 回归：
+    - `chat-message-generation.service.ts` 的短路完成旧调用残留
+    - `chat.controller.ts` 连带出现的 `assistantMessage is unknown`
+  - `plugin-subagent-task` 这一组现在已经不再保留独立 request/result/summary/value helper 边界：
+    - 解析、投影和 JSON clone 已直接并回 `plugin-subagent-task.service.ts`
+    - 对应 helper spec 也已并回 `plugin-subagent-task.service.spec.ts`
+  - 当前 core 行数已继续下降：
+    - `packages/server/src`: `27470 -> 27327`
+    - `packages/server/src/plugin`: `11978 -> 11835`
+    - `packages/server/src/chat`: `3829 -> 3829`
+  - 这说明：
+    - 真正有效的是删掉整块低价值 helper 壳与空壳 barrel
+    - 但 `plugin-runtime.service.ts / plugin-runtime-host.facade.ts / plugin gateway helpers` 这批中心与网关样板还没真正压完，不能宣称 helper 已清干净
+- [x] 2026-04-04 本轮已把 `plugin.gateway.ts` 的远程 transport builder 与 auth claim 判定外移到 `shared`
+  - 新增：
+    - `packages/shared/src/plugin-gateway-auth.ts`
+    - `packages/shared/src/plugin-gateway-remote-transport.ts`
+  - 直接改用：
+    - `packages/server/src/plugin/plugin.gateway.ts`
+    - `packages/shared/src/index.ts`
+  - 当前效果：
+    - `packages/server/src`: `25061 -> 24968`
+    - `packages/server/src/plugin`: `9815 -> 9722`
+    - `packages/server/src/chat`: `3583 -> 3583`
+    - `packages/server/src/plugin/plugin.gateway.ts`: `413 -> 320`
+    - `packages/server/src/plugin/plugin-runtime.service.ts`: `424`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `354`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `397`
+  - 已验证：
+    - `cd packages/shared && npm run build`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin.gateway.spec.ts --runInBand`
+    - `git diff --check`
+- [x] 2026-04-04 本轮已把 `plugin-runtime.service.ts` 的 family runner 纯执行器外移到 `shared`
+  - 直接改用：
+    - `packages/server/src/plugin/plugin-runtime.service.ts`
+    - `packages/shared/src/plugin-runtime-hook-chain.ts`
+    - `packages/shared/src/index.ts`
+  - 当前效果：
+    - `packages/server/src`: `24968 -> 24950`
+    - `packages/server/src/plugin`: `9722 -> 9704`
+    - `packages/server/src/chat`: `3583 -> 3583`
+    - `packages/server/src/plugin/plugin-runtime.service.ts`: `424 -> 406`
+    - `packages/server/src/plugin/plugin.gateway.ts`: `320`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `354`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `397`
+  - 已验证：
+    - `cd packages/shared && npm run build`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+- [x] 2026-04-04 本轮已把 chat message lifecycle contract 收口到 `shared`
+  - 直接改用：
+    - `packages/shared/src/chat-context.ts`
+    - `packages/shared/src/index.ts`
+    - `packages/server/src/chat/chat-message-generation.service.ts`
+    - `packages/server/src/chat/chat-message-mutation.service.ts`
+    - `packages/server/src/chat/chat-message-plugin-target.service.ts`
+  - 当前效果：
+    - `packages/server/src`: `24950 -> 24930`
+    - `packages/server/src/plugin`: `9704 -> 9699`
+    - `packages/server/src/chat`: `3583 -> 3568`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `397 -> 399`
+    - `packages/server/src/chat/chat-message-mutation.service.ts`: `237 -> 220`
+    - `packages/server/src/chat/chat-message-plugin-target.service.ts`: `231 -> 219`
+    - `packages/server/src/plugin/plugin-runtime.service.ts`: `406 -> 401`
+  - 已验证：
+    - `cd packages/shared && npm run build`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-plugin-target.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+- [x] 2026-04-04 本轮已继续压 `plugin-runtime-host.facade.ts` 的局部包装与缓存解析样板
+  - 直接改用：
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`
+  - 当前效果：
+    - `packages/server/src`: `24930 -> 24903`
+    - `packages/server/src/plugin`: `9699 -> 9672`
+    - `packages/server/src/chat`: `3568 -> 3568`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `354 -> 327`
+    - `packages/server/src/plugin/plugin-runtime.service.ts`: `401`
+    - `packages/server/src/plugin/plugin.gateway.ts`: `320`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `399`
+  - 这刀实际删掉的主要是：
+    - 顶部单点 wrapper
+    - `conversation.session` / `subagent.task` 的局部读参与 `writeBack` 包装
+    - 缓存服务解析的重复样板
+  - 已验证：
+    - `cd packages/shared && npm run build`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts --runInBand`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+- [x] 2026-04-04 本轮已继续压 `plugin-runtime-host.facade.ts` 的本地 wrapper 与缓存服务转手
+  - 直接改用：
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`
+  - 当前效果：
+    - `packages/server/src`: `24930 -> 24903`
+    - `packages/server/src/plugin`: `9699 -> 9672`
+    - `packages/server/src/chat`: `3568 -> 3568`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `354 -> 327`
+    - `packages/server/src/plugin/plugin-runtime.service.ts`: `401`
+    - `packages/server/src/plugin/plugin.gateway.ts`: `320`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `399`
+  - 已验证：
+    - `cd packages/shared && npm run build`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts --runInBand`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+- [x] 2026-04-04 本轮已把 chat `message:created + persist` 写库链并回 mutation owner，并继续压 host/chat 主链样板
+  - 直接改用：
+    - `packages/server/src/chat/chat-message-generation.service.ts`
+    - `packages/server/src/chat/chat-message-mutation.service.ts`
+    - `packages/server/src/chat/chat-message-plugin-target.service.ts`
+    - `packages/server/src/chat/chat-message-session.ts`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`
+  - 当前效果：
+    - `packages/server/src`: `24903 -> 24877`
+    - `packages/server/src/plugin`: `9672 -> 9662`
+    - `packages/server/src/chat`: `3568 -> 3552`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `399 -> 382`
+    - `packages/server/src/chat/chat-message-plugin-target.service.ts`: `219 -> 197`
+    - `packages/server/src/chat/chat-message-mutation.service.ts`: `220 -> 289`
+    - `packages/server/src/chat/chat-message-session.ts`: `94 -> 51`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `327 -> 317`
+  - 这刀实际删掉的主要是：
+    - `generation / plugin-target` 各自维护的 `message:created` hook + 写库样板
+    - `plugin-target` 对 runtime message hook 的直接耦合
+    - `chat-message-session.ts` 的无用 `searchableContent` 与冗长注释
+    - `host facade` 的低价值读参与缓存解析样板
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-plugin-target.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts --runInBand`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+  - 状态校正：
+    - 当前这刀删掉的是 host owner 内部的一次性 wrapper，不是最终 capability family 收口
+    - `plugin-runtime-host.facade.ts` 虽然已从 `354` 降到 `327`，但仍显著高于目标区间，后续还要继续压 `conversation.session / subagent / cache` 这三段局部样板
+- [x] 2026-04-04 本轮已继续把 chat turn-start 的 owner 内映射压回去
+  - 直接改用：
+    - `packages/server/src/chat/chat-message-generation.service.ts`
+    - `packages/server/src/chat/chat-message-mutation.service.ts`
+    - `packages/server/src/chat/chat-message-plugin-target.service.ts`
+    - `packages/server/src/chat/chat-message-session.ts`
+  - 当前效果：
+    - `packages/server/src`: `24032 -> 24014`
+    - `packages/server/src/chat`: `3471 -> 3453`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `372 -> 372`
+    - `packages/server/src/chat/chat-message-mutation.service.ts`: `399 -> 393`
+    - `packages/server/src/chat/chat-message-plugin-target.service.ts`: `136 -> 125`
+    - `packages/server/src/chat/chat-message-session.ts`: `51 -> 50`
+    - `generation + mutation + plugin-target`: `907 -> 890`
+  - 这刀实际删掉的主要是：
+    - `chat-message-mutation.service.ts` 里只负责 pending assistant 落库的独立空壳
+    - `chat-message-plugin-target.service.ts` 里只转手到 mutation owner 的 append 包装
+    - `message.send` 返回 hook 前 assistant 视图这处失真路径
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts src\\chat\\chat-message-plugin-target.service.spec.ts src\\chat\\chat-message-session.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+- [x] 2026-04-04 本轮已修回 `plugin-runtime.service.ts` 的泛型 family 回归，并继续压 chat metadata 路径与 host 读参样板
+  - 直接改用：
+    - `packages/server/src/plugin/plugin-runtime.service.ts`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`
+    - `packages/server/src/chat/chat-message-generation.service.ts`
+    - `packages/server/src/chat/chat-message-completion.service.ts`
+  - 当前效果：
+    - `packages/server/src`: `24877 -> 24852`
+    - `packages/server/src/plugin`: `9662 -> 9653`
+    - `packages/server/src/chat`: `3552 -> 3538`
+    - `packages/server/src/plugin/plugin-runtime.service.ts`: `401 -> 401`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `317 -> 308`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `382 -> 379`
+    - `packages/server/src/chat/chat-message-mutation.service.ts`: `289 -> 288`
+    - `packages/server/src/chat/chat-message-completion.service.ts`: `173`
+  - 这刀实际删掉的主要是：
+    - `plugin-runtime.service.ts` 那段会打坏类型系统、又会让中心文件回涨的泛型 `runHookFamily(...)`
+    - `chat-message-completion.service.ts` 里“有 userMessage / 无 userMessage”两套 vision fallback metadata 入口
+    - `plugin-runtime-host.facade.ts` 里正数读取、`writeBack.target` 解析和模块服务缓存解析的重复样板
+    - `chat-message-generation.service.ts` 里 pending assistant 创建样板的重复展开
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-completion.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts src\\plugin\\plugin-runtime.service.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+  - 状态校正：
+    - `plugin-runtime.service.ts` 这一轮的价值主要是修回归，不是继续压薄；后续不能再把 family 泛型桥当成主要方向
+    - `plugin-runtime-host.facade.ts` 虽然已继续 `317 -> 308`，但离目标区间仍远，下一刀还要正面压 `message.send / conversation.session / subagent.task` 的剩余读参与分支壳
+- [x] 2026-04-04 本轮继续只做原地减法，不再外移：继续压 host facade 分发表壳与 chat completion 的 metadata 样板
+  - 直接改用：
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`
+    - `packages/server/src/chat/chat-message-completion.service.ts`
+  - 当前效果：
+    - `packages/server/src`: `24852 -> 24838`
+    - `packages/server/src/plugin`: `9653 -> 9645`
+    - `packages/server/src/chat`: `3538 -> 3532`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `308 -> 300`
+    - `packages/server/src/chat/chat-message-completion.service.ts`: `173 -> 161`
+  - 这刀实际删掉的主要是：
+    - `plugin-runtime-host.facade.ts` 里单独的 runtime-managed 分发表壳
+    - `subagent.run` 先解析 request、再无条件解析 task service 的低价值控制流
+    - `chat-message-completion.service.ts` 里 metadata `update / updateMany` 的双分支样板与单次 JSON 序列化空壳
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-completion.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts src\\plugin\\plugin-runtime.service.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+  - 状态校正：
+    - 这一轮明确没有再把逻辑往 `shared / sdk / helper` 搬
+    - 当前下一刀仍然应该正面压 `plugin-runtime-host.facade.ts` 的 `message.send / conversation.session / subagent.task` 剩余分支，而不是回到外围搬运
+- [x] 2026-04-04 本轮继续压 `plugin-runtime-host.facade.ts` 的 session/subagent 重复读参
+  - 直接改用：
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`
+  - 当前效果：
+    - `packages/server/src`: `24838 -> 24832`
+    - `packages/server/src/plugin`: `9645 -> 9637`
+    - `packages/server/src/chat`: `3532 -> 3532`
+    - `packages/server/src/plugin/plugin-runtime-host.facade.ts`: `300 -> 292`
+    - `packages/server/src/chat/chat-message-generation.service.ts`: `385 -> 385`
+  - 这刀实际删掉的主要是：
+    - `conversation.session.start / keep` 两段重复的 `timeoutMs` 读取骨架
+    - `subagent.run / subagent.task.start` 两段重复的 request 校验骨架
+    - 一次无意义的 `finish` 本地改写尝试也已在同轮撤回，继续保持 `conversation.session.finish` 走 shared 真相源返回 `boolean`
+  - 已验证：
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\jest.cmd src\\plugin\\plugin-runtime.service.spec.ts src\\plugin\\plugin-host.service.spec.ts src\\plugin\\plugin-host.helpers.spec.ts src\\chat\\chat-message-generation.service.spec.ts src\\chat\\chat-message-completion.service.spec.ts src\\chat\\chat-message-mutation.service.spec.ts --runInBand`
+    - `cd packages/server && ..\\..\\node_modules\\.bin\\tsc.cmd --noEmit`
+    - `cd packages/server && npm run build`
+    - `cd packages/server && npm run smoke:http`
+    - `git diff --check`
+  - 状态校正：
+    - 这轮说明 `plugin-runtime-host.facade.ts` 还存在可直接合并的 owner 内输入骨架
+    - 也说明 `conversation.session.finish` 的返回契约不能在 owner 里随手改写；下一刀仍然优先压 `message.send` 与 `conversation.session` 的剩余读参与分支壳

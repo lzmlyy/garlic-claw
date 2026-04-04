@@ -4,11 +4,14 @@ import {
   Injectable,
   forwardRef,
 } from '@nestjs/common';
-import type {
-  ChatBeforeModelRequest,
-  ChatMessagePart,
+import type { Message } from '@prisma/client';
+import {
+  createMessageReceivedHookPayload,
+  createChatModelLifecycleContext,
+  type ChatBeforeModelRequest,
 } from '@garlic-claw/shared';
 import { AiProviderService } from '../ai/ai-provider.service';
+import type { ModelConfig } from '../ai/types/provider.types';
 import { PersonaService } from '../persona/persona.service';
 import { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,10 +25,9 @@ import {
 import { ChatMessageCompletionService } from './chat-message-completion.service';
 import {
   assertConversationLlmEnabled,
-  createChatLifecycleContext,
   getOwnedConversationMessage,
-  touchConversationTimestamp,
 } from './chat-message-common.helpers';
+import { ChatMessageMutationService } from './chat-message-mutation.service';
 import { ChatMessageOrchestrationService } from './chat-message-orchestration.service';
 import type { ChatRuntimeMessage } from './chat-message-session';
 import { prepareSendMessagePayload } from './chat-message-session';
@@ -35,8 +37,9 @@ import {
 } from './chat-model-invocation.service';
 import { ChatService } from './chat.service';
 import { type RetryMessageDto, type SendMessageDto } from './dto/chat.dto';
-import { deserializeMessageParts, serializeMessageParts } from './message-parts';
 import { ChatTaskService } from './chat-task.service';
+
+type ResolvedPersonaPrompt = { systemPrompt: string; activePersonaId: string };
 
 @Injectable()
 export class ChatMessageGenerationService {
@@ -50,6 +53,7 @@ export class ChatMessageGenerationService {
     private readonly modelInvocation: ChatModelInvocationService,
     private readonly orchestration: ChatMessageOrchestrationService,
     private readonly chatTaskService: ChatTaskService,
+    private readonly mutationService: ChatMessageMutationService,
     private readonly completionService: ChatMessageCompletionService,
     private readonly skillCommands: SkillCommandService,
   ) {}
@@ -58,38 +62,36 @@ export class ChatMessageGenerationService {
     userId: string,
     conversationId: string,
     dto: SendMessageDto,
-  ) {
+  ): Promise<{ userMessage: Message; assistantMessage: Message }> {
     const conversation = await this.chatService.getConversation(userId, conversationId);
     assertConversationLlmEnabled(conversation);
     if (hasActiveAssistantMessage(conversation.messages)) {
       throw new BadRequestException('当前仍有回复在生成中，请先停止或等待完成');
     }
-
     const payload = prepareSendMessagePayload({
       history: conversation.messages,
       input: toUserMessageInput(dto.parts, dto.content),
     });
     const initialModelConfig = this.aiProvider.getModelConfig(dto.provider, dto.model);
     const resolvedPersona = await this.buildSystemPrompt(conversationId);
-    const messageReceivedContext = createChatLifecycleContext({
+    const messageReceivedContext = createChatModelLifecycleContext({
       userId,
       conversationId,
-      activeProviderId: initialModelConfig.providerId,
-      activeModelId: initialModelConfig.id,
       activePersonaId: resolvedPersona.activePersonaId,
+      modelConfig: initialModelConfig,
     });
-    const baseReceivedPayload = {
+    const baseReceivedPayload = createMessageReceivedHookPayload({
       context: messageReceivedContext,
       conversationId,
       providerId: initialModelConfig.providerId,
       modelId: initialModelConfig.id,
       message: {
-        role: 'user' as const,
+        role: 'user',
         content: payload.persistedMessage.content,
-        parts: deserializeMessageParts(payload.persistedMessage.partsJson),
+        parts: payload.persistedMessage.parts,
       },
       modelMessages: payload.modelMessages,
-    };
+    });
     const skillCommandResult = await this.skillCommands.tryHandleMessage({
       userId,
       conversationId,
@@ -99,136 +101,57 @@ export class ChatMessageGenerationService {
       ? {
           action: 'short-circuit' as const,
           payload: baseReceivedPayload,
-          assistantContent: skillCommandResult.assistantContent,
-          assistantParts: skillCommandResult.assistantParts,
-          providerId: skillCommandResult.providerId,
-          modelId: skillCommandResult.modelId,
+          ...skillCommandResult,
         }
-      : await this.pluginRuntime.runMessageReceivedHooks({
+      : await this.pluginRuntime.runInboundHook({
+          hookName: 'message:received',
           context: messageReceivedContext,
           payload: baseReceivedPayload,
         });
-    const receivedMessagePayload = receivedMessageResult.payload;
     const modelConfig = this.aiProvider.getModelConfig(
-      receivedMessagePayload.providerId,
-      receivedMessagePayload.modelId,
+      receivedMessageResult.payload.providerId,
+      receivedMessageResult.payload.modelId,
     );
-    const messageCreatedContext = createChatLifecycleContext({
+    const {
+      userMessage: createdUserMessage,
+      assistantMessage,
+      modelMessages,
+    } = await this.mutationService.startGenerationTurn({
       userId,
       conversationId,
-      activeProviderId: modelConfig.providerId,
-      activeModelId: modelConfig.id,
       activePersonaId: resolvedPersona.activePersonaId,
-    });
-    const createdMessagePayload = await this.pluginRuntime.runMessageCreatedHooks({
-      context: messageCreatedContext,
-      payload: {
-        context: messageCreatedContext,
-        conversationId,
-        message: {
-          role: 'user',
-          content: receivedMessagePayload.message.content,
-          parts: receivedMessagePayload.message.parts,
-          status: 'completed',
-        },
-        modelMessages: receivedMessagePayload.modelMessages,
-      },
+      modelConfig,
+      receivedMessagePayload: receivedMessageResult.payload,
     });
 
-    const userMessage = await this.prisma.message.create({
-      data: {
-        conversationId,
-        role: 'user',
-        content: createdMessagePayload.message.content ?? '',
-        partsJson: serializeMessageParts(createdMessagePayload.message.parts),
-        status: createdMessagePayload.message.status ?? 'completed',
-      },
-    });
-    const assistantMessage = await this.prisma.message.create({
-      data: {
-        conversationId,
-        role: 'assistant',
-        content: '',
-        provider: modelConfig.providerId,
-        model: modelConfig.id,
-        status: 'pending',
-      },
-    });
-    await touchConversationTimestamp(this.prisma, conversationId);
-
-    try {
-      if (receivedMessageResult.action === 'short-circuit') {
-        const completedAssistantMessage = await this.completeShortCircuitedAssistant({
-          assistantMessageId: assistantMessage.id,
+    const generation = receivedMessageResult.action === 'short-circuit'
+      ? {
+          userMessage: createdUserMessage,
+          assistantMessage: await this.runWithAssistantErrorBoundary(
+            assistantMessage.id,
+            conversationId,
+            () => this.completionService.completeShortCircuitedAssistant({
+              assistantMessageId: assistantMessage.id,
+              userId,
+              conversationId,
+              activePersonaId: resolvedPersona.activePersonaId,
+              completion: receivedMessageResult,
+            }),
+          ),
+        }
+      : await this.continueAssistantGeneration({
+          assistantMessage,
+          userMessage: createdUserMessage,
           userId,
           conversationId,
-          activePersonaId: resolvedPersona.activePersonaId,
-          providerId: receivedMessageResult.providerId,
-          modelId: receivedMessageResult.modelId,
-          assistantContent: receivedMessageResult.assistantContent,
-          assistantParts: receivedMessageResult.assistantParts,
+          modelConfig,
+          runtimeMessages: modelMessages as ChatRuntimeMessage[],
+          resolvedPersona,
         });
-        return {
-          userMessage,
-          assistantMessage: completedAssistantMessage,
-        };
-      }
-
-      const beforeModelResult = await this.orchestration.applyChatBeforeModelHooks({
-        userId,
-        conversationId,
-        activePersonaId: resolvedPersona.activePersonaId,
-        systemPrompt: resolvedPersona.systemPrompt,
-        modelConfig,
-        messages: createdMessagePayload.modelMessages as ChatRuntimeMessage[],
-      });
-      if (beforeModelResult.action === 'short-circuit') {
-        const completedAssistantMessage = await this.completeShortCircuitedAssistant({
-          assistantMessageId: assistantMessage.id,
-          userId,
-          conversationId,
-          activePersonaId: resolvedPersona.activePersonaId,
-          providerId: beforeModelResult.providerId,
-          modelId: beforeModelResult.modelId,
-          assistantContent: beforeModelResult.assistantContent,
-          assistantParts: beforeModelResult.assistantParts,
-        });
-        return {
-          userMessage,
-          assistantMessage: completedAssistantMessage,
-        };
-      }
-
-      const preparedInvocation = await this.modelInvocation.prepareResolved({
-        conversationId,
-        modelConfig: beforeModelResult.modelConfig,
-        messages: beforeModelResult.request.messages,
-      });
-      const {
-        userMessage: userMessageWithMetadata,
-        assistantMessage: assistantMessageWithMetadata,
-      } = await this.completionService.applyVisionFallbackMetadata({
-        userMessage,
-        assistantMessage,
-        visionFallbackEntries:
-          preparedInvocation.transformResult?.visionFallback?.entries ?? [],
-      });
-      this.startPreparedGenerationTask({
-        assistantMessageId: assistantMessageWithMetadata.id,
-        userId,
-        conversationId,
-        activePersonaId: resolvedPersona.activePersonaId,
-        beforeModelResult,
-        preparedInvocation,
-      });
-      return {
-        userMessage: userMessageWithMetadata,
-        assistantMessage: assistantMessageWithMetadata,
-      };
-    } catch (error) {
-      await this.markAssistantMessageAsError(assistantMessage.id, conversationId, error);
-      throw error;
-    }
+    return {
+      userMessage: generation.userMessage ?? createdUserMessage,
+      assistantMessage: generation.assistantMessage,
+    };
   }
 
   async stopMessageGeneration(
@@ -248,14 +171,7 @@ export class ChatMessageGenerationService {
 
     const stopped = await this.chatTaskService.stopTask(messageId);
     if (!stopped && (message.status === 'pending' || message.status === 'streaming')) {
-      await this.prisma.message.update({
-        where: { id: messageId },
-        data: {
-          status: 'stopped',
-          error: null,
-        },
-      });
-      await touchConversationTimestamp(this.prisma, conversationId);
+      await this.mutationService.markAssistantStopped(messageId, conversationId);
     }
 
     return this.prisma.message.findUniqueOrThrow({ where: { id: messageId } });
@@ -287,84 +203,87 @@ export class ChatMessageGenerationService {
       throw new BadRequestException('缺少重试所需的 provider/model');
     }
 
-    const historyMessages = conversation.messages.slice(0, -1);
     const modelConfig = this.aiProvider.getModelConfig(providerId, modelId);
-    const assistantMessage = await this.prisma.message.update({
-      where: { id: messageId },
-      data: {
-        content: '',
-        provider: modelConfig.providerId,
-        model: modelConfig.id,
-        status: 'pending',
-        error: null,
-        toolCalls: null,
-        toolResults: null,
-        metadataJson: null,
-      },
+    const assistantMessage = await this.mutationService.resetAssistantForRetry({
+      messageId,
+      conversationId,
+      providerId: modelConfig.providerId,
+      modelId: modelConfig.id,
     });
-    await touchConversationTimestamp(this.prisma, conversationId);
 
-    try {
-      const runtimeMessages = toRuntimeMessages(historyMessages);
-      const resolvedPersona = await this.buildSystemPrompt(conversationId);
-      const beforeModelResult = await this.orchestration.applyChatBeforeModelHooks({
+    return (
+      await this.continueAssistantGeneration({
+        assistantMessage,
         userId,
         conversationId,
-        activePersonaId: resolvedPersona.activePersonaId,
-        systemPrompt: resolvedPersona.systemPrompt,
         modelConfig,
-        messages: runtimeMessages,
-      });
-      if (beforeModelResult.action === 'short-circuit') {
-        return this.completeShortCircuitedAssistant({
-          assistantMessageId: messageId,
-          userId,
-          conversationId,
-          activePersonaId: resolvedPersona.activePersonaId,
-          providerId: beforeModelResult.providerId,
-          modelId: beforeModelResult.modelId,
-          assistantContent: beforeModelResult.assistantContent,
-          assistantParts: beforeModelResult.assistantParts,
-        });
-      }
+        runtimeMessages: toRuntimeMessages(conversation.messages.slice(0, -1)),
+      })
+    ).assistantMessage;
+  }
 
-      const preparedInvocation = await this.modelInvocation.prepareResolved({
-        conversationId,
-        modelConfig: beforeModelResult.modelConfig,
-        messages: beforeModelResult.request.messages,
-      });
-      const assistantMessageWithMetadata =
-        await this.completionService.applyVisionFallbackMetadataToAssistant({
-          assistantMessage,
+  private async continueAssistantGeneration(input: {
+    assistantMessage: Message;
+    userMessage?: Message;
+    userId: string;
+    conversationId: string;
+    modelConfig: ModelConfig;
+    runtimeMessages: ChatRuntimeMessage[];
+    resolvedPersona?: ResolvedPersonaPrompt;
+  }): Promise<{
+    assistantMessage: Message;
+    userMessage: Message | null;
+  }> {
+    const resolvedPersona = input.resolvedPersona ?? await this.buildSystemPrompt(input.conversationId);
+    const activePersonaId = resolvedPersona.activePersonaId;
+
+    return this.runWithAssistantErrorBoundary(
+      input.assistantMessage.id,
+      input.conversationId,
+      async () => {
+        const beforeModelResult = await this.orchestration.applyChatBeforeModelHooks({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          activePersonaId,
+          systemPrompt: resolvedPersona.systemPrompt,
+          modelConfig: input.modelConfig,
+          messages: input.runtimeMessages,
+        });
+        if (beforeModelResult.action === 'short-circuit') {
+          return {
+            userMessage: input.userMessage ?? null,
+            assistantMessage: await this.completionService.completeShortCircuitedAssistant({
+              assistantMessageId: input.assistantMessage.id,
+              userId: input.userId,
+              conversationId: input.conversationId,
+              activePersonaId,
+              completion: beforeModelResult,
+            }),
+          };
+        }
+
+        const preparedInvocation = await this.modelInvocation.prepareResolved({
+          conversationId: input.conversationId,
+          modelConfig: beforeModelResult.modelConfig,
+          messages: beforeModelResult.request.messages,
+        });
+        const messageWithMetadata = await this.completionService.applyVisionFallbackMetadata({
+          userMessage: input.userMessage,
+          assistantMessage: input.assistantMessage,
           visionFallbackEntries:
             preparedInvocation.transformResult?.visionFallback?.entries ?? [],
         });
-      this.startPreparedGenerationTask({
-        assistantMessageId: assistantMessageWithMetadata.id,
-        userId,
-        conversationId,
-        activePersonaId: resolvedPersona.activePersonaId,
-        beforeModelResult,
-        preparedInvocation,
-      });
-      return assistantMessageWithMetadata;
-    } catch (error) {
-      await this.markAssistantMessageAsError(messageId, conversationId, error);
-      throw error;
-    }
-  }
-
-  private async completeShortCircuitedAssistant(input: {
-    assistantMessageId: string;
-    userId: string;
-    conversationId: string;
-    activePersonaId: string;
-    providerId: string;
-    modelId: string;
-    assistantContent: string;
-    assistantParts?: ChatMessagePart[];
-  }) {
-    return this.completionService.completeShortCircuitedAssistant(input);
+        this.startPreparedGenerationTask({
+          assistantMessageId: messageWithMetadata.assistantMessage.id,
+          userId: input.userId,
+          conversationId: input.conversationId,
+          activePersonaId,
+          beforeModelResult,
+          preparedInvocation,
+        });
+        return messageWithMetadata;
+      },
+    );
   }
 
   private startPreparedGenerationTask(input: {
@@ -378,17 +297,15 @@ export class ChatMessageGenerationService {
     >;
     preparedInvocation: PreparedChatModelInvocation;
   }) {
-    const modelContext = {
-      source: 'chat-tool' as const,
-      userId: input.userId,
-      conversationId: input.conversationId,
-      activeProviderId: input.beforeModelResult.modelConfig.providerId,
-      activeModelId: input.beforeModelResult.modelConfig.id,
-      activePersonaId: input.activePersonaId,
-    };
     const chatToolSet = input.beforeModelResult.modelConfig.capabilities.toolCall
       ? input.beforeModelResult.buildToolSet({
-          context: modelContext,
+          context: createChatModelLifecycleContext({
+            source: 'chat-tool',
+            userId: input.userId,
+            conversationId: input.conversationId,
+            activePersonaId: input.activePersonaId,
+            modelConfig: input.beforeModelResult.modelConfig,
+          }),
           allowedToolNames: input.beforeModelResult.request.availableTools.map(
             (tool: ChatBeforeModelRequest['availableTools'][number]) => tool.name,
           ),
@@ -430,22 +347,24 @@ export class ChatMessageGenerationService {
     });
   }
 
-  private async markAssistantMessageAsError(
-    messageId: string,
+  private async runWithAssistantErrorBoundary<TResult>(
+    assistantMessageId: string,
     conversationId: string,
-    error: unknown,
-  ) {
-    await this.prisma.message.update({
-      where: { id: messageId },
-      data: {
-        status: 'error',
-        error: error instanceof Error ? error.message : '未知错误',
-      },
-    });
-    await touchConversationTimestamp(this.prisma, conversationId);
+    run: () => Promise<TResult>,
+  ): Promise<TResult> {
+    try {
+      return await run();
+    } catch (error) {
+      await this.mutationService.markAssistantError(
+        assistantMessageId,
+        conversationId,
+        error instanceof Error ? error.message : '未知错误',
+      );
+      throw error;
+    }
   }
 
-  private async buildSystemPrompt(conversationId: string) {
+  private async buildSystemPrompt(conversationId: string): Promise<ResolvedPersonaPrompt> {
     const currentPersona = await this.personaService.getCurrentPersona({
       conversationId,
     });

@@ -86,10 +86,12 @@ describe('ChatMessageCompletionService', () => {
         assistantMessageId: 'assistant-message-1',
         userId: 'user-1',
         conversationId: 'conversation-1',
-        providerId: 'anthropic',
-        modelId: 'claude-3-7-sonnet',
         activePersonaId: 'builtin.default-assistant',
-        assistantContent: '插件已经直接回复。',
+        completion: {
+          assistantContent: '插件已经直接回复。',
+          providerId: 'anthropic',
+          modelId: 'claude-3-7-sonnet',
+        },
       }),
     ).resolves.toEqual({
       id: 'assistant-message-1',
@@ -242,7 +244,7 @@ describe('ChatMessageCompletionService', () => {
     });
 
     await expect(
-      service.applyVisionFallbackMetadataToAssistant({
+      service.applyVisionFallbackMetadata({
         assistantMessage: {
           id: 'assistant-message-2',
           metadataJson: null,
@@ -255,18 +257,21 @@ describe('ChatMessageCompletionService', () => {
         ],
       }),
     ).resolves.toEqual({
-      id: 'assistant-message-2',
-      metadataJson: JSON.stringify({
-        visionFallback: {
-          state: 'completed',
-          entries: [
-            {
-              text: '一只戴围巾的柴犬。',
-              source: 'cache',
-            },
-          ],
-        },
-      }),
+      userMessage: null,
+      assistantMessage: {
+        id: 'assistant-message-2',
+        metadataJson: JSON.stringify({
+          visionFallback: {
+            state: 'completed',
+            entries: [
+              {
+                text: '一只戴围巾的柴犬。',
+                source: 'cache',
+              },
+            ],
+          },
+        }),
+      },
     });
 
     expect(prisma.message.update).toHaveBeenCalledWith({
