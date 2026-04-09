@@ -1,5 +1,5 @@
-import { computed, ref } from 'vue'
-import type { ChatMessagePart, Conversation } from '@garlic-claw/shared'
+import { computed, markRaw, ref, shallowRef } from "vue";
+import type { ChatMessagePart, Conversation } from "@garlic-claw/shared";
 import {
   abortChatStream,
   dispatchRetryMessage,
@@ -8,7 +8,7 @@ import {
   stopChatRecovery,
   syncChatStreamingState,
   type ChatStreamState,
-} from '@/features/chat/modules/chat-stream.module'
+} from "@/features/chat/modules/chat-stream.module";
 import {
   createConversationRecord,
   deleteConversationMessageRecord,
@@ -17,29 +17,29 @@ import {
   loadConversationMessages,
   stopConversationMessageRecord,
   updateConversationMessageRecord,
-} from '@/features/chat/modules/chat-conversation.data'
-import { ensureChatModelSelection } from '@/features/chat/modules/chat-model-selection'
+} from "@/features/chat/modules/chat-conversation.data";
+import { ensureChatModelSelection } from "@/features/chat/modules/chat-model-selection";
 import {
   getRetryableMessageId,
   removeMessage,
   replaceOrAppendMessage,
-} from '@/features/chat/store/chat-store.runtime'
+} from "@/features/chat/store/chat-store.runtime";
 import type {
   ChatMessage,
   ChatSendInput,
-} from '@/features/chat/store/chat-store.types'
+} from "@/features/chat/store/chat-store.types";
 
 export function createChatStoreModule() {
-  const conversations = ref<Conversation[]>([])
-  const currentConversationId = ref<string | null>(null)
-  const messages = ref<ChatMessage[]>([])
-  const loading = ref(false)
-  const streaming = ref(false)
-  const currentStreamingMessageId = ref<string | null>(null)
-  const streamController = ref<AbortController | null>(null)
-  const recoveryTimer = ref<number | null>(null)
-  const selectedProvider = ref<string | null>(null)
-  const selectedModel = ref<string | null>(null)
+  const conversations = ref<Conversation[]>([]);
+  const currentConversationId = ref<string | null>(null);
+  const messages = shallowRef<ChatMessage[]>([]);
+  const loading = ref(false);
+  const streaming = ref(false);
+  const currentStreamingMessageId = ref<string | null>(null);
+  const streamController = ref<AbortController | null>(null);
+  const recoveryTimer = ref<number | null>(null);
+  const selectedProvider = ref<string | null>(null);
+  const selectedModel = ref<string | null>(null);
   const streamState: ChatStreamState = {
     currentConversationId,
     messages,
@@ -49,54 +49,65 @@ export function createChatStoreModule() {
     recoveryTimer,
     currentStreamingMessageId,
     streaming,
+  };
+
+  const retryableMessageId = computed(() =>
+    getRetryableMessageId(messages.value),
+  );
+
+  function replaceMessages(nextMessages: ChatMessage[]) {
+    messages.value = markRaw(nextMessages);
   }
 
-  const retryableMessageId = computed(() => getRetryableMessageId(messages.value))
-
   async function loadConversations() {
-    conversations.value = await loadConversationList()
+    conversations.value = await loadConversationList();
   }
 
   async function createConversation(title?: string) {
-    const conversation = await createConversationRecord(title)
-    conversations.value.unshift(conversation)
-    return conversation
+    const conversation = await createConversationRecord(title);
+    conversations.value.unshift(conversation);
+    return conversation;
   }
 
   async function selectConversation(id: string) {
-    abortChatStream(streamState)
-    stopChatRecovery(streamState)
-    currentConversationId.value = id
-    selectedProvider.value = null
-    selectedModel.value = null
-    loading.value = true
+    abortChatStream(streamState);
+    stopChatRecovery(streamState);
+    currentConversationId.value = id;
+    selectedProvider.value = null;
+    selectedModel.value = null;
+    loading.value = true;
     try {
-      await loadConversationDetail(id)
-      await ensureModelSelection(messages.value)
-      scheduleChatRecovery(streamState)
+      await loadConversationDetail(id);
+      await ensureModelSelection(messages.value);
+      scheduleChatRecovery(streamState);
     } finally {
-      loading.value = false
+      loading.value = false;
     }
   }
 
   async function deleteConversation(id: string) {
     if (currentConversationId.value === id) {
-      abortChatStream(streamState)
-      stopChatRecovery(streamState)
+      abortChatStream(streamState);
+      stopChatRecovery(streamState);
     }
 
-    await deleteConversationRecord(id)
-    conversations.value = conversations.value.filter((conversation) => conversation.id !== id)
+    await deleteConversationRecord(id);
+    conversations.value = conversations.value.filter(
+      (conversation) => conversation.id !== id,
+    );
     if (currentConversationId.value === id) {
-      currentConversationId.value = null
-      messages.value = []
-      syncChatStreamingState(streamState)
+      currentConversationId.value = null;
+      replaceMessages([]);
+      syncChatStreamingState(streamState);
     }
   }
 
-  function setModelSelection(selection: { provider: string | null; model: string | null }) {
-    selectedProvider.value = selection.provider
-    selectedModel.value = selection.model
+  function setModelSelection(selection: {
+    provider: string | null;
+    model: string | null;
+  }) {
+    selectedProvider.value = selection.provider;
+    selectedModel.value = selection.model;
   }
 
   async function ensureModelSelection(existingMessages: ChatMessage[] = []) {
@@ -104,67 +115,71 @@ export function createChatStoreModule() {
       selectedProvider,
       selectedModel,
       messages: existingMessages,
-    })
+    });
   }
 
   async function sendMessage(input: ChatSendInput) {
-    await ensureModelSelection(messages.value)
-    await dispatchSendMessage(streamState, input)
+    await ensureModelSelection(messages.value);
+    await dispatchSendMessage(streamState, input);
   }
 
   async function retryMessage(messageId: string) {
-    await dispatchRetryMessage(streamState, messageId)
+    await dispatchRetryMessage(streamState, messageId);
   }
 
-  async function updateMessage(messageId: string, payload: { content?: string; parts?: ChatMessagePart[] }) {
+  async function updateMessage(
+    messageId: string,
+    payload: { content?: string; parts?: ChatMessagePart[] },
+  ) {
     if (!currentConversationId.value) {
-      return
+      return;
     }
 
     const updated = await updateConversationMessageRecord(
       currentConversationId.value,
       messageId,
       payload,
-    )
-    messages.value = replaceOrAppendMessage(
-      messages.value,
-      updated,
-      messageId,
-    )
-    syncChatStreamingState(streamState)
+    );
+    replaceMessages(replaceOrAppendMessage(messages.value, updated, messageId));
+    syncChatStreamingState(streamState);
   }
 
   async function deleteMessage(messageId: string) {
     if (!currentConversationId.value) {
-      return
+      return;
     }
 
-    await deleteConversationMessageRecord(currentConversationId.value, messageId)
-    messages.value = removeMessage(messages.value, messageId)
-    syncChatStreamingState(streamState)
+    await deleteConversationMessageRecord(
+      currentConversationId.value,
+      messageId,
+    );
+    replaceMessages(removeMessage(messages.value, messageId));
+    syncChatStreamingState(streamState);
   }
 
   async function stopStreaming() {
     if (!currentConversationId.value || !currentStreamingMessageId.value) {
-      return
+      return;
     }
 
     const message = await stopConversationMessageRecord(
       currentConversationId.value,
       currentStreamingMessageId.value,
-    )
-    messages.value = replaceOrAppendMessage(
-      messages.value,
-      message,
-      currentStreamingMessageId.value,
-    )
-    syncChatStreamingState(streamState)
-    scheduleChatRecovery(streamState)
+    );
+    replaceMessages(
+      replaceOrAppendMessage(
+        messages.value,
+        message,
+        currentStreamingMessageId.value,
+      ),
+    );
+    syncChatStreamingState(streamState);
+    scheduleChatRecovery(streamState);
   }
 
   async function loadConversationDetail(conversationId: string) {
-    messages.value = await loadConversationMessages(conversationId)
-    syncChatStreamingState(streamState)
+    replaceMessages(await loadConversationMessages(conversationId));
+    syncChatStreamingState(streamState);
   }
 
   return {
@@ -188,5 +203,5 @@ export function createChatStoreModule() {
     updateMessage,
     deleteMessage,
     stopStreaming,
-  }
+  };
 }

@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { GlobalResponseInterceptor } from './common/interceptors/global-response.interceptor';
 import { StartupWarmupService } from './startup/startup-warmup.service';
 
 function validateEnv() {
@@ -18,6 +19,7 @@ async function bootstrap() {
   validateEnv();
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const logger = app.get(Logger);
 
   app.useLogger(app.get(Logger));
   app.enableCors({
@@ -26,6 +28,7 @@ async function bootstrap() {
   });
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalInterceptors(new GlobalResponseInterceptor());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -35,26 +38,22 @@ async function bootstrap() {
   );
 
   const port = process.env.PORT || 23330;
+  setupSwaggerDocs(app);
   await app.listen(port);
 
-  const logger = app.get(Logger);
   logger.log(`Server running on http://localhost:${port}`);
+  logger.log(`Swagger docs at http://localhost:${port}/api/docs`);
 
   setImmediate(() => {
     void app.get(StartupWarmupService).runPostListenWarmups();
-  });
-  setImmediate(() => {
-    void setupSwaggerDocs(app, logger, String(port));
   });
 }
 
 bootstrap();
 
-async function setupSwaggerDocs(
+function setupSwaggerDocs(
   app: Awaited<ReturnType<typeof NestFactory.create>>,
-  logger: Logger,
-  port: string,
-): Promise<void> {
+): void {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Garlic Claw API')
     .setDescription('AI 秘书系统 — 设备控制与自动化')
@@ -62,6 +61,7 @@ async function setupSwaggerDocs(
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
-  logger.log(`Swagger docs at http://localhost:${port}/api/docs`);
+  SwaggerModule.setup('docs', app, document, {
+    useGlobalPrefix: true,
+  });
 }

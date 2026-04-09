@@ -3,6 +3,7 @@ import type {
   PluginCommandInfo,
 } from '@garlic-claw/shared'
 import { listPluginCommandOverview } from '@/features/commands/api/plugin-commands'
+import { getErrorMessage } from '@/utils/error'
 
 export interface PluginCommandOverviewData {
   commands: PluginCommandInfo[]
@@ -24,5 +25,5 @@ export function loadPluginCommandOverview(): Promise<PluginCommandOverviewData> 
  * @returns 可展示错误文本
  */
 export function toErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
+  return getErrorMessage(error, fallback)
 }

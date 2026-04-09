@@ -1,12 +1,12 @@
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import type { PluginActionName, ToolInfo, ToolSourceInfo } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import { usePagination } from '@/composables/use-pagination'
 import {
   loadToolOverview,
   runToolSourceActionRequest,
   saveToolEnabled,
   saveToolSourceEnabled,
-  toErrorMessage,
 } from '@/features/tools/composables/tool-management.data'
 
 type ToolFilter = 'all' | 'enabled' | 'disabled' | 'attention'
@@ -22,11 +22,13 @@ type ToolFilter = 'all' | 'enabled' | 'disabled' | 'attention'
  * - 所有统一工具治理请求集中到此 composable
  */
 export function createToolManagementModule() {
-  const loading = ref(false)
+  const requestState = useAsyncState(false)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const mutatingSourceKey = ref<string | null>(null)
   const mutatingToolId = ref<string | null>(null)
   const runningActionKey = ref<string | null>(null)
-  const error = ref<string | null>(null)
   const notice = ref<string | null>(null)
   const sources = shallowRef<ToolSourceInfo[]>([])
   const tools = shallowRef<ToolInfo[]>([])
@@ -147,7 +149,7 @@ export function createToolManagementModule() {
 
   async function refreshAll(preferredSourceKey = selectedSourceKey.value) {
     loading.value = true
-    error.value = null
+    requestState.clearError()
     try {
       const overview = await loadToolOverview()
       const nextSources = overview.sources
@@ -158,7 +160,7 @@ export function createToolManagementModule() {
         buildSourceKey(source) === preferredSourceKey) ?? nextSources[0] ?? null
       selectedSourceKey.value = fallback ? buildSourceKey(fallback) : null
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '加载工具治理数据失败')
+      requestState.setError(caughtError, '加载工具治理数据失败')
     } finally {
       loading.value = false
     }
@@ -172,14 +174,14 @@ export function createToolManagementModule() {
   async function setSourceEnabled(source: ToolSourceInfo, enabled: boolean) {
     const sourceKey = buildSourceKey(source)
     mutatingSourceKey.value = sourceKey
-    error.value = null
+    requestState.clearError()
     notice.value = null
     try {
       await saveToolSourceEnabled(source.kind, source.id, enabled)
       notice.value = enabled ? '工具源已启用' : '工具源已禁用'
       await refreshAll(sourceKey)
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '更新工具源状态失败')
+      requestState.setError(caughtError, '更新工具源状态失败')
     } finally {
       mutatingSourceKey.value = null
     }
@@ -187,14 +189,14 @@ export function createToolManagementModule() {
 
   async function setToolEnabled(tool: ToolInfo, enabled: boolean) {
     mutatingToolId.value = tool.toolId
-    error.value = null
+    requestState.clearError()
     notice.value = null
     try {
       await saveToolEnabled(tool.toolId, enabled)
       notice.value = enabled ? '工具已启用' : '工具已禁用'
       await refreshAll(selectedSourceKey.value)
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '更新工具状态失败')
+      requestState.setError(caughtError, '更新工具状态失败')
     } finally {
       mutatingToolId.value = null
     }
@@ -203,14 +205,14 @@ export function createToolManagementModule() {
   async function runSourceAction(source: ToolSourceInfo, action: PluginActionName) {
     const actionKey = `${buildSourceKey(source)}:${action}`
     runningActionKey.value = actionKey
-    error.value = null
+    requestState.clearError()
     notice.value = null
     try {
       const result = await runToolSourceActionRequest(source.kind, source.id, action)
       notice.value = result.message
       await refreshAll(buildSourceKey(source))
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '执行工具源治理动作失败')
+      requestState.setError(caughtError, '执行工具源治理动作失败')
     } finally {
       runningActionKey.value = null
     }
@@ -222,6 +224,7 @@ export function createToolManagementModule() {
     mutatingToolId,
     runningActionKey,
     error,
+    appError,
     notice,
     sources,
     tools,
@@ -327,4 +330,3 @@ function matchesToolFilter(tool: ToolInfo, filter: ToolFilter): boolean {
       return true
   }
 }
-

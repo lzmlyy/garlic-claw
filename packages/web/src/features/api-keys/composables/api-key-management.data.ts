@@ -7,6 +7,7 @@ import {
   listApiKeys,
   revokeApiKey,
 } from '@/features/api-keys/api/api-keys'
+import { getErrorMessage } from '@/utils/error'
 
 export type CreateApiKeyInput = Parameters<typeof createApiKey>[0]
 
@@ -45,5 +46,5 @@ export function revokeApiKeyRecord(id: string): Promise<ApiKeySummary> {
  * @returns 可展示错误文本
  */
 export function toErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
+  return getErrorMessage(error, fallback)
 }

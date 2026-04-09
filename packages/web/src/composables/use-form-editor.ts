@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue'
+import { getErrorMessage } from '@/utils/error'
 
 type FieldKey<T extends Record<string, unknown>> = Extract<keyof T, string>
 
@@ -134,9 +135,5 @@ function cloneValues<T>(values: T): T {
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-
-  return fallback
+  return getErrorMessage(error, fallback)
 }

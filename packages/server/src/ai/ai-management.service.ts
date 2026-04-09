@@ -13,31 +13,39 @@
  * - 管理操作统一落到配置存储和模型注册表
  */
 
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { isCatalogProviderMode, type AiProviderSummary } from '@garlic-claw/shared';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  isCatalogProviderMode,
+  type AiProviderSummary,
+} from "@garlic-claw/shared";
+import { CacheService } from "../cache/cache.service";
+import { Cacheable } from "../cache/cacheable.decorator";
 import {
   ConfigManagerService,
   type StoredAiProviderConfig,
-} from './config/config-manager.service';
+} from "./config/config-manager.service";
 import {
   PROVIDER_CATALOG,
   type AiProviderCatalogItem,
-} from './provider-catalog';
-import { resolveProviderCatalogBinding } from './provider-resolution.helpers';
-import { ModelRegistryService } from './registry/model-registry.service';
-import type { ModelCapabilities, ModelConfig } from './types/provider.types';
+} from "./provider-catalog";
+import { resolveProviderCatalogBinding } from "./provider-resolution.helpers";
+import { ModelRegistryService } from "./registry/model-registry.service";
+import type { ModelCapabilities, ModelConfig } from "./types/provider.types";
 import {
   buildManagedModelConfig,
   type UpsertAiModelInput,
   type UpsertAiProviderInput,
   validateManagedProviderInput,
-} from './ai-management.helpers';
+} from "./ai-management.helpers";
+
+const AI_PROVIDER_LIST_CACHE_PREFIX = "ai:providers:list";
 
 @Injectable()
 export class AiManagementService {
   constructor(
     private readonly configManager: ConfigManagerService,
     private readonly modelRegistry: ModelRegistryService,
+    private readonly cacheService: CacheService,
   ) {}
 
   /**
@@ -52,6 +60,7 @@ export class AiManagementService {
    * 列出已配置 provider。
    * @returns provider 摘要列表
    */
+  @Cacheable(60, AI_PROVIDER_LIST_CACHE_PREFIX)
   listProviders(): AiProviderSummary[] {
     return this.configManager.listProviders().map((provider) => ({
       id: provider.id,
@@ -98,14 +107,19 @@ export class AiManagementService {
       apiKey: input.apiKey,
       baseUrl:
         input.baseUrl ??
-        (isCatalogProviderMode(input.mode) ? resolved?.defaultBaseUrl : undefined),
+        (isCatalogProviderMode(input.mode)
+          ? resolved?.defaultBaseUrl
+          : undefined),
       defaultModel:
         input.defaultModel ??
-        (isCatalogProviderMode(input.mode) ? resolved?.defaultModel : undefined),
+        (isCatalogProviderMode(input.mode)
+          ? resolved?.defaultModel
+          : undefined),
       models: [...input.models],
     });
 
     this.registerProviderModels(stored);
+    void this.cacheService.deleteByPrefix(AI_PROVIDER_LIST_CACHE_PREFIX);
     return stored;
   }
 
@@ -120,6 +134,7 @@ export class AiManagementService {
     for (const modelId of provider.models) {
       this.modelRegistry.unregisterModel(providerId, modelId);
     }
+    void this.cacheService.deleteByPrefix(AI_PROVIDER_LIST_CACHE_PREFIX);
   }
 
   /**
@@ -131,10 +146,8 @@ export class AiManagementService {
     const provider = this.getProvider(providerId);
 
     return provider.models.map((modelId) =>
-      this.modelRegistry.getOrRegisterModel(
-        providerId,
-        modelId,
-        () => buildManagedModelConfig(provider, modelId),
+      this.modelRegistry.getOrRegisterModel(providerId, modelId, () =>
+        buildManagedModelConfig(provider, modelId),
       ),
     );
   }
@@ -192,9 +205,14 @@ export class AiManagementService {
     this.modelRegistry.register(modelConfig);
 
     if (input.capabilities) {
-      this.modelRegistry.updateModelCapabilities(providerId, modelId, input.capabilities);
+      this.modelRegistry.updateModelCapabilities(
+        providerId,
+        modelId,
+        input.capabilities,
+      );
     }
 
+    void this.cacheService.deleteByPrefix(AI_PROVIDER_LIST_CACHE_PREFIX);
     return this.modelRegistry.getModel(providerId, modelId) ?? modelConfig;
   }
 
@@ -210,10 +228,13 @@ export class AiManagementService {
     this.configManager.upsertProvider(providerId, {
       ...provider,
       defaultModel:
-        provider.defaultModel === modelId ? nextModels[0] : provider.defaultModel,
+        provider.defaultModel === modelId
+          ? nextModels[0]
+          : provider.defaultModel,
       models: nextModels,
     });
     this.modelRegistry.unregisterModel(providerId, modelId);
+    void this.cacheService.deleteByPrefix(AI_PROVIDER_LIST_CACHE_PREFIX);
   }
 
   /**
@@ -230,10 +251,12 @@ export class AiManagementService {
       );
     }
 
-    return this.configManager.upsertProvider(providerId, {
+    const stored = this.configManager.upsertProvider(providerId, {
       ...provider,
       defaultModel: modelId,
     });
+    void this.cacheService.deleteByPrefix(AI_PROVIDER_LIST_CACHE_PREFIX);
+    return stored;
   }
 
   /**
@@ -246,9 +269,9 @@ export class AiManagementService {
   updateModelCapabilities(
     providerId: string,
     modelId: string,
-    capabilities: Partial<Omit<ModelCapabilities, 'input' | 'output'>> & {
-      input?: Partial<ModelCapabilities['input']>;
-      output?: Partial<ModelCapabilities['output']>;
+    capabilities: Partial<Omit<ModelCapabilities, "input" | "output">> & {
+      input?: Partial<ModelCapabilities["input"]>;
+      output?: Partial<ModelCapabilities["output"]>;
     },
   ): ModelConfig {
     const success = this.modelRegistry.updateModelCapabilities(
@@ -269,6 +292,7 @@ export class AiManagementService {
       );
     }
 
+    void this.cacheService.deleteByPrefix(AI_PROVIDER_LIST_CACHE_PREFIX);
     return model;
   }
   /**

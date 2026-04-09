@@ -27,6 +27,7 @@ import {
   upsertAiModel,
   upsertAiProvider,
 } from '@/features/ai-settings/api/ai'
+import { getErrorMessage } from '@/utils/error'
 
 /**
  * Vision Fallback 可选模型项。
@@ -329,14 +330,10 @@ async function listProviderModelsSafely(providerId: string): Promise<AiModelConf
  * @returns 面向界面的错误文本
  */
 export function toErrorMessage(
-  error: Error | string | null | undefined,
+  error: unknown,
   fallback: string,
 ): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return typeof error === 'string' && error ? error : fallback
+  return getErrorMessage(error, fallback)
 }
 
 /**

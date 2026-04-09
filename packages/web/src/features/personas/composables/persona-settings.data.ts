@@ -7,6 +7,7 @@ import {
   getCurrentPersona,
   listPersonas,
 } from '@/features/personas/api/personas'
+import { getErrorMessage } from '@/utils/error'
 
 /**
  * 读取 Persona 列表。
@@ -47,9 +48,5 @@ export function activateConversationPersona(
  * @returns 可展示错误文本
  */
 export function toErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-
-  return fallback
+  return getErrorMessage(error, fallback)
 }

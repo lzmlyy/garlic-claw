@@ -1,4 +1,4 @@
-import { request } from '@/api/base'
+import { delete as del, get, post, put } from '@/api/http'
 import type {
   McpConfigSnapshot,
   McpServerConfig,
@@ -6,25 +6,17 @@ import type {
 } from '@garlic-claw/shared'
 
 export function listMcpServers() {
-  return request<McpConfigSnapshot>('/mcp/servers')
+  return get<McpConfigSnapshot>('/mcp/servers')
 }
 
 export function createMcpServer(input: McpServerConfig) {
-  return request<McpServerConfig>('/mcp/servers', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  })
+  return post<McpServerConfig>('/mcp/servers', input)
 }
 
 export function updateMcpServer(currentName: string, input: McpServerConfig) {
-  return request<McpServerConfig>(`/mcp/servers/${encodeURIComponent(currentName)}`, {
-    method: 'PUT',
-    body: JSON.stringify(input),
-  })
+  return put<McpServerConfig>(`/mcp/servers/${encodeURIComponent(currentName)}`, input)
 }
 
 export function deleteMcpServer(name: string) {
-  return request<McpServerDeleteResult>(`/mcp/servers/${encodeURIComponent(name)}`, {
-    method: 'DELETE',
-  })
+  return del<McpServerDeleteResult>(`/mcp/servers/${encodeURIComponent(name)}`)
 }

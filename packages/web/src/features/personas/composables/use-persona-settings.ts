@@ -1,11 +1,11 @@
 import { computed, onMounted, ref, unref, watch } from 'vue'
 import type { PluginPersonaCurrentInfo, PluginPersonaSummary } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import { useChatStore } from '@/features/chat/store/chat'
 import {
   activateConversationPersona,
   loadCurrentPersona,
   loadPersonas,
-  toErrorMessage,
 } from './persona-settings.data'
 
 /**
@@ -20,10 +20,12 @@ import {
  */
 export function usePersonaSettings() {
   const chat = useChatStore()
-  const loading = ref(false)
+  const requestState = useAsyncState(false)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const loadingCurrentPersona = ref(false)
   const applyingPersona = ref(false)
-  const error = ref<string | null>(null)
   const personas = ref<PluginPersonaSummary[]>([])
   const selectedPersonaId = ref<string | null>(null)
   const currentPersona = ref<PluginPersonaCurrentInfo | null>(null)
@@ -70,13 +72,13 @@ export function usePersonaSettings() {
 
   async function refreshAll() {
     loading.value = true
-    error.value = null
+    requestState.clearError()
     try {
       personas.value = await loadPersonas()
       ensureSelectedPersona()
       await refreshCurrentPersona()
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '加载 Persona 列表失败')
+      requestState.setError(caughtError, '加载 Persona 列表失败')
     } finally {
       loading.value = false
     }
@@ -85,7 +87,7 @@ export function usePersonaSettings() {
   async function refreshCurrentPersona() {
     const conversationId = currentConversationId.value
     loadingCurrentPersona.value = true
-    error.value = null
+    requestState.clearError()
     try {
       const current = await loadCurrentPersona(conversationId ?? undefined)
       if (currentConversationId.value !== conversationId) {
@@ -101,7 +103,7 @@ export function usePersonaSettings() {
 
       currentPersona.value = null
       ensureSelectedPersona()
-      error.value = toErrorMessage(caughtError, '加载当前 Persona 失败')
+      requestState.setError(caughtError, '加载当前 Persona 失败')
     } finally {
       if (currentConversationId.value === conversationId) {
         loadingCurrentPersona.value = false
@@ -121,7 +123,7 @@ export function usePersonaSettings() {
     const conversationId = currentConversationId.value
     const personaId = selectedPersonaId.value
     applyingPersona.value = true
-    error.value = null
+    requestState.clearError()
     try {
       const current = await activateConversationPersona(conversationId, personaId)
       if (currentConversationId.value !== conversationId) {
@@ -135,7 +137,7 @@ export function usePersonaSettings() {
         return
       }
 
-      error.value = toErrorMessage(caughtError, '应用 Persona 失败')
+      requestState.setError(caughtError, '应用 Persona 失败')
     } finally {
       if (currentConversationId.value === conversationId) {
         applyingPersona.value = false
@@ -164,6 +166,7 @@ export function usePersonaSettings() {
     loadingCurrentPersona,
     applyingPersona,
     error,
+    appError,
     personas,
     selectedPersonaId,
     selectedPersona,

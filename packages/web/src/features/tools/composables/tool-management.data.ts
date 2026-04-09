@@ -9,6 +9,7 @@ import {
   updateToolEnabled,
   updateToolSourceEnabled,
 } from '@/features/tools/api/tools'
+import { getErrorMessage } from '@/utils/error'
 
 export interface ToolOverviewData {
   sources: ToolSourceInfo[]
@@ -67,5 +68,5 @@ export function runToolSourceActionRequest(
  * @returns 可展示错误文本
  */
 export function toErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
+  return getErrorMessage(error, fallback)
 }

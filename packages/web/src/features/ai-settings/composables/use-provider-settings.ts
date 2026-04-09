@@ -8,6 +8,7 @@ import type {
   DiscoveredAiModel,
   VisionFallbackConfig,
 } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import {
   addProviderModel,
   deleteProviderConfig,
@@ -41,11 +42,13 @@ import {
  * - 所有数据拉取、选择与保存逻辑统一收口到此 composable
  */
 export function useProviderSettings() {
-  const loadingProviders = ref(false)
+  const providerRequestState = useAsyncState(false)
+  const loadingProviders = providerRequestState.loading
+  const error = providerRequestState.error
+  const appError = providerRequestState.appError
   const savingVision = ref(false)
   const discoveringModels = ref(false)
   const testingConnection = ref(false)
-  const error = ref<string | null>(null)
   const catalog = ref<AiProviderCatalogItem[]>([])
   const providers = ref<AiProviderSummary[]>([])
   const selectedProviderId = ref<string | null>(null)
@@ -74,7 +77,7 @@ export function useProviderSettings() {
 
   async function refreshAll(preferredProviderId?: string) {
     loadingProviders.value = true
-    error.value = null
+    providerRequestState.clearError()
     try {
       const baseData = await loadProviderSettingsBaseData()
       catalog.value = baseData.catalog
@@ -92,10 +95,7 @@ export function useProviderSettings() {
       const selectedSelection = await selectAvailableProvider(preferredProviderId)
       await refreshProviderModelOptions(selectedSelection)
     } catch (caughtError) {
-      error.value = toErrorMessage(
-        caughtError instanceof Error ? caughtError : undefined,
-        '加载失败',
-      )
+      providerRequestState.setError(caughtError, '加载失败')
     } finally {
       loadingProviders.value = false
     }
@@ -223,10 +223,7 @@ export function useProviderSettings() {
 
       connectionResult.value = {
         kind: 'error',
-        text: toErrorMessage(
-          caughtError instanceof Error ? caughtError : undefined,
-          '拉取模型失败',
-        ),
+        text: toErrorMessage(caughtError, '拉取模型失败'),
       }
     } finally {
       if (requestId === discoveryRequestId) {
@@ -345,10 +342,7 @@ export function useProviderSettings() {
 
       connectionResult.value = {
         kind: 'error',
-        text: toErrorMessage(
-          caughtError instanceof Error ? caughtError : undefined,
-          '测试连接失败',
-        ),
+        text: toErrorMessage(caughtError, '测试连接失败'),
       }
     } finally {
       if (requestId === connectionTestRequestId) {
@@ -411,6 +405,7 @@ export function useProviderSettings() {
     discoveringModels,
     testingConnection,
     error,
+    appError,
     catalog,
     providers,
     selectedProviderId,

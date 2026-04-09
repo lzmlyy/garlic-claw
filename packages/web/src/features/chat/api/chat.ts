@@ -1,4 +1,6 @@
-import { ApiError, getApiBase, request } from '@/api/base'
+import { delete as del, get, patch, post, put, requestRaw } from "@/api/http";
+import { toAppError } from "@/utils/error";
+
 import type {
   Conversation,
   ConversationDetail,
@@ -9,39 +11,38 @@ import type {
   SendMessagePayload,
   UpdateConversationHostServicesPayload,
   UpdateMessagePayload,
-} from '@garlic-claw/shared'
+} from "@garlic-claw/shared";
 
 export function listConversations() {
-  return request<Conversation[]>('/chat/conversations')
+  return get<Conversation[]>("/chat/conversations");
 }
 
 export function createConversation(title?: string) {
-  return request<Conversation>('/chat/conversations', {
-    method: 'POST',
-    body: JSON.stringify({ title }),
-  })
+  return post<Conversation>("/chat/conversations", { title });
 }
 
 export function getConversation(id: string) {
-  return request<ConversationDetail>(`/chat/conversations/${id}`)
+  return get<ConversationDetail>(`/chat/conversations/${id}`);
 }
 
 export function deleteConversation(id: string) {
-  return request<{ message: string }>(`/chat/conversations/${id}`, { method: 'DELETE' })
+  return del<{ message: string }>(`/chat/conversations/${id}`);
 }
 
 export function getConversationHostServices(conversationId: string) {
-  return request<ConversationHostServices>(`/chat/conversations/${conversationId}/services`)
+  return get<ConversationHostServices>(
+    `/chat/conversations/${conversationId}/services`,
+  );
 }
 
 export function updateConversationHostServices(
   conversationId: string,
   payload: UpdateConversationHostServicesPayload,
 ) {
-  return request<ConversationHostServices>(`/chat/conversations/${conversationId}/services`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  })
+  return put<ConversationHostServices>(
+    `/chat/conversations/${conversationId}/services`,
+    payload,
+  );
 }
 
 export function updateConversationMessage(
@@ -49,55 +50,48 @@ export function updateConversationMessage(
   messageId: string,
   payload: UpdateMessagePayload,
 ) {
-  return request<Message>(`/chat/conversations/${conversationId}/messages/${messageId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function deleteConversationMessage(conversationId: string, messageId: string) {
-  return request<{ success: boolean }>(
+  return patch<Message>(
     `/chat/conversations/${conversationId}/messages/${messageId}`,
-    { method: 'DELETE' },
-  )
+    payload,
+  );
 }
 
-export function stopConversationMessage(conversationId: string, messageId: string) {
-  return request<Message>(`/chat/conversations/${conversationId}/messages/${messageId}/stop`, {
-    method: 'POST',
-  })
+export function deleteConversationMessage(
+  conversationId: string,
+  messageId: string,
+) {
+  return del<{ success: boolean }>(
+    `/chat/conversations/${conversationId}/messages/${messageId}`,
+  );
 }
 
-/**
- * 发送 SSE 聊天请求，并持续把事件推给调用方。
- * @param conversationId 对话 ID
- * @param payload 聊天载荷
- * @param onEvent 事件回调
- * @param signal 可选中止信号
- */
+export function stopConversationMessage(
+  conversationId: string,
+  messageId: string,
+) {
+  return post<Message>(
+    `/chat/conversations/${conversationId}/messages/${messageId}/stop`,
+  );
+}
+
 export async function sendMessageSSE(
   conversationId: string,
   payload: SendMessagePayload,
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal,
 ) {
-  const response = await createSseRequest(
-    `/chat/conversations/${conversationId}/messages`,
-    payload,
-    signal,
-  )
-
-  await consumeSseResponse(response, onEvent)
+  try {
+    const response = await createSseRequest(
+      `/chat/conversations/${conversationId}/messages`,
+      payload,
+      signal,
+    );
+    await consumeSseResponse(response, onEvent);
+  } catch (error) {
+    throw toAppError(error, "Send message failed");
+  }
 }
 
-/**
- * 原地重试指定消息，并持续把事件推给调用方。
- * @param conversationId 对话 ID
- * @param messageId assistant 消息 ID
- * @param payload 可选的 provider/model 覆盖
- * @param onEvent 事件回调
- * @param signal 可选中止信号
- */
 export async function retryMessageSSE(
   conversationId: string,
   messageId: string,
@@ -105,88 +99,83 @@ export async function retryMessageSSE(
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal,
 ) {
-  const response = await createSseRequest(
-    `/chat/conversations/${conversationId}/messages/${messageId}/retry`,
-    payload,
-    signal,
-  )
-
-  await consumeSseResponse(response, onEvent)
+  try {
+    const response = await createSseRequest(
+      `/chat/conversations/${conversationId}/messages/${messageId}/retry`,
+      payload,
+      signal,
+    );
+    await consumeSseResponse(response, onEvent);
+  } catch (error) {
+    throw toAppError(error, "Retry message failed");
+  }
 }
 
-/**
- * 创建一条 SSE 请求。
- * @param path API 路径
- * @param payload 请求体
- * @param signal 可选中止信号
- * @returns 原始 fetch 响应
- */
 async function createSseRequest(
   path: string,
   payload: SendMessagePayload | RetryMessagePayload,
   signal?: AbortSignal,
 ) {
-  const token = localStorage.getItem('accessToken')
-  const response = await fetch(`${getApiBase()}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(payload),
-    signal,
-  })
-
-  if (!response.ok) {
-    throw new ApiError(response.status, await response.text())
+  try {
+    return await requestRaw(path, {
+      method: "POST",
+      body: payload,
+      headers: {
+        Accept: "text/event-stream",
+      },
+      signal,
+      timeout: 0,
+    });
+  } catch (error) {
+    throw toAppError(error, "Failed to establish stream");
   }
-
-  return response
 }
 
-/**
- * 消费 SSE 响应流并转发事件。
- * @param response fetch 响应
- * @param onEvent 事件回调
- */
 async function consumeSseResponse(
   response: Response,
   onEvent: (event: SSEEvent) => void,
 ) {
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new ApiError(500, 'SSE 响应体为空')
-  }
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) {
-      break
+  try {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw toAppError({
+        status: 500,
+        body: "SSE response body is empty",
+        code: "SSE_EMPTY_BODY",
+      });
     }
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
+    const decoder = new TextDecoder();
+    let buffer = "";
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) {
-        continue
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
       }
 
-      const data = line.slice(6).trim()
-      if (data === '[DONE]') {
-        return
-      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
-      try {
-        onEvent(JSON.parse(data) as SSEEvent)
-      } catch {
-        // SSE 中混入无效 JSON 时直接跳过，避免打断流
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) {
+          continue;
+        }
+
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") {
+          return;
+        }
+
+        try {
+          onEvent(JSON.parse(data) as SSEEvent);
+        } catch {
+          // Ignore invalid JSON lines in stream payload.
+        }
       }
     }
+  } catch (error) {
+    throw toAppError(error, "Read stream failed");
   }
 }

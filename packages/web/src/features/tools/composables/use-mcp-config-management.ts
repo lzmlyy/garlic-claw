@@ -3,11 +3,11 @@ import type {
   McpConfigSnapshot,
   McpServerConfig,
 } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import {
   createMcpServerConfig,
   deleteMcpServerConfig,
   loadMcpConfigSnapshot,
-  toErrorMessage,
   updateMcpServerConfig,
 } from './mcp-config-management.data'
 
@@ -17,10 +17,12 @@ const emptySnapshot = (): McpConfigSnapshot => ({
 })
 
 export function useMcpConfigManagement() {
-  const loading = ref(false)
+  const requestState = useAsyncState(false)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const saving = ref(false)
   const deleting = ref(false)
-  const error = ref<string | null>(null)
   const notice = ref<string | null>(null)
   const snapshot = shallowRef<McpConfigSnapshot>(emptySnapshot())
   const selectedServerName = ref<string | null>(null)
@@ -36,7 +38,7 @@ export function useMcpConfigManagement() {
 
   async function refresh(preferredName = selectedServerName.value) {
     loading.value = true
-    error.value = null
+    requestState.clearError()
     try {
       const nextSnapshot = await loadMcpConfigSnapshot()
       snapshot.value = nextSnapshot
@@ -45,7 +47,7 @@ export function useMcpConfigManagement() {
         ?? null
       selectedServerName.value = fallback?.name ?? null
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '加载 MCP 配置失败')
+      requestState.setError(caughtError, '加载 MCP 配置失败')
     } finally {
       loading.value = false
     }
@@ -59,7 +61,7 @@ export function useMcpConfigManagement() {
 
   async function createServer(input: McpServerConfig) {
     saving.value = true
-    error.value = null
+    requestState.clearError()
     notice.value = null
     try {
       const saved = await createMcpServerConfig(input)
@@ -67,8 +69,7 @@ export function useMcpConfigManagement() {
       await refresh(saved.name)
       return saved
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '创建 MCP server 失败')
-      throw caughtError
+      throw requestState.setError(caughtError, '创建 MCP server 失败')
     } finally {
       saving.value = false
     }
@@ -76,7 +77,7 @@ export function useMcpConfigManagement() {
 
   async function updateServer(currentName: string, input: McpServerConfig) {
     saving.value = true
-    error.value = null
+    requestState.clearError()
     notice.value = null
     try {
       const saved = await updateMcpServerConfig(currentName, input)
@@ -84,8 +85,7 @@ export function useMcpConfigManagement() {
       await refresh(saved.name)
       return saved
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '更新 MCP server 失败')
-      throw caughtError
+      throw requestState.setError(caughtError, '更新 MCP server 失败')
     } finally {
       saving.value = false
     }
@@ -93,7 +93,7 @@ export function useMcpConfigManagement() {
 
   async function deleteServer(name: string) {
     deleting.value = true
-    error.value = null
+    requestState.clearError()
     notice.value = null
     try {
       const result = await deleteMcpServerConfig(name)
@@ -101,8 +101,7 @@ export function useMcpConfigManagement() {
       await refresh()
       return result
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '删除 MCP server 失败')
-      throw caughtError
+      throw requestState.setError(caughtError, '删除 MCP server 失败')
     } finally {
       deleting.value = false
     }
@@ -113,6 +112,7 @@ export function useMcpConfigManagement() {
     saving,
     deleting,
     error,
+    appError,
     notice,
     snapshot,
     servers,

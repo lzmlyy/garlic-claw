@@ -3,6 +3,7 @@ import type {
   ActionConfig,
   TriggerConfig,
 } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import {
   createAutomationRecord,
   deleteAutomationRecord,
@@ -10,7 +11,6 @@ import {
   loadAutomations as loadAutomationList,
   runAutomationRequest,
   toggleAutomationEnabled,
-  toErrorMessage,
 } from './automations.data'
 import type { AutomationInfo, Conversation } from '@garlic-claw/shared'
 
@@ -42,8 +42,10 @@ interface AutomationFormState {
 export function useAutomations() {
   const automations = ref<AutomationInfo[]>([])
   const conversations = ref<Conversation[]>([])
-  const loading = ref(true)
-  const error = ref<string | null>(null)
+  const requestState = useAsyncState(true)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const showCreate = ref(false)
   const form = ref(createAutomationFormState())
   const canCreate = computed(
@@ -56,25 +58,25 @@ export function useAutomations() {
 
   async function loadAutomations() {
     loading.value = true
-    error.value = null
+    requestState.clearError()
     try {
       automations.value = await loadAutomationList()
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '无法加载自动化程序')
+      requestState.setError(caughtError, '无法加载自动化程序')
     } finally {
       loading.value = false
     }
   }
 
   async function loadConversations() {
-    error.value = null
+    requestState.clearError()
     try {
       conversations.value = await loadAutomationConversationOptions()
       if (!form.value.targetConversationId && conversations.value[0]) {
         form.value.targetConversationId = conversations.value[0].id
       }
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '无法加载会话列表')
+      requestState.setError(caughtError, '无法加载会话列表')
     }
   }
 
@@ -91,7 +93,7 @@ export function useAutomations() {
           : undefined,
     }
 
-    error.value = null
+    requestState.clearError()
     try {
       await createAutomationRecord({
         name: form.value.name,
@@ -105,37 +107,37 @@ export function useAutomations() {
       }
       await loadAutomations()
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '创建自动化失败')
+      requestState.setError(caughtError, '创建自动化失败')
     }
   }
 
   async function handleToggle(id: string) {
-    error.value = null
+    requestState.clearError()
     try {
       await toggleAutomationEnabled(id)
       await loadAutomations()
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '切换自动化状态失败')
+      requestState.setError(caughtError, '切换自动化状态失败')
     }
   }
 
   async function handleRun(id: string) {
-    error.value = null
+    requestState.clearError()
     try {
       await runAutomationRequest(id)
       await loadAutomations()
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '执行自动化失败')
+      requestState.setError(caughtError, '执行自动化失败')
     }
   }
 
   async function handleDelete(id: string) {
-    error.value = null
+    requestState.clearError()
     try {
       await deleteAutomationRecord(id)
       await loadAutomations()
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '删除自动化失败')
+      requestState.setError(caughtError, '删除自动化失败')
     }
   }
 
@@ -144,6 +146,7 @@ export function useAutomations() {
     conversations,
     loading,
     error,
+    appError,
     showCreate,
     form,
     canCreate,

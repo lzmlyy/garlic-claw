@@ -4,11 +4,12 @@ import {
   type ApiKeySummary,
   type CreateApiKeyResponse,
 } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
+import { ValidationError } from '@/utils/error'
 import {
   createApiKeyRecord,
   loadApiKeys,
   revokeApiKeyRecord,
-  toErrorMessage,
 } from './api-key-management.data'
 
 interface ApiKeyScopeOption {
@@ -18,9 +19,11 @@ interface ApiKeyScopeOption {
 }
 
 export function useApiKeyManagement() {
-  const loading = ref(false)
+  const requestState = useAsyncState(false)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const submitting = ref(false)
-  const error = ref<string | null>(null)
   const createdToken = ref<string | null>(null)
   const keys = shallowRef<ApiKeySummary[]>([])
   const formName = ref('')
@@ -50,11 +53,11 @@ export function useApiKeyManagement() {
 
   async function refreshAll() {
     loading.value = true
-    error.value = null
+    requestState.clearError()
     try {
       keys.value = await loadApiKeys()
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '加载 API key 失败')
+      requestState.setError(caughtError, '加载 API key 失败')
     } finally {
       loading.value = false
     }
@@ -62,16 +65,16 @@ export function useApiKeyManagement() {
 
   async function submitCreate() {
     if (!formName.value.trim()) {
-      error.value = '请先填写 key 名称'
+      requestState.setError(new ValidationError('请先填写 key 名称'), '请先填写 key 名称')
       return
     }
     if (selectedScopes.value.length === 0) {
-      error.value = '至少选择一个 scope'
+      requestState.setError(new ValidationError('至少选择一个 scope'), '至少选择一个 scope')
       return
     }
 
     submitting.value = true
-    error.value = null
+    requestState.clearError()
     try {
       const created = await createApiKeyRecord({
         name: formName.value.trim(),
@@ -86,19 +89,19 @@ export function useApiKeyManagement() {
       formExpiresAt.value = ''
       selectedScopes.value = [...DEFAULT_API_KEY_SCOPES]
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '创建 API key 失败')
+      requestState.setError(caughtError, '创建 API key 失败')
     } finally {
       submitting.value = false
     }
   }
 
   async function revoke(id: string) {
-    error.value = null
+    requestState.clearError()
     try {
       const revoked = await revokeApiKeyRecord(id)
       keys.value = keys.value.map((key) => (key.id === id ? revoked : key))
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '撤销 API key 失败')
+      requestState.setError(caughtError, '撤销 API key 失败')
     }
   }
 
@@ -119,6 +122,7 @@ export function useApiKeyManagement() {
     loading,
     submitting,
     error,
+    appError,
     createdToken,
     keys: orderedKeys,
     formName,

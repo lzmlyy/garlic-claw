@@ -1,4 +1,4 @@
-import { request } from '@/api/base'
+import { get, post, put } from '@/api/http'
 import type {
   PluginActionName,
   ToolInfo,
@@ -9,7 +9,7 @@ import type {
 } from '@garlic-claw/shared'
 
 export function listToolOverview() {
-  return request<ToolOverview>('/tools/overview')
+  return get<ToolOverview>('/tools/overview')
 }
 
 export function updateToolSourceEnabled(
@@ -17,20 +17,14 @@ export function updateToolSourceEnabled(
   sourceId: string,
   enabled: boolean,
 ) {
-  return request<ToolSourceInfo>(
+  return put<ToolSourceInfo>(
     `/tools/sources/${kind}/${encodeURIComponent(sourceId)}/enabled`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({ enabled }),
-    },
+    { enabled },
   )
 }
 
 export function updateToolEnabled(toolId: string, enabled: boolean) {
-  return request<ToolInfo>(`/tools/${encodeURIComponent(toolId)}/enabled`, {
-    method: 'PUT',
-    body: JSON.stringify({ enabled }),
-  })
+  return put<ToolInfo>(`/tools/${encodeURIComponent(toolId)}/enabled`, { enabled })
 }
 
 export function runToolSourceAction(
@@ -38,10 +32,7 @@ export function runToolSourceAction(
   sourceId: string,
   action: PluginActionName,
 ) {
-  return request<ToolSourceActionResult>(
+  return post<ToolSourceActionResult>(
     `/tools/sources/${kind}/${encodeURIComponent(sourceId)}/actions/${action}`,
-    {
-      method: 'POST',
-    },
   )
 }

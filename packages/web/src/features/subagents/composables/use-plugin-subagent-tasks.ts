@@ -1,9 +1,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { PluginSubagentTaskSummary } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import { usePagination } from '@/composables/use-pagination'
 import {
   loadPluginSubagentTaskOverview,
-  toErrorMessage,
 } from './plugin-subagent-tasks.data'
 
 type TaskFilter = 'all' | 'running' | 'completed' | 'error' | 'writeback-failed'
@@ -11,8 +11,10 @@ type TaskFilter = 'all' | 'running' | 'completed' | 'error' | 'writeback-failed'
 const POLL_INTERVAL_MS = 5000
 
 export function usePluginSubagentTasks() {
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const requestState = useAsyncState(false)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const tasks = shallowRef<PluginSubagentTaskSummary[]>([])
   const searchKeyword = ref('')
   const filter = ref<TaskFilter>('all')
@@ -78,12 +80,12 @@ export function usePluginSubagentTasks() {
 
   async function refreshAll() {
     loading.value = true
-    error.value = null
+    requestState.clearError()
     try {
       const overview = await loadPluginSubagentTaskOverview()
       tasks.value = overview.tasks
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '加载后台子代理任务失败')
+      requestState.setError(caughtError, '加载后台子代理任务失败')
     } finally {
       loading.value = false
     }
@@ -92,6 +94,7 @@ export function usePluginSubagentTasks() {
   return {
     loading,
     error,
+    appError,
     tasks,
     searchKeyword,
     filter,

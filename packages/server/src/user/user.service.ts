@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { AdminIdentityService } from '../auth/admin-identity.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { UpdateUserDto, UpdateUserRoleDto } from './dto/user.dto';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { AdminIdentityService } from "../auth/admin-identity.service";
+import { Cacheable } from "../cache/cacheable.decorator";
+import { CacheService } from "../cache/cache.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { UpdateUserDto, UpdateUserRoleDto } from "./dto/user.dto";
 
 type UserListRecord = {
   id: string;
@@ -12,11 +14,14 @@ type UserListRecord = {
   updatedAt: Date;
 };
 
+const USER_CONFIG_CACHE_PREFIX = "user:config";
+
 @Injectable()
 export class UserService {
   constructor(
     private prisma: PrismaService,
     private readonly adminIdentity: AdminIdentityService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async findAll(page = 1, pageSize = 20) {
@@ -33,7 +38,7 @@ export class UserService {
           createdAt: true,
           updatedAt: true,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       this.prisma.user.count(),
     ]);
@@ -46,6 +51,7 @@ export class UserService {
     };
   }
 
+  @Cacheable(60, USER_CONFIG_CACHE_PREFIX)
   async findById(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -60,7 +66,7 @@ export class UserService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException("User not found");
     }
 
     return this.withRuntimeRole(user);
@@ -81,6 +87,7 @@ export class UserService {
       },
     });
 
+    await this.cacheService.delete(USER_CONFIG_CACHE_PREFIX, id);
     return this.withRuntimeRole(user);
   }
 
@@ -99,13 +106,15 @@ export class UserService {
       },
     });
 
+    await this.cacheService.delete(USER_CONFIG_CACHE_PREFIX, id);
     return this.withRuntimeRole(user);
   }
 
   async delete(id: string) {
     await this.findById(id);
     await this.prisma.user.delete({ where: { id } });
-    return { message: 'User deleted' };
+    await this.cacheService.delete(USER_CONFIG_CACHE_PREFIX, id);
+    return { message: "User deleted" };
   }
 
   /**
@@ -113,9 +122,9 @@ export class UserService {
    * @param user 数据库用户
    * @returns 带最终角色的用户
    */
-  private withRuntimeRole<T extends { username: string; email: string; role: string }>(
-    user: T,
-  ): T {
+  private withRuntimeRole<
+    T extends { username: string; email: string; role: string },
+  >(user: T): T {
     return {
       ...user,
       role: this.adminIdentity.resolveRole(user),

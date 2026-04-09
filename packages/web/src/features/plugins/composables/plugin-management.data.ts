@@ -28,6 +28,7 @@ import {
   updatePluginConfig,
   updatePluginScope,
 } from '@/features/plugins/api/plugins'
+import { getErrorMessage } from '@/utils/error'
 
 export interface PluginDetailSnapshot {
   configSnapshot: PluginConfigSnapshot
@@ -185,9 +186,5 @@ export function dedupeEventLogs(events: PluginEventListResult['items']) {
  * @returns 可展示的错误文本
  */
 export function toErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-
-  return fallback
+  return getErrorMessage(error, fallback)
 }

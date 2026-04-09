@@ -1,16 +1,18 @@
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import type { PluginCommandConflict, PluginCommandInfo } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import { usePagination } from '@/composables/use-pagination'
 import {
   loadPluginCommandOverview,
-  toErrorMessage,
 } from './plugin-command-management.data'
 
 type CommandFilter = 'all' | 'conflict' | 'protected' | 'offline'
 
 export function usePluginCommandManagement() {
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const requestState = useAsyncState(false)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const commands = shallowRef<PluginCommandInfo[]>([])
   const conflicts = shallowRef<PluginCommandConflict[]>([])
   const searchKeyword = ref('')
@@ -76,13 +78,13 @@ export function usePluginCommandManagement() {
 
   async function refreshAll() {
     loading.value = true
-    error.value = null
+    requestState.clearError()
     try {
       const overview = await loadPluginCommandOverview()
       commands.value = overview.commands
       conflicts.value = overview.conflicts
     } catch (caughtError) {
-      error.value = toErrorMessage(caughtError, '加载命令治理数据失败')
+      requestState.setError(caughtError, '加载命令治理数据失败')
     } finally {
       loading.value = false
     }
@@ -91,6 +93,7 @@ export function usePluginCommandManagement() {
   return {
     loading,
     error,
+    appError,
     commands,
     conflicts,
     searchKeyword,

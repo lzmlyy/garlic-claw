@@ -10,6 +10,7 @@ import {
   updateConversationSkills,
   updateSkillGovernance,
 } from '@/features/skills/api/skills'
+import { getErrorMessage } from '@/utils/error'
 
 const EMPTY_CONVERSATION_SKILL_STATE: ConversationSkillState = {
   activeSkillIds: [],
@@ -82,5 +83,5 @@ export function saveConversationSkills(
  * @returns 可展示错误文本
  */
 export function toErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
+  return getErrorMessage(error, fallback)
 }

@@ -1,6 +1,30 @@
 .messages {
   overflow-y: auto;
+  min-height: 0;
   padding: 4px 8px 4px 2px;
+}
+
+.messages-viewport {
+  width: 100%;
+}
+
+.messages-viewport.virtualized {
+  position: relative;
+}
+
+.message-shell {
+  width: 100%;
+}
+
+.message-shell + .message-shell {
+  margin-top: 20px;
+}
+
+.message-shell.virtualized {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin-top: 0;
 }
 
 .loading {
@@ -12,7 +36,6 @@
   display: flex;
   gap: 14px;
   align-items: start;
-  margin-bottom: 20px;
 }
 
 .message.user {
@@ -62,14 +85,18 @@
   background: rgba(14, 24, 38, 0.85);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.08);
+  box-shadow:
+    0 12px 28px rgba(1, 6, 15, 0.2),
+    0 0 15px rgba(103, 199, 207, 0.08);
   transition: all 0.15s ease;
 }
 
 .message.user .message-body {
   border-color: rgba(133, 163, 199, 0.25);
   background: rgba(18, 33, 52, 0.9);
-  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.1);
+  box-shadow:
+    0 12px 28px rgba(1, 6, 15, 0.2),
+    0 0 15px rgba(103, 199, 207, 0.1);
 }
 
 .message-meta,

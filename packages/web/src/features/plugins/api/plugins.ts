@@ -1,4 +1,4 @@
-import { request, requestWithMetadata } from '@/api/base'
+import { delete as del, get, post, put, requestWithMetadata } from '@/api/http'
 import type {
   JsonValue,
   PluginActionName,
@@ -16,43 +16,41 @@ import type {
 } from '@garlic-claw/shared'
 
 export function listPlugins() {
-  return request<PluginInfo[]>('/plugins')
+  return get<PluginInfo[]>('/plugins')
 }
 
 export function deletePlugin(name: string) {
-  return request(`/plugins/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  return del(`/plugins/${encodeURIComponent(name)}`)
 }
 
 export function getPluginConfig(name: string) {
-  return request<PluginConfigSnapshot>(`/plugins/${encodeURIComponent(name)}/config`)
+  return get<PluginConfigSnapshot>(`/plugins/${encodeURIComponent(name)}/config`)
 }
 
 export function updatePluginConfig(
   name: string,
   values: PluginConfigSnapshot['values'],
 ) {
-  return request<PluginConfigSnapshot>(`/plugins/${encodeURIComponent(name)}/config`, {
-    method: 'PUT',
-    body: JSON.stringify({ values }),
+  return put<PluginConfigSnapshot>(`/plugins/${encodeURIComponent(name)}/config`, {
+    values,
   })
 }
 
 export function getPluginScope(name: string) {
-  return request<PluginScopeSettings>(`/plugins/${encodeURIComponent(name)}/scopes`)
+  return get<PluginScopeSettings>(`/plugins/${encodeURIComponent(name)}/scopes`)
 }
 
 export function updatePluginScope(
   name: string,
   conversations: PluginScopeSettings['conversations'],
 ) {
-  return request<PluginScopeSettings>(`/plugins/${encodeURIComponent(name)}/scopes`, {
-    method: 'PUT',
-    body: JSON.stringify({ conversations }),
+  return put<PluginScopeSettings>(`/plugins/${encodeURIComponent(name)}/scopes`, {
+    conversations,
   })
 }
 
 export function getPluginHealth(name: string) {
-  return request<PluginHealthSnapshot>(`/plugins/${encodeURIComponent(name)}/health`)
+  return get<PluginHealthSnapshot>(`/plugins/${encodeURIComponent(name)}/health`)
 }
 
 export function listPluginEvents(
@@ -77,26 +75,23 @@ export function listPluginEvents(
   }
 
   const querySuffix = search.size > 0 ? `?${search.toString()}` : ''
-  return request<PluginEventListResult>(
+  return get<PluginEventListResult>(
     `/plugins/${encodeURIComponent(name)}/events${querySuffix}`,
   )
 }
 
 export function getPluginCrons(name: string) {
-  return request<PluginCronJobSummary[]>(`/plugins/${encodeURIComponent(name)}/crons`)
+  return get<PluginCronJobSummary[]>(`/plugins/${encodeURIComponent(name)}/crons`)
 }
 
 export function deletePluginCron(name: string, jobId: string) {
-  return request<boolean>(
+  return del<boolean>(
     `/plugins/${encodeURIComponent(name)}/crons/${encodeURIComponent(jobId)}`,
-    {
-      method: 'DELETE',
-    },
   )
 }
 
 export function listPluginConversationSessions(name: string) {
-  return request<PluginConversationSessionInfo[]>(
+  return get<PluginConversationSessionInfo[]>(
     `/plugins/${encodeURIComponent(name)}/sessions`,
   )
 }
@@ -105,17 +100,14 @@ export function finishPluginConversationSession(
   name: string,
   conversationId: string,
 ) {
-  return request<boolean>(
+  return del<boolean>(
     `/plugins/${encodeURIComponent(name)}/sessions/${encodeURIComponent(conversationId)}`,
-    {
-      method: 'DELETE',
-    },
   )
 }
 
 export function listPluginStorage(name: string, prefix?: string) {
   const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
-  return request<PluginStorageEntry[]>(
+  return get<PluginStorageEntry[]>(
     `/plugins/${encodeURIComponent(name)}/storage${query}`,
   )
 }
@@ -125,28 +117,20 @@ export function setPluginStorage(
   key: string,
   value: PluginStorageEntry['value'],
 ) {
-  return request<PluginStorageEntry>(`/plugins/${encodeURIComponent(name)}/storage`, {
-    method: 'PUT',
-    body: JSON.stringify({ key, value }),
+  return put<PluginStorageEntry>(`/plugins/${encodeURIComponent(name)}/storage`, {
+    key,
+    value,
   })
 }
 
 export function deletePluginStorage(name: string, key: string) {
-  return request<boolean>(
+  return del<boolean>(
     `/plugins/${encodeURIComponent(name)}/storage?key=${encodeURIComponent(key)}`,
-    {
-      method: 'DELETE',
-    },
   )
 }
 
 export function runPluginAction(name: string, action: PluginActionName) {
-  return request<PluginActionResult>(
-    `/plugins/${encodeURIComponent(name)}/actions/${action}`,
-    {
-      method: 'POST',
-    },
-  )
+  return post<PluginActionResult>(`/plugins/${encodeURIComponent(name)}/actions/${action}`)
 }
 
 export function invokePluginRoute(
@@ -161,12 +145,11 @@ export function invokePluginRoute(
   const normalizedPath = routePath.trim().replace(/^\/+|\/+$/g, '')
   const normalizedQuery = options.query?.trim().replace(/^\?/, '') ?? ''
   const querySuffix = normalizedQuery ? `?${normalizedQuery}` : ''
-  const requestOptions: RequestInit = {
+  const requestOptions = {
     method,
-  }
-
-  if (method !== 'GET' && method !== 'DELETE' && options.body !== undefined) {
-    requestOptions.body = JSON.stringify(options.body)
+    ...(method !== 'GET' && method !== 'DELETE' && options.body !== undefined
+      ? { body: options.body }
+      : {}),
   }
 
   return requestWithMetadata<JsonValue>(

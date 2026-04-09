@@ -4,6 +4,7 @@ import type {
   SkillDetail,
   UpdateSkillGovernancePayload,
 } from '@garlic-claw/shared'
+import { useAsyncState } from '@/composables/use-async-state'
 import type { useChatStore } from '@/features/chat/store/chat'
 import {
   loadConversationSkillState,
@@ -11,13 +12,14 @@ import {
   refreshSkillCatalog,
   saveConversationSkills,
   saveSkillGovernance,
-  toErrorMessage,
 } from './skill-management.data'
 
 export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
-  const loading = ref(false)
+  const requestState = useAsyncState(false)
+  const loading = requestState.loading
+  const error = requestState.error
+  const appError = requestState.appError
   const refreshing = ref(false)
-  const error = ref<string | null>(null)
   const searchKeyword = ref('')
   const skills = ref<SkillDetail[]>([])
   const selectedSkillId = ref<string | null>(null)
@@ -81,12 +83,12 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
 
   async function loadSkills() {
     loading.value = true
-    error.value = null
+    requestState.clearError()
 
     try {
       replaceSkills(await loadSkillCatalog())
     } catch (cause) {
-      error.value = toErrorMessage(cause, '加载 skills 失败')
+      requestState.setError(cause, '加载 skills 失败')
     } finally {
       loading.value = false
     }
@@ -94,13 +96,13 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
 
   async function refreshAll() {
     refreshing.value = true
-    error.value = null
+    requestState.clearError()
 
     try {
       replaceSkills(await refreshSkillCatalog())
       await refreshConversationSkillState(chat.currentConversationId)
     } catch (cause) {
-      error.value = toErrorMessage(cause, '刷新 skills 失败')
+      requestState.setError(cause, '刷新 skills 失败')
     } finally {
       refreshing.value = false
     }
@@ -131,14 +133,14 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
     patch: UpdateSkillGovernancePayload,
   ) {
     mutatingSkillId.value = skillId
-    error.value = null
+    requestState.clearError()
 
     try {
       const updated = await saveSkillGovernance(skillId, patch)
       replaceSkills(applySkillUpdate(skills.value, updated))
       await refreshConversationSkillState(chat.currentConversationId)
     } catch (cause) {
-      error.value = toErrorMessage(cause, '更新 skill 治理失败')
+      requestState.setError(cause, '更新 skill 治理失败')
     } finally {
       if (mutatingSkillId.value === skillId) {
         mutatingSkillId.value = null
@@ -152,7 +154,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
       return
     }
 
-    error.value = null
+    requestState.clearError()
 
     try {
       conversationSkillState.value = await saveConversationSkills(
@@ -160,7 +162,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
         activeSkillIds,
       )
     } catch (cause) {
-      error.value = toErrorMessage(cause, '更新当前会话 skills 失败')
+      requestState.setError(cause, '更新当前会话 skills 失败')
     }
   }
 
@@ -190,6 +192,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
     loading,
     refreshing,
     error,
+    appError,
     mutatingSkillId,
     searchKeyword,
     skills,
