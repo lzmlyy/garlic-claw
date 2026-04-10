@@ -16,6 +16,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminIdentityService } from '../auth/admin-identity.service';
+import { CacheService } from '../cache/cache.service';
 import { UserService } from './user.service';
 
 describe('UserService', () => {
@@ -35,7 +36,11 @@ describe('UserService', () => {
     const adminIdentity = {
       resolveRole: jest.fn().mockReturnValue('super_admin'),
     } as never as AdminIdentityService;
-    const service = new UserService(prisma, adminIdentity);
+    const cacheService = {
+      delete: jest.fn(),
+      getOrSet: jest.fn(async ({ factory }: { factory: () => Promise<unknown> }) => factory()),
+    } as never as CacheService;
+    const service = new UserService(prisma, adminIdentity, cacheService);
 
     await expect(service.findById('user-1')).resolves.toEqual(
       expect.objectContaining({
@@ -54,7 +59,11 @@ describe('UserService', () => {
     const adminIdentity = {
       resolveRole: jest.fn(),
     } as never as AdminIdentityService;
-    const service = new UserService(prisma, adminIdentity);
+    const cacheService = {
+      delete: jest.fn(),
+      getOrSet: jest.fn(async ({ factory }: { factory: () => Promise<unknown> }) => factory()),
+    } as never as CacheService;
+    const service = new UserService(prisma, adminIdentity, cacheService);
 
     await expect(service.findById('missing')).rejects.toThrow(NotFoundException);
   });

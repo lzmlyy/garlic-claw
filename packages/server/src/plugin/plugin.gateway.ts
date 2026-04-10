@@ -1,17 +1,7 @@
 import {
-  assertPluginGatewayAuthClaims,
-  createPluginGatewayRemoteTransport,
-  handlePluginGatewayCommandMessage,
-  handlePluginGatewayHostCall,
   handlePluginGatewayInboundRawMessage,
-  handlePluginGatewayMessageEnvelope,
-  handlePluginGatewayPluginMessage,
-  rejectPluginGatewayPendingRequestsForSocket,
   sendPluginGatewayMessage,
-  type ActiveRequestContext,
   type AuthPayload,
-  type PendingRequest,
-  type PluginGatewayVerifiedToken,
   type PluginGatewayInboundMessage,
   type PluginGatewayPayload,
   type PluginManifest,
@@ -33,20 +23,20 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { normalizePluginManifestCandidate } from './plugin-manifest.persistence';
 import { PluginRuntimeOrchestratorService } from './plugin-runtime-orchestrator.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
+import {
+  ConnectionContextAggregate,
+  type PluginConnection,
+} from './gateway/connection-context.aggregate';
+import { PluginGatewayAuthTransport } from './gateway/transport/plugin-gateway-auth.transport';
+import { PluginGatewayHeartbeatTransport } from './gateway/transport/plugin-gateway-heartbeat.transport';
+import { PluginGatewayRouterTransport } from './gateway/transport/plugin-gateway-router.transport';
+import { PluginGatewayLifecycleOrchestrator } from './gateway/orchestrator/plugin-gateway-lifecycle.orchestrator';
+import { PluginGatewayRequestOrchestrator } from './gateway/orchestrator/plugin-gateway-request.orchestrator';
 
 const HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
 const HEARTBEAT_TIMEOUT_MS = 90_000;
 const AUTH_TIMEOUT_MS = 10_000;
 const PROTOCOL_ERROR_ACTION = 'protocol_error';
-
-interface PluginConnection {
-  ws: WebSocket;
-  pluginName: string;
-  deviceType: string;
-  authenticated: boolean;
-  manifest: PluginManifest | null;
-  lastHeartbeatAt: number;
-}
 
 export function resolvePluginGatewayManifest(input: {
   pluginName: string;
@@ -68,10 +58,12 @@ export function resolvePluginGatewayManifest(input: {
 export class PluginGateway implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PluginGateway.name);
   private wss!: WebSocketServer;
-  private readonly connections = new Map<WebSocket, PluginConnection>();
-  private readonly connectionByPluginId = new Map<string, PluginConnection>();
-  private readonly pendingRequests = new Map<string, PendingRequest>();
-  private readonly activeRequestContexts = new Map<string, ActiveRequestContext>();
+  private readonly connectionContextAggregate = new ConnectionContextAggregate();
+  private readonly authTransport: PluginGatewayAuthTransport;
+  private readonly heartbeatTransport: PluginGatewayHeartbeatTransport;
+  private readonly routerTransport: PluginGatewayRouterTransport;
+  private readonly requestOrchestrator: PluginGatewayRequestOrchestrator;
+  private readonly lifecycleOrchestrator: PluginGatewayLifecycleOrchestrator;
   private heartbeatInterval!: ReturnType<typeof setInterval>;
 
   constructor(
@@ -79,7 +71,63 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     private readonly pluginRuntimeOrchestrator: PluginRuntimeOrchestratorService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) {
+    this.requestOrchestrator = new PluginGatewayRequestOrchestrator();
+    this.authTransport = new PluginGatewayAuthTransport({
+      jwtService: this.jwtService,
+      configService: this.configService,
+      logger: this.logger,
+      findConnectionByPluginId: (pluginId) => this.connectionByPluginId.get(pluginId),
+      bindPluginConnection: (pluginId, connection) => this.connectionContextAggregate.bindPlugin(pluginId, connection),
+      markHeartbeat: (socket, heartbeatAt) => this.connectionContextAggregate.markHeartbeat(socket, heartbeatAt),
+      sendSocketMessage: (socket, type, action, payload) => this.sendSocketMessage(socket, type, action, payload),
+    });
+    this.heartbeatTransport = new PluginGatewayHeartbeatTransport({
+      logger: this.logger,
+      runtimeOrchestrator: this.pluginRuntimeOrchestrator,
+      heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
+      sendSocketMessage: (socket, type, action, payload) => this.sendSocketMessage(socket, type, action, payload),
+    });
+    this.routerTransport = new PluginGatewayRouterTransport({
+      logger: this.logger,
+      pluginRuntime: this.pluginRuntime,
+      authTransport: this.authTransport,
+      heartbeatTransport: this.heartbeatTransport,
+      pendingRequests: this.pendingRequests,
+      activeRequestContexts: this.activeRequestContexts,
+      registerPluginConnection: (socket, connection, payload) =>
+        this.registerPluginConnection(socket, connection, payload),
+    });
+    this.lifecycleOrchestrator = new PluginGatewayLifecycleOrchestrator({
+      logger: this.logger,
+      runtimeOrchestrator: this.pluginRuntimeOrchestrator,
+      pendingRequests: this.pendingRequests,
+      activeRequestContexts: this.activeRequestContexts,
+      connectionByPluginId: this.connectionByPluginId,
+      requestOrchestrator: this.requestOrchestrator,
+      removeConnection: (connection) => this.connectionContextAggregate.removeConnection(connection),
+      resolveManifest: (input) => resolvePluginGatewayManifest(input),
+      disconnectPlugin: (pluginId) => this.disconnectPlugin(pluginId),
+      checkPluginHealth: (pluginId) => this.checkPluginHealth(pluginId),
+      sendSocketMessage: (socket, type, action, payload) => this.sendSocketMessage(socket, type, action, payload),
+    });
+  }
+
+  private get connections() {
+    return this.connectionContextAggregate.connections;
+  }
+
+  private get connectionByPluginId() {
+    return this.connectionContextAggregate.connectionByPluginId;
+  }
+
+  private get pendingRequests() {
+    return this.connectionContextAggregate.pendingRequests;
+  }
+
+  private get activeRequestContexts() {
+    return this.connectionContextAggregate.activeRequestContexts;
+  }
 
   onModuleInit() {
     const port = this.configService.get<number>('WS_PORT', 23331);
@@ -91,12 +139,11 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     clearInterval(this.heartbeatInterval);
-    for (const [requestId, pending] of this.pendingRequests) {
-      clearTimeout(pending.timer);
-      this.activeRequestContexts.delete(requestId);
-      pending.reject(new Error('服务器关闭'));
-    }
-    this.pendingRequests.clear();
+    this.requestOrchestrator.shutdown({
+      pendingRequests: this.pendingRequests,
+      activeRequestContexts: this.activeRequestContexts,
+      reason: '服务器关闭',
+    });
     this.wss?.close();
   }
 
@@ -131,7 +178,6 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
 
   private handleConnection(ws: WebSocket) {
     const connection = this.createConnectionRecord(ws);
-    this.connections.set(ws, connection);
     const logWarn = (message: string) => this.logger.warn(message);
 
     const authTimeout = setTimeout(() => {
@@ -168,50 +214,11 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     conn: PluginConnection,
     msg: PluginGatewayInboundMessage,
   ): Promise<void> {
-    const logWarn = (message: string) => this.logger.warn(message);
-    await handlePluginGatewayMessageEnvelope({
+    await this.routerTransport.handleMessage({
       socket: ws,
       connection: conn,
-      msg,
+      message: msg,
       protocolErrorAction: PROTOCOL_ERROR_ACTION,
-      onAuth: (payload) => this.handleAuth(ws, conn, payload),
-      onPluginMessage: async (message) => {
-        await handlePluginGatewayPluginMessage({
-          socket: ws,
-          msg: message,
-          pendingRequests: this.pendingRequests,
-          activeRequestContexts: this.activeRequestContexts,
-          protocolErrorAction: PROTOCOL_ERROR_ACTION,
-          onRegister: (payload) => this.registerPluginConnection(ws, conn, payload),
-          onHostCall: (hostCallMessage) =>
-            handlePluginGatewayHostCall({
-              socket: ws,
-              connection: {
-                socket: conn.ws,
-                pluginName: conn.pluginName,
-              },
-              msg: hostCallMessage,
-              activeRequestContexts: this.activeRequestContexts,
-              callHost: (input) => this.pluginRuntime.callHost(input),
-              logWarn,
-            }),
-          logWarn,
-        });
-      },
-      onCommandMessage: async (message) => {
-        handlePluginGatewayCommandMessage({
-          msg: message,
-          pendingRequests: this.pendingRequests,
-          activeRequestContexts: this.activeRequestContexts,
-          logWarn,
-        });
-      },
-      onHeartbeatPing: async () => {
-        if (conn.manifest) {
-          await this.pluginRuntimeOrchestrator.touchPluginHeartbeat(conn.pluginName);
-        }
-        this.sendSocketMessage(ws, WS_TYPE.HEARTBEAT, WS_ACTION.PONG);
-      },
     });
   }
 
@@ -220,32 +227,11 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     conn: PluginConnection,
     payload: AuthPayload,
   ): Promise<void> {
-    try {
-      const secret = this.configService.get<string>('JWT_SECRET', 'fallback-secret');
-      const verified = this.jwtService.verify<PluginGatewayVerifiedToken>(payload.token, {
-        secret,
-      });
-      assertPluginGatewayAuthClaims({ verified, payload });
-
-      const previousConnection = this.connectionByPluginId.get(payload.pluginName);
-      conn.authenticated = true;
-      conn.pluginName = payload.pluginName;
-      conn.deviceType = payload.deviceType;
-      conn.lastHeartbeatAt = Date.now();
-      this.connectionByPluginId.set(payload.pluginName, conn);
-
-      if (previousConnection && previousConnection.ws !== ws) {
-        this.logger.warn(`插件 "${payload.pluginName}" 已存在旧连接，当前将其替换`);
-        previousConnection.ws.close();
-      }
-
-      this.sendSocketMessage(ws, WS_TYPE.AUTH, WS_ACTION.AUTH_OK);
-      this.logger.log(`Plugin "${payload.pluginName}" authenticated`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid token';
-      this.sendSocketMessage(ws, WS_TYPE.AUTH, WS_ACTION.AUTH_FAIL, { error: message });
-      ws.close();
-    }
+    await this.authTransport.handleAuth({
+      socket: ws,
+      connection: conn,
+      payload,
+    });
   }
 
   private async registerPluginConnection(
@@ -253,86 +239,25 @@ export class PluginGateway implements OnModuleInit, OnModuleDestroy {
     connection: PluginConnection,
     payload: ValidatedRegisterPayload,
   ): Promise<void> {
-    const manifest = resolvePluginGatewayManifest({
-      pluginName: connection.pluginName,
-      manifest: payload.manifest as unknown as Record<string, unknown>,
+    await this.lifecycleOrchestrator.registerConnection({
+      socket: ws,
+      connection,
+      payload,
     });
-    connection.manifest = manifest;
-
-    await this.pluginRuntimeOrchestrator.registerPlugin({
-      manifest,
-      runtimeKind: 'remote',
-      deviceType: connection.deviceType,
-      transport: createPluginGatewayRemoteTransport({
-        connection,
-        pendingRequests: this.pendingRequests,
-        activeRequestContexts: this.activeRequestContexts,
-        disconnectPlugin: (pluginId: string) => this.disconnectPlugin(pluginId),
-        checkPluginHealth: (pluginId: string) => this.checkPluginHealth(pluginId),
-      }),
-    });
-
-    this.sendSocketMessage(ws, WS_TYPE.PLUGIN, WS_ACTION.REGISTER_OK);
   }
 
   private async handleDisconnect(conn: PluginConnection): Promise<void> {
-    this.connections.delete(conn.ws);
-    rejectPluginGatewayPendingRequestsForSocket({
-      socket: conn.ws,
-      error: new Error('插件连接已断开'),
-      pendingRequests: this.pendingRequests,
-      activeRequestContexts: this.activeRequestContexts,
+    await this.lifecycleOrchestrator.unregisterConnection({
+      connection: conn,
     });
-    if (!conn.pluginName) {
-      return;
-    }
-
-    const activeConnection = this.connectionByPluginId.get(conn.pluginName);
-    if (activeConnection?.ws !== conn.ws) {
-      this.logger.log(`插件 "${conn.pluginName}" 的旧连接已断开`);
-      return;
-    }
-
-    this.connectionByPluginId.delete(conn.pluginName);
-    try {
-      await this.pluginRuntimeOrchestrator.unregisterPlugin(conn.pluginName);
-    } catch {
-      return;
-    }
-
-    this.logger.log(`插件 "${conn.pluginName}" 已断开连接`);
   }
 
   private checkHeartbeats() {
-    const now = Date.now();
-    for (const connection of this.connections.values()) {
-      if (!connection.authenticated) {
-        continue;
-      }
-
-      const lastHeartbeatAt = typeof connection.lastHeartbeatAt === 'number'
-        ? connection.lastHeartbeatAt
-        : now;
-      if (now - lastHeartbeatAt <= HEARTBEAT_TIMEOUT_MS) {
-        continue;
-      }
-
-      this.logger.warn(
-        `插件 "${connection.pluginName || 'unknown'}" 心跳超时，主动断开连接`,
-      );
-      connection.ws.close();
-    }
+    this.heartbeatTransport.checkHeartbeats(this.connections.values());
   }
 
   private createConnectionRecord(ws: WebSocket, now = Date.now()): PluginConnection {
-    return {
-      ws,
-      pluginName: '',
-      deviceType: '',
-      authenticated: false,
-      manifest: null,
-      lastHeartbeatAt: now,
-    };
+    return this.connectionContextAggregate.createConnection(ws, now);
   }
 
   private sendSocketMessage(

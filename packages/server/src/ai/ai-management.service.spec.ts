@@ -34,6 +34,10 @@ describe('AiManagementService', () => {
     upsertProvider: jest.fn(),
     removeProvider: jest.fn(),
   };
+  const cacheService = {
+    deleteByPrefix: jest.fn(),
+    getOrSet: jest.fn(async ({ factory }: { factory: () => Promise<unknown> | unknown }) => factory()),
+  };
 
   let service: AiManagementService;
 
@@ -42,6 +46,7 @@ describe('AiManagementService', () => {
     service = new AiManagementService(
       configManager as never,
       modelRegistry as never,
+      cacheService as never,
     );
   });
 
@@ -218,7 +223,7 @@ describe('AiManagementService', () => {
     expect(model).toBe(modelConfig);
   });
 
-  it('marks providers as unavailable when credentials are missing', () => {
+  it('marks providers as unavailable when credentials are missing', async () => {
     configManager.listProviders.mockReturnValue([
       {
         id: 'openai',
@@ -252,7 +257,7 @@ describe('AiManagementService', () => {
       },
     ]);
 
-    expect(service.listProviders()).toEqual([
+    await expect(service.listProviders()).resolves.toEqual([
       expect.objectContaining({
         id: 'openai',
         available: false,

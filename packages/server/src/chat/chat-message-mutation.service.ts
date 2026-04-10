@@ -5,14 +5,11 @@ import {
   normalizeAssistantMessageOutput,
   type ChatMessagePart,
   type ChatMessageStatus,
-  normalizeUserMessageInput,
   type PluginCallContext,
   type PluginLlmMessage,
   type PluginMessageSendInfo,
-  type PluginMessageSendParams,
   type PluginMessageTargetInfo,
   type PluginMessageTargetRef,
-  serializeMessageParts,
 } from '@garlic-claw/shared';
 import {
   BadRequestException,
@@ -24,12 +21,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from './chat.service';
 import {
   getOwnedConversationMessage,
-  touchConversationTimestamp,
 } from './chat-message-common.helpers';
 import { ChatMessageOrchestrationService } from './chat-message-orchestration.service';
 import { type UpdateMessageDto } from './dto/chat.dto';
-import { mapDtoParts } from './chat-message.helpers';
 import { ChatTaskService } from './chat-task.service';
+import { MessageMutationOrchestrator } from './message-mutation/message-mutation.orchestrator';
+import { MessagePartsMapper } from './message-mutation/domain/message-parts.mapper';
+import { MessageRepository } from './message-mutation/domain/message-repository';
+import { MessageTargetResolver } from './message-mutation/domain/message-target-resolver';
 
 type CreateChatMessageInput = {
   role: 'user' | 'assistant';
@@ -60,6 +59,10 @@ type ShortCircuitedAssistantOutput = {
 @Injectable()
 export class ChatMessageMutationService {
   private pluginChatRuntimePromise?: Promise<import('../plugin/plugin-chat-runtime.facade').PluginChatRuntimeFacade>;
+  private readonly messageRepository: MessageRepository;
+  private readonly messageTargetResolver: MessageTargetResolver;
+  private readonly messagePartsMapper: MessagePartsMapper;
+  private readonly messageMutationOrchestrator: MessageMutationOrchestrator;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -67,7 +70,24 @@ export class ChatMessageMutationService {
     private readonly orchestration: ChatMessageOrchestrationService,
     private readonly chatTaskService: ChatTaskService,
     private readonly moduleRef: ModuleRef,
-  ) {}
+  ) {
+    this.messageRepository = new MessageRepository(this.prisma);
+    this.messageTargetResolver = new MessageTargetResolver(this.prisma, this.chatService);
+    this.messagePartsMapper = new MessagePartsMapper();
+    this.messageMutationOrchestrator = new MessageMutationOrchestrator({
+      messageRepository: this.messageRepository,
+      resolveSendMessageTarget: (context, target) =>
+        this.messageTargetResolver.resolve(context, target ?? undefined),
+      createConversationTargetAssistantMessage: (input) =>
+        this.createConversationTargetAssistantMessage(input),
+      prepareOwnedMessageMutation: (input) => this.prepareOwnedMessageMutation(input),
+      getPluginChatRuntime: () => this.getPluginChatRuntime(),
+      mapDtoParts: (parts) => this.messagePartsMapper.fromDtoParts(parts),
+      toUpdatePartsJson: (parts) => this.messagePartsMapper.toUpdatePartsJson(parts),
+      updateMessageAndTouch: (messageId, conversationId, data) =>
+        this.updateMessageAndTouch(messageId, conversationId, data),
+    });
+  }
 
   async startGenerationTurn(input: {
     userId: string;
@@ -121,7 +141,7 @@ export class ChatMessageMutationService {
     context: PluginCallContext;
   }): Promise<PluginMessageTargetInfo | null> {
     return input.context.conversationId
-      ? this.resolveSendMessageTarget(input.context)
+      ? this.messageTargetResolver.resolve(input.context)
       : null;
   }
 
@@ -133,14 +153,7 @@ export class ChatMessageMutationService {
     provider?: string | null;
     model?: string | null;
   }): Promise<PluginMessageSendInfo> {
-    const target = await this.resolveSendMessageTarget(input.context, input.target);
-    return {
-      target,
-      ...(await this.createConversationTargetAssistantMessage({
-        ...input,
-        conversationId: target.id,
-      })),
-    };
+    return this.messageMutationOrchestrator.sendPluginMessage(input);
   }
 
   async completeShortCircuitedAssistant(input: {
@@ -175,9 +188,7 @@ export class ChatMessageMutationService {
       input.conversationId,
       {
         content: finalResult.content,
-        partsJson: finalResult.parts.length
-          ? serializeMessageParts(finalResult.parts)
-          : null,
+        partsJson: this.messagePartsMapper.toNullablePartsJson(finalResult.parts),
         provider: finalResult.providerId,
         model: finalResult.modelId,
         status: 'completed',
@@ -281,56 +292,11 @@ export class ChatMessageMutationService {
     messageId: string,
     dto: UpdateMessageDto,
   ) {
-    const { message, hookContext } = await this.prepareOwnedMessageMutation({
+    return this.messageMutationOrchestrator.updateMessage(
       userId,
       conversationId,
       messageId,
-    });
-
-    const nextMessage: HookableChatMessageInput = message.role === 'user'
-      ? {
-          role: 'user',
-          ...normalizeUserMessageInput({
-            content: dto.content,
-            parts: dto.parts ? mapDtoParts(dto.parts) : undefined,
-          }),
-          status: 'completed',
-        }
-      : {
-          role: 'assistant',
-          content: dto.content?.trim() ?? '',
-          parts: [],
-          provider: message.provider,
-          model: message.model,
-          status: 'completed',
-        };
-    const updatedPayload = await (await this.getPluginChatRuntime()).applyMessageUpdated({
-      hookContext,
-      conversationId,
-      messageId,
-      currentMessage: message,
-      nextMessage,
-    });
-
-    const nextPersistedMessage = updatedPayload.nextMessage;
-    const baseData = {
-      content: nextPersistedMessage.content ?? '',
-      status: nextPersistedMessage.status ?? 'completed',
-      error: null,
-    };
-    return this.updateMessageAndTouch(
-      messageId,
-      conversationId,
-      message.role === 'user'
-        ? {
-            ...baseData,
-            partsJson: serializeMessageParts(nextPersistedMessage.parts),
-          }
-        : {
-            ...baseData,
-            provider: nextPersistedMessage.provider ?? message.provider,
-            model: nextPersistedMessage.model ?? message.model,
-          },
+      dto,
     );
   }
 
@@ -339,20 +305,11 @@ export class ChatMessageMutationService {
     conversationId: string,
     messageId: string,
   ) {
-    const { message, hookContext } = await this.prepareOwnedMessageMutation({
+    return this.messageMutationOrchestrator.deleteMessage(
       userId,
       conversationId,
       messageId,
-    });
-    await (await this.getPluginChatRuntime()).dispatchMessageDeleted({
-      hookContext,
-      conversationId,
-      messageId,
-      message,
-    });
-    await this.prisma.message.delete({ where: { id: messageId } });
-    await touchConversationTimestamp(this.prisma, conversationId);
-    return { success: true };
+    );
   }
 
   private async updateMessageAndTouch(
@@ -360,12 +317,15 @@ export class ChatMessageMutationService {
     conversationId: string,
     data: Record<string, unknown>,
   ) {
-    const result = await this.prisma.message.update({
-      where: { id: messageId },
-      data,
+    return this.messageRepository.withTransaction(async (db) => {
+      const result = await this.messageRepository.updateMessage(
+        messageId,
+        data,
+        db,
+      );
+      await this.messageRepository.touchConversation(conversationId, db);
+      return result;
     });
-    await touchConversationTimestamp(this.prisma, conversationId);
-    return result;
   }
 
   private async prepareOwnedMessageMutation(input: {
@@ -437,40 +397,6 @@ export class ChatMessageMutationService {
     };
   }
 
-  private async resolveSendMessageTarget(
-    context: PluginCallContext,
-    target?: PluginMessageSendParams['target'],
-  ): Promise<PluginMessageTargetInfo> {
-    const conversationId = target?.id ?? context.conversationId;
-    if (target && target.type !== 'conversation') {
-      throw new BadRequestException(`当前不支持消息目标类型 ${target.type}`);
-    }
-    if (!conversationId) {
-      throw new BadRequestException('message.send 需要消息目标上下文');
-    }
-
-    const conversation = context.userId
-      ? await this.chatService.getConversation(context.userId, conversationId)
-      : await this.prisma.conversation.findUnique({
-          where: {
-            id: conversationId,
-          },
-          select: {
-            id: true,
-            title: true,
-          },
-        });
-    if (!conversation) {
-      throw new NotFoundException('Conversation not found');
-    }
-
-    return {
-      type: 'conversation',
-      id: conversation.id,
-      label: conversation.title,
-    };
-  }
-
   private async createHookedStoredMessage(input: {
     conversationId: string;
     hookContext: PluginCallContext;
@@ -500,34 +426,35 @@ export class ChatMessageMutationService {
     message: CreateChatMessageInput,
     touchConversation?: boolean,
   ) {
-    const partsJson = message.parts === undefined
-      ? undefined
-      : message.parts?.length
-        ? serializeMessageParts(message.parts)
-        : null;
-    const created = await this.prisma.message.create({
-      data: {
-        conversationId,
-        role: message.role,
-        content: message.content ?? '',
-        ...(partsJson !== undefined ? { partsJson } : {}),
-        ...(message.role === 'assistant'
-          ? {
-              ...(message.provider !== undefined
-                ? { provider: message.provider ?? null }
-                : {}),
-              ...(message.model !== undefined
-                ? { model: message.model ?? null }
-                : {}),
-            }
-          : {}),
-        status: message.status ?? 'completed',
-      },
+    const partsJson = this.messagePartsMapper.toCreatePartsJson(message.parts);
+
+    return this.messageRepository.withTransaction(async (db) => {
+      const created = await this.messageRepository.createMessage(
+        {
+          conversationId,
+          role: message.role,
+          content: message.content ?? '',
+          ...(partsJson !== undefined ? { partsJson } : {}),
+          ...(message.role === 'assistant'
+            ? {
+                ...(message.provider !== undefined
+                  ? { provider: message.provider ?? null }
+                  : {}),
+                ...(message.model !== undefined
+                  ? { model: message.model ?? null }
+                  : {}),
+              }
+            : {}),
+          status: message.status ?? 'completed',
+        },
+        db,
+      );
+      if (touchConversation !== false) {
+        await this.messageRepository.touchConversation(conversationId, db);
+      }
+
+      return created;
     });
-    if (touchConversation !== false) {
-      await touchConversationTimestamp(this.prisma, conversationId);
-    }
-    return created;
   }
 
   private async persistVisionFallbackMetadata(
@@ -544,19 +471,21 @@ export class ChatMessageMutationService {
         entries: visionFallbackEntries,
       },
     });
-    await (messageIds.length === 1
-      ? this.prisma.message.update({
-          where: { id: messageIds[0] },
-          data: { metadataJson },
-        })
-      : this.prisma.message.updateMany({
-          where: {
-            id: {
-              in: [...messageIds],
-            },
+    if (messageIds.length === 1) {
+      await this.messageRepository.updateMessage(
+        messageIds[0],
+        { metadataJson },
+      );
+    } else {
+      await this.messageRepository.updateManyMessages(
+        {
+          id: {
+            in: [...messageIds],
           },
-          data: { metadataJson },
-        }));
+        },
+        { metadataJson },
+      );
+    }
 
     return metadataJson;
   }

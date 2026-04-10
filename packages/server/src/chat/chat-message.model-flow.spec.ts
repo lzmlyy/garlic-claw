@@ -10,13 +10,6 @@ describe('ChatMessageService model flow', () => {
   let aiProvider: ChatMessageSpecFixture['aiProvider'];
   let personaService: ChatMessageSpecFixture['personaService'];
   let pluginRuntime: ChatMessageSpecFixture['pluginRuntime'];
-  let runMessageReceivedHooks: ChatMessageSpecFixture['runMessageReceivedHooks'];
-  let runChatBeforeModelHooks: ChatMessageSpecFixture['runChatBeforeModelHooks'];
-  let runChatWaitingModelHooks: ChatMessageSpecFixture['runChatWaitingModelHooks'];
-  let runChatAfterModelHooks: ChatMessageSpecFixture['runChatAfterModelHooks'];
-  let runMessageCreatedHooks: ChatMessageSpecFixture['runMessageCreatedHooks'];
-  let runResponseBeforeSendHooks: ChatMessageSpecFixture['runResponseBeforeSendHooks'];
-  let runResponseAfterSendHooks: ChatMessageSpecFixture['runResponseAfterSendHooks'];
   let toolRegistry: ChatMessageSpecFixture['toolRegistry'];
   let modelInvocation: ChatMessageSpecFixture['modelInvocation'];
   let chatTaskService: ChatMessageSpecFixture['chatTaskService'];
@@ -29,13 +22,6 @@ describe('ChatMessageService model flow', () => {
       aiProvider,
       personaService,
       pluginRuntime,
-      runMessageReceivedHooks,
-      runChatBeforeModelHooks,
-      runChatWaitingModelHooks,
-      runChatAfterModelHooks,
-      runMessageCreatedHooks,
-      runResponseBeforeSendHooks,
-      runResponseAfterSendHooks,
       toolRegistry,
       modelInvocation,
       chatTaskService,

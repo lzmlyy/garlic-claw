@@ -571,8 +571,6 @@ export function createChatMessageSpecFixture() {
     get: jest.fn(),
   };
 
-  let service: ChatMessageService;
-
   jest.clearAllMocks();
   chatModuleRef.get.mockImplementation((token: { name?: string }) =>
     token?.name === 'PluginChatRuntimeFacade' ? pluginChatRuntime : null);
@@ -680,7 +678,7 @@ export function createChatMessageSpecFixture() {
     skillCommands as never,
     generationModuleRef as unknown as ModuleRef,
   );
-  service = new ChatMessageService(
+  const service = new ChatMessageService(
     generationService as never,
     mutationService as never,
   );
@@ -709,4 +707,3 @@ export function createChatMessageSpecFixture() {
 }
 
 export type ChatMessageSpecFixture = ReturnType<typeof createChatMessageSpecFixture>;
-

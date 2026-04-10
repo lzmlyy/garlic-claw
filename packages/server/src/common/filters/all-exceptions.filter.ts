@@ -47,9 +47,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: unknown = resolveDefaultErrorMessage(
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+    let message: unknown;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();

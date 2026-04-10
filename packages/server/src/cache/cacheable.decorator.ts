@@ -29,8 +29,7 @@ export function Cacheable(
       this: CacheableHost,
       ...args: unknown[]
     ) {
-      const host = this;
-      const cacheService = host.cacheService;
+      const cacheService = this.cacheService;
       if (!cacheService) {
         return originalMethod.apply(this, args);
       }

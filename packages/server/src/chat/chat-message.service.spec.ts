@@ -8,17 +8,7 @@ describe('ChatMessageService', () => {
   let prisma: ChatMessageSpecFixture['prisma'];
   let chatService: ChatMessageSpecFixture['chatService'];
   let aiProvider: ChatMessageSpecFixture['aiProvider'];
-  let personaService: ChatMessageSpecFixture['personaService'];
   let pluginRuntime: ChatMessageSpecFixture['pluginRuntime'];
-  let runMessageReceivedHooks: ChatMessageSpecFixture['runMessageReceivedHooks'];
-  let runChatBeforeModelHooks: ChatMessageSpecFixture['runChatBeforeModelHooks'];
-  let runChatWaitingModelHooks: ChatMessageSpecFixture['runChatWaitingModelHooks'];
-  let runChatAfterModelHooks: ChatMessageSpecFixture['runChatAfterModelHooks'];
-  let runMessageCreatedHooks: ChatMessageSpecFixture['runMessageCreatedHooks'];
-  let runMessageUpdatedHooks: ChatMessageSpecFixture['runMessageUpdatedHooks'];
-  let runMessageDeletedHooks: ChatMessageSpecFixture['runMessageDeletedHooks'];
-  let runResponseBeforeSendHooks: ChatMessageSpecFixture['runResponseBeforeSendHooks'];
-  let runResponseAfterSendHooks: ChatMessageSpecFixture['runResponseAfterSendHooks'];
   let toolRegistry: ChatMessageSpecFixture['toolRegistry'];
   let modelInvocation: ChatMessageSpecFixture['modelInvocation'];
   let chatTaskService: ChatMessageSpecFixture['chatTaskService'];
@@ -30,17 +20,7 @@ describe('ChatMessageService', () => {
       prisma,
       chatService,
       aiProvider,
-      personaService,
       pluginRuntime,
-      runMessageReceivedHooks,
-      runChatBeforeModelHooks,
-      runChatWaitingModelHooks,
-      runChatAfterModelHooks,
-      runMessageCreatedHooks,
-      runMessageUpdatedHooks,
-      runMessageDeletedHooks,
-      runResponseBeforeSendHooks,
-      runResponseAfterSendHooks,
       toolRegistry,
       modelInvocation,
       chatTaskService,

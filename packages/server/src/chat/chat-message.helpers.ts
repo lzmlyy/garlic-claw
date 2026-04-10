@@ -56,23 +56,6 @@ export function toRuntimeMessages(
 }
 
 /**
- * 读取历史中最近一条用户文本摘要。
- * @param messages 已持久化消息列表
- * @returns 最近一条用户消息的纯文本摘要
- */
-export function findLatestUserContent(
-  messages: Array<{ role: string; content: string | null }>,
-): string {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === 'user') {
-      return messages[index]?.content ?? '';
-    }
-  }
-
-  return '';
-}
-
-/**
  * 判断当前对话里是否仍有未结束的 assistant 消息。
  * @param messages 对话消息列表
  * @returns 是否存在 pending/streaming 的 assistant 消息

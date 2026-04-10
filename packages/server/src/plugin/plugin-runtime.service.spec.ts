@@ -1,5 +1,4 @@
 import type {
-  ChatAfterModelHookPayload,
   PluginManifest,
 } from '@garlic-claw/shared';
 import {
@@ -10,34 +9,16 @@ import {
 describe('PluginRuntimeService', () => {
   let service: PluginRuntimeSpecFixture['service'];
   let pluginService: PluginRuntimeSpecFixture['pluginService'];
-  let hostService: PluginRuntimeSpecFixture['hostService'];
-  let cronService: PluginRuntimeSpecFixture['cronService'];
-  let aiModelExecution: PluginRuntimeSpecFixture['aiModelExecution'];
-  let automationService: PluginRuntimeSpecFixture['automationService'];
-  let chatMessageService: PluginRuntimeSpecFixture['chatMessageService'];
-  let toolRegistry: PluginRuntimeSpecFixture['toolRegistry'];
-  let subagentTaskService: PluginRuntimeSpecFixture['subagentTaskService'];
-  let moduleRef: PluginRuntimeSpecFixture['moduleRef'];
   let callContext: PluginRuntimeSpecFixture['callContext'];
   let builtinManifest: PluginRuntimeSpecFixture['builtinManifest'];
-  let memoryContextConfigSchema: PluginRuntimeSpecFixture['memoryContextConfigSchema'];
   let createTransport: PluginRuntimeSpecFixture['createTransport'];
 
   beforeEach(() => {
     ({
       service,
       pluginService,
-      hostService,
-      cronService,
-      aiModelExecution,
-      automationService,
-      chatMessageService,
-      toolRegistry,
-      subagentTaskService,
-      moduleRef,
       callContext,
       builtinManifest,
-      memoryContextConfigSchema,
       createTransport,
     } = createPluginRuntimeSpecFixture());
   });

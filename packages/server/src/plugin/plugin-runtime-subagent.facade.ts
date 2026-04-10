@@ -29,7 +29,7 @@ import {
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import type { JsonValue } from '../common/types/json-value';
-import { AiModelExecutionService, createStepLimit, type AiSdkToolSet } from '../ai';
+import { AiModelExecutionService, createStepLimit } from '../ai';
 import { toAiSdkMessages } from '../chat/sdk-message-converter';
 
 type DispatchableSubagentHookRecord = {

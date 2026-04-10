@@ -1,10 +1,19 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { AiProviderService } from '../ai';
 import { AuthModule } from '../auth/auth.module';
 import { KbModule } from '../kb/kb.module';
 import { PersonaModule } from '../persona/persona.module';
+import { SkillModule } from '../skill/skill.module';
+import { SkillSessionService } from '../skill/skill-session.service';
+import { ToolModule } from '../tool/tool.module';
+import { ToolRegistryService } from '../tool/tool-registry.service';
 import { BuiltinPluginLoader } from './builtin/builtin-plugin.loader';
 import { PluginAdminService } from './plugin-admin.service';
+import {
+  CHAT_RUNTIME_DEPS,
+  type ChatRuntimeDeps,
+} from './plugin-chat-runtime.deps';
 import { PluginChatRuntimeFacade } from './plugin-chat-runtime.facade';
 import { PluginCommandController } from './plugin-command.controller';
 import { PluginCommandService } from './plugin-command.service';
@@ -45,8 +54,23 @@ import { PluginService } from './plugin.service';
     AuthModule,
     KbModule,
     PersonaModule,
+    ToolModule,
+    SkillModule,
   ],
   providers: [
+    {
+      provide: CHAT_RUNTIME_DEPS,
+      useFactory: (
+        aiProvider: AiProviderService,
+        toolRegistry: ToolRegistryService,
+        skillService: SkillSessionService,
+      ): ChatRuntimeDeps => ({
+        aiProvider,
+        toolRegistry,
+        skillService,
+      }),
+      inject: [AiProviderService, ToolRegistryService, SkillSessionService],
+    },
     PluginService,
     PluginChatRuntimeFacade,
     PluginEventWriteService,

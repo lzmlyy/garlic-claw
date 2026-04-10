@@ -78,6 +78,35 @@ import {
   type PluginConversationSessionController,
   type PluginHostFacade,
 } from './host';
+import {
+  buildCanonicalCommandPath,
+  buildCommandVariants,
+  normalizeCommandAliases,
+  normalizeCommandSegment,
+} from './utils/command-match';
+import {
+  cloneJsonValue,
+  dedupeStrings,
+  isJsonEqual,
+  isJsonObjectValue,
+  isJsonValue,
+  isOneOf,
+  isStringRecord,
+} from './utils/json-value';
+import {
+  computeFilterSpecificity,
+  detectMessageKind,
+  getMessageReceivedText,
+  hasOnlyMessageFilterKey,
+  isEmptyMessageFilter,
+  matchesMessageCommand,
+  matchesMessageFilter,
+  normalizePriority,
+} from './utils/message-filter';
+import {
+  normalizeRoutePath,
+  normalizeRouteResponse,
+} from './utils/route';
 
 /**
  * 插件执行上下文。
@@ -2033,72 +2062,6 @@ export {
 } from '@garlic-claw/shared';
 
 /**
- * 归一化命令段名。
- * @param name 原始命令段名
- * @returns 去掉前导 `/` 后的命令段名
- */
-function normalizeCommandSegment(name: string): string {
-  const normalized = name.trim().replace(/^\/+/, '');
-  if (!normalized) {
-    throw new Error('命令名不能为空');
-  }
-  if (/\s/.test(normalized)) {
-    throw new Error(`命令名 ${name} 不能包含空白字符`);
-  }
-
-  return normalized;
-}
-
-/**
- * 归一化命令别名集合。
- * @param aliases 原始别名输入
- * @returns 去重后的别名数组
- */
-function normalizeCommandAliases(aliases?: Iterable<string>): string[] {
-  if (!aliases) {
-    return [];
-  }
-
-  return dedupeStrings(
-    [...aliases]
-      .map((alias) => normalizeCommandSegment(alias))
-      .filter(Boolean),
-  );
-}
-
-/**
- * 构建规范命令路径。
- * @param path 命令路径分段
- * @returns 带 `/` 前缀的完整命令
- */
-function buildCanonicalCommandPath(path: string[]): string {
-  return `/${path.join(' ')}`.trim();
-}
-
-/**
- * 展开一组命令段描述的所有完整命令路径。
- * @param descriptors 命令段描述
- * @returns 完整命令路径列表
- */
-function buildCommandVariants(descriptors: CommandSegmentDescriptor[]): string[] {
-  let variants = [''];
-  for (const descriptor of descriptors) {
-    const candidates = [descriptor.segment, ...descriptor.aliases];
-    const nextVariants: string[] = [];
-
-    for (const prefix of variants) {
-      for (const candidate of candidates) {
-        nextVariants.push(`${prefix} ${candidate}`.trim());
-      }
-    }
-
-    variants = nextVariants;
-  }
-
-  return dedupeStrings(variants.map((variant) => `/${variant}`));
-}
-
-/**
  * 渲染命令组帮助树。
  * @param group 命令组节点
  * @returns 可直接短路发回宿主的帮助文本
@@ -2174,52 +2137,6 @@ function formatCommandTreeLine(
   const aliasText = aliases.length > 0 ? ` [${aliases.join(', ')}]` : '';
   const descriptionText = description ? `: ${description}` : '';
   return `${prefix}├── ${segment}${aliasText}${descriptionText}`;
-}
-
-/**
- * 深拷贝 JSON 兼容值。
- * @param value 原始值
- * @returns 深拷贝后的值
- */
-function cloneJsonValue<T>(value: T): T {
-  return structuredClone(value);
-}
-
-function isOneOf<T extends string>(value: unknown, options: readonly T[]): value is T {
-  return typeof value === 'string' && options.some((option) => option === value);
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean'
-  ) {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every((item) => isJsonValue(item));
-  }
-
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  return Object.values(value).every((item) => isJsonValue(item));
-}
-
-function isJsonObjectValue(value: unknown): value is JsonObject {
-  return typeof value === 'object'
-    && value !== null
-    && !Array.isArray(value)
-    && Object.values(value).every((item) => isJsonValue(item));
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isJsonObjectValue(value)
-    && Object.values(value).every((item) => typeof item === 'string');
 }
 
 function isChatMessagePartArray(
@@ -2586,171 +2503,6 @@ function cloneMessageFilter(
 }
 
 /**
- * 归一化消息监听优先级。
- * @param priority 原始优先级
- * @returns 归一化后的整数优先级
- */
-function normalizePriority(priority?: number): number {
-  if (typeof priority !== 'number' || !Number.isFinite(priority)) {
-    return 0;
-  }
-
-  return Math.trunc(priority);
-}
-
-/**
- * 计算一个消息过滤器的大致特异性。
- * @param filter 消息过滤器
- * @returns 特异性分值，越大越具体
- */
-function computeFilterSpecificity(filter?: PluginHookMessageFilter): number {
-  if (!filter) {
-    return 0;
-  }
-
-  const commandSpecificity = Math.max(
-    0,
-    ...(filter.commands ?? []).map((command) =>
-      command.trim().replace(/^\//, '').split(/\s+/).filter(Boolean).length),
-  );
-  const regexSpecificity = filter.regex ? 1 : 0;
-  const kindSpecificity = filter.messageKinds?.length ? 1 : 0;
-  return commandSpecificity + regexSpecificity + kindSpecificity;
-}
-
-/**
- * 判断消息过滤器是否为空。
- * @param filter 消息过滤器
- * @returns 是否为空过滤器
- */
-function isEmptyMessageFilter(filter: PluginHookMessageFilter): boolean {
-  return (!filter.commands || filter.commands.length === 0)
-    && !filter.regex
-    && (!filter.messageKinds || filter.messageKinds.length === 0);
-}
-
-/**
- * 判断一个过滤器是否只声明了某一种过滤键。
- * @param filter 消息过滤器
- * @param key 目标过滤键
- * @returns 是否只声明了该过滤键
- */
-function hasOnlyMessageFilterKey(
-  filter: PluginHookMessageFilter,
-  key: keyof PluginHookMessageFilter,
-): boolean {
-  const activeKeys = [
-    filter.commands?.length ? 'commands' : null,
-    filter.regex ? 'regex' : null,
-    filter.messageKinds?.length ? 'messageKinds' : null,
-  ].filter((item): item is keyof PluginHookMessageFilter => Boolean(item));
-
-  return activeKeys.length === 1 && activeKeys[0] === key;
-}
-
-/**
- * 判断当前消息是否命中过滤条件。
- * @param payload 当前消息载荷
- * @param filter 过滤条件
- * @returns 是否命中
- */
-function matchesMessageFilter(
-  payload: MessageReceivedHookPayload,
-  filter?: PluginHookMessageFilter,
-): boolean {
-  if (!filter || isEmptyMessageFilter(filter)) {
-    return true;
-  }
-
-  const messageText = getMessageReceivedText(payload);
-  const messageKind = detectMessageKind(payload);
-
-  if (
-    filter.commands
-    && filter.commands.length > 0
-    && !filter.commands.some((command) => matchesMessageCommand(messageText, command))
-  ) {
-    return false;
-  }
-
-  if (filter.regex) {
-    const regex = typeof filter.regex === 'string'
-      ? new RegExp(filter.regex)
-      : new RegExp(filter.regex.pattern, filter.regex.flags);
-    if (!regex.test(messageText)) {
-      return false;
-    }
-  }
-
-  if (
-    filter.messageKinds
-    && filter.messageKinds.length > 0
-    && !filter.messageKinds.includes(messageKind)
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * 从消息载荷中提取可匹配的纯文本。
- * @param payload 当前消息载荷
- * @returns 归一化后的消息文本
- */
-function getMessageReceivedText(payload: MessageReceivedHookPayload): string {
-  if (typeof payload.message.content === 'string') {
-    return payload.message.content;
-  }
-
-  return payload.message.parts
-    .filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n');
-}
-
-/**
- * 判断一条消息的模态类型。
- * @param payload 当前消息载荷
- * @returns 当前消息类型
- */
-function detectMessageKind(payload: MessageReceivedHookPayload): PluginMessageKind {
-  const hasText = typeof payload.message.content === 'string'
-    ? payload.message.content.trim().length > 0
-    : payload.message.parts.some((part) => part.type === 'text' && part.text.trim().length > 0);
-  const hasImage = payload.message.parts.some((part) => part.type === 'image');
-
-  if (hasText && hasImage) {
-    return 'mixed';
-  }
-  if (hasImage) {
-    return 'image';
-  }
-  return 'text';
-}
-
-/**
- * 判断一条消息是否命中了某个命令。
- * @param messageText 当前消息文本
- * @param command 命令路径
- * @returns 是否命中
- */
-function matchesMessageCommand(messageText: string, command: string): boolean {
-  const normalizedCommand = command.trim();
-  if (!normalizedCommand) {
-    return false;
-  }
-
-  const normalizedMessage = messageText.trimStart();
-  if (!normalizedMessage.startsWith(normalizedCommand)) {
-    return false;
-  }
-
-  const nextChar = normalizedMessage.charAt(normalizedCommand.length);
-  return nextChar === '' || /\s/.test(nextChar);
-}
-
-/**
  * 匹配某个已注册命令在当前消息中的具体命中信息。
  * @param payload 当前消息载荷
  * @param command 已注册命令
@@ -3036,45 +2788,4 @@ function buildMessageReceivedMutationResult(
   }
 
   return changed ? mutation : { action: 'pass' };
-}
-
-/**
- * 判断两个 JSON 兼容值是否语义相等。
- * @param left 左值
- * @param right 右值
- * @returns 是否相等
- */
-function isJsonEqual(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-/**
- * 对字符串数组去重并保留首次出现顺序。
- * @param values 原始字符串数组
- * @returns 去重后的数组
- */
-function dedupeStrings(values: string[]): string[] {
-  return [...new Set(values)];
-}
-
-/**
- * 归一化插件 Route 路径。
- * @param path 原始路径
- * @returns 去掉首尾斜杠后的路径
- */
-function normalizeRoutePath(path: string): string {
-  return path.trim().replace(/^\/+|\/+$/g, '');
-}
-
-/**
- * 归一化 Route 响应，补默认状态码。
- * @param response 插件返回的 Route 响应
- * @returns 标准化后的 Route 响应
- */
-function normalizeRouteResponse(response: PluginRouteResponse): PluginRouteResponse {
-  return {
-    status: response.status || 200,
-    headers: response.headers,
-    body: response.body,
-  };
 }

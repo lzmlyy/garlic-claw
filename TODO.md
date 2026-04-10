@@ -141,6 +141,7 @@
 - 2026-04-08：`plugin-management.module.ts` 进一步拆分为 `usePluginState / usePluginApi / usePluginActions / usePluginSocket`，`usePluginManagement` 继续作为 facade 导出，保持原有调用方式与对外 API 不变。
 - 2026-04-08：后端新增全局响应拦截器与异常过滤器统一包装，HTTP 接口响应收敛为 `{ code, message, data }`，且对已符合结构的响应不重复包装。
 - [x] 2026-04-09：Phase 2（后端响应体系统一）已完成：补强全局拦截器/异常过滤器语义一致性，校验插件路由动态状态码与 `code` 对齐，确认 SSE 事件流隔离不走 envelope，并完成注册接口与 ValidationPipe 定向验证。
+- [x] 2026-04-09：Step 4（server 侧重构）已完成：`chat-message-mutation` 拆分 domain + mutation orchestrator，`plugin-chat-runtime` 改为接口注入并拆分 before-model/response/broadcast orchestrator，`plugin.gateway` 拆分 connection context aggregate + transport + lifecycle/request orchestrator，保持对外 API 与测试行为一致。
 - 2026-04-07：`packages/web/src/features/skills/views/SkillsView.vue` 已拆分为 `SkillsList / SkillCard / SkillDetailPanel / SkillActiveStateToggle / SkillConversationBinding`，页面文件已压到 200 行以内并保持现有行为。
 - 2026-04-07：新增 `packages/web/src/components/GenericListView.vue`，收敛搜索/过滤/分页/行点击与可扩展单元格插槽，支撑 Commands / Tools / SubagentTasks 统一列表形态复用。
 - 这不等于“整体重构完成”。

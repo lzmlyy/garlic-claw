@@ -10,11 +10,6 @@ describe('ChatMessageService response hooks', () => {
   let aiProvider: ChatMessageSpecFixture['aiProvider'];
   let personaService: ChatMessageSpecFixture['personaService'];
   let pluginRuntime: ChatMessageSpecFixture['pluginRuntime'];
-  let runChatBeforeModelHooks: ChatMessageSpecFixture['runChatBeforeModelHooks'];
-  let runChatAfterModelHooks: ChatMessageSpecFixture['runChatAfterModelHooks'];
-  let runResponseBeforeSendHooks: ChatMessageSpecFixture['runResponseBeforeSendHooks'];
-  let runResponseAfterSendHooks: ChatMessageSpecFixture['runResponseAfterSendHooks'];
-  let toolRegistry: ChatMessageSpecFixture['toolRegistry'];
   let modelInvocation: ChatMessageSpecFixture['modelInvocation'];
   let chatTaskService: ChatMessageSpecFixture['chatTaskService'];
 
@@ -26,11 +21,6 @@ describe('ChatMessageService response hooks', () => {
       aiProvider,
       personaService,
       pluginRuntime,
-      runChatBeforeModelHooks,
-      runChatAfterModelHooks,
-      runResponseBeforeSendHooks,
-      runResponseAfterSendHooks,
-      toolRegistry,
       modelInvocation,
       chatTaskService,
     } = createChatMessageSpecFixture());

@@ -2,7 +2,6 @@ import type {
   ChatAfterModelHookPayload,
   ChatBeforeModelHookPayload,
 } from '@garlic-claw/shared';
-import { createAutomationToolsPlugin } from './automation-tools.plugin';
 import { createConversationTitlePlugin } from './conversation-title.plugin';
 import { createCoreToolsPlugin } from './core-tools.plugin';
 import { createKbContextPlugin } from './kb-context.plugin';
@@ -11,7 +10,6 @@ import { createMemoryToolsPlugin } from './memory-tools.plugin';
 import { createPersonaRouterPlugin } from './persona-router.plugin';
 import { createProviderRouterPlugin } from './provider-router.plugin';
 import { createRouteInspectorPlugin } from './route-inspector.plugin';
-import { createSubagentDelegatePlugin } from './subagent-delegate.plugin';
 import { createToolAuditPlugin } from './tool-audit.plugin';
 import {
   BuiltinPluginTransport,

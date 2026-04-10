@@ -37,23 +37,46 @@ export interface HttpResponseWithMetadata<T> {
   body: T;
 }
 
+export interface HttpRequestErrorEvent {
+  path: string;
+  method: string;
+  url: string;
+  error: AppError;
+}
+
 export type HttpRequestInterceptor = (
   context: HttpRequestContext,
 ) => MaybePromise<HttpRequestContext>;
+export type HttpRequestErrorListener = (
+  event: HttpRequestErrorEvent,
+) => void;
 
 const requestInterceptors = new Set<HttpRequestInterceptor>();
+const requestErrorListeners = new Set<HttpRequestErrorListener>();
 
 let refreshPromise: Promise<boolean> | null = null;
 
-export function getApiBase() {
+export function getApiBase(): string {
   return API_BASE;
 }
 
-export function addRequestInterceptor(interceptor: HttpRequestInterceptor) {
+export function addRequestInterceptor(
+  interceptor: HttpRequestInterceptor,
+): () => void {
   requestInterceptors.add(interceptor);
 
   return () => {
     requestInterceptors.delete(interceptor);
+  };
+}
+
+export function addRequestErrorListener(
+  listener: HttpRequestErrorListener,
+): () => void {
+  requestErrorListeners.add(listener);
+
+  return () => {
+    requestErrorListeners.delete(listener);
   };
 }
 
@@ -65,7 +88,7 @@ export async function request<T>(
     const response = await executeRequest(path, options);
     return await parseResponseData<T>(response, options);
   } catch (error) {
-    throw toAppError(error);
+    throw toLoggedAppError(path, options, error);
   }
 }
 
@@ -81,7 +104,7 @@ export async function requestWithMetadata<T>(
       body: await parseResponseData<T>(response, options),
     };
   } catch (error) {
-    throw toAppError(error);
+    throw toLoggedAppError(path, options, error);
   }
 }
 
@@ -94,14 +117,14 @@ export async function requestRaw(
     await ensureSuccessfulResponse(response);
     return response;
   } catch (error) {
-    throw toAppError(error);
+    throw toLoggedAppError(path, options, error);
   }
 }
 
 export function get<T>(
   path: string,
   options: RequestOptionsWithoutMethodOrBody = {},
-) {
+): Promise<T> {
   return request<T>(path, {
     ...options,
     method: "GET",
@@ -112,7 +135,7 @@ export function post<T>(
   path: string,
   body?: RequestBody,
   options: RequestOptionsWithoutMethodOrBody = {},
-) {
+): Promise<T> {
   return request<T>(path, {
     ...options,
     method: "POST",
@@ -124,7 +147,7 @@ export function put<T>(
   path: string,
   body?: RequestBody,
   options: RequestOptionsWithoutMethodOrBody = {},
-) {
+): Promise<T> {
   return request<T>(path, {
     ...options,
     method: "PUT",
@@ -136,7 +159,7 @@ export function patch<T>(
   path: string,
   body?: RequestBody,
   options: RequestOptionsWithoutMethodOrBody = {},
-) {
+): Promise<T> {
   return request<T>(path, {
     ...options,
     method: "PATCH",
@@ -148,7 +171,7 @@ function del<T>(
   path: string,
   body?: RequestBody,
   options: RequestOptionsWithoutMethodOrBody = {},
-) {
+): Promise<T> {
   return request<T>(path, {
     ...options,
     method: "DELETE",
@@ -221,12 +244,16 @@ async function fetchWithTimeout(
   context: HttpRequestContext,
 ): Promise<Response> {
   const controller = new AbortController();
+  let timedOut = false;
   const abortHandler = () => {
     controller.abort();
   };
   const timeoutId =
     context.timeout > 0
-      ? setTimeout(() => controller.abort(), context.timeout)
+      ? setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, context.timeout)
       : null;
 
   if (context.signal) {
@@ -238,13 +265,22 @@ async function fetchWithTimeout(
   }
 
   try {
-    const { timeout, url, ...requestInit } = context;
-    logRequestPayload(context);
+    const { timeout: _timeout, url, ...requestInit } = context;
     return await fetch(url, {
       ...requestInit,
       headers: context.headers,
       signal: controller.signal,
     });
+  } catch (error) {
+    if (timedOut) {
+      throw new AppError("network", "请求超时，请稍后重试", {
+        status: 408,
+        code: "TIMEOUT",
+        originalError: error,
+        retryable: true,
+      });
+    }
+    throw error;
   } finally {
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
@@ -264,20 +300,13 @@ async function parseResponseData<T>(
     return payload as T;
   }
 
-  if (!isApiEnvelope(payload)) {
-    throw new AppError("business", "Invalid API response envelope", {
-      status: response.status,
-      code: "INVALID_ENVELOPE",
-      details: payload,
-      retryable: false,
-    });
+  const envelope = requireApiEnvelope(payload, response.status);
+
+  if (envelope.code !== 0) {
+    throw createEnvelopeError(envelope, response.status);
   }
 
-  if (payload.code !== 0) {
-    throw createEnvelopeError(payload, response.status);
-  }
-
-  return payload.data as T;
+  return envelope.data as T;
 }
 
 async function ensureSuccessfulResponse(response: Response) {
@@ -290,12 +319,12 @@ async function ensureSuccessfulResponse(response: Response) {
     throw createEnvelopeError(payload, response.status);
   }
 
-  throw toAppError({
+  throw ensureErrorCode(toAppError({
     status: response.status,
     body: typeof payload === "string" ? payload : safeStringify(payload),
     code: "HTTP_ERROR",
     details: payload,
-  });
+  }), "HTTP_ERROR");
 }
 
 async function readResponsePayload(response: Response): Promise<unknown> {
@@ -361,6 +390,22 @@ function isApiEnvelope(payload: unknown): payload is ApiEnvelope {
     typeof (payload as ApiEnvelope).message === "string" &&
     "data" in payload
   );
+}
+
+function requireApiEnvelope(
+  payload: unknown,
+  status?: number,
+): ApiEnvelope {
+  if (isApiEnvelope(payload)) {
+    return payload;
+  }
+
+  throw new AppError("business", "Invalid API response envelope", {
+    status,
+    code: "INVALID_ENVELOPE",
+    details: payload,
+    retryable: false,
+  });
 }
 
 function handleUnauthorizedResponse(
@@ -518,87 +563,75 @@ function collectHeaders(headers: Headers): Record<string, string> {
   return Object.fromEntries(headers.entries());
 }
 
-function logRequestPayload(context: HttpRequestContext) {
-  if (!import.meta.env.DEV) {
-    return;
-  }
-
-  const payload = readRequestPayload(context.body);
-  const sanitizedPayload = redactSensitivePayload(payload);
-
-  console.debug("[http] request payload", {
-    method: context.method,
-    url: context.url,
-    payload: sanitizedPayload,
-  });
-}
-
-function readRequestPayload(body: RequestBody | undefined) {
-  if (body === undefined || body === null) {
-    return {};
-  }
-
-  if (typeof body === "string") {
-    const trimmed = body.trim();
-    if (!trimmed) {
-      return {};
-    }
-
-    try {
-      return JSON.parse(trimmed) as unknown;
-    } catch {
-      return trimmed;
-    }
-  }
-
-  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
-    return Object.fromEntries(body.entries());
-  }
-
-  if (isFormDataBody(body)) {
-    return "[FormData]";
-  }
-
-  if (typeof Blob !== "undefined" && body instanceof Blob) {
-    return `[Blob:${body.type || "application/octet-stream"}]`;
-  }
-
-  if (
-    body instanceof ArrayBuffer ||
-    ArrayBuffer.isView(body) ||
-    (typeof ReadableStream !== "undefined" && body instanceof ReadableStream)
-  ) {
-    return "[Binary]";
-  }
-
-  return body;
-}
-
-function redactSensitivePayload(payload: unknown): unknown {
-  if (Array.isArray(payload)) {
-    return payload.map((item) => redactSensitivePayload(item));
-  }
-
-  if (payload && typeof payload === "object") {
-    const masked: Record<string, unknown> = {};
-
-    for (const [key, value] of Object.entries(payload)) {
-      masked[key] = /password/i.test(key)
-        ? "***"
-        : redactSensitivePayload(value);
-    }
-
-    return masked;
-  }
-
-  return payload;
-}
-
 function safeStringify(payload: unknown) {
   try {
     return JSON.stringify(payload);
   } catch {
     return String(payload);
+  }
+}
+
+function ensureErrorCode(error: AppError, fallbackCode: string): AppError {
+  if (error.code) {
+    return error;
+  }
+
+  return new AppError(error.type, error.message, {
+    status: error.status,
+    code: fallbackCode,
+    details: error.details,
+    originalError: error.originalError,
+    retryable: error.retryable,
+  });
+}
+
+function toLoggedAppError(
+  path: string,
+  options: HttpRequestOptions,
+  error: unknown,
+): AppError {
+  const appError = toAppError(error);
+  const method = normalizeMethod(options.method);
+  const url = resolveUrl(path);
+  logRequestError(method, url, appError);
+  emitRequestError({
+    path,
+    method,
+    url,
+    error: appError,
+  });
+  return appError;
+}
+
+function logRequestError(
+  method: string,
+  url: string,
+  error: AppError,
+): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  console.error("[http] request failed", {
+    method,
+    url,
+    status: error.status ?? null,
+    code: error.code ?? null,
+    message: error.message,
+  });
+}
+
+function emitRequestError(event: HttpRequestErrorEvent): void {
+  for (const listener of requestErrorListeners) {
+    try {
+      listener(event);
+    } catch (listenerError) {
+      if (!import.meta.env.DEV) {
+        continue;
+      }
+
+      console.error("[http] request error listener failed", listenerError);
+    }
   }
 }
 
