@@ -7,6 +7,8 @@
     "dev": "node -e \"const {spawn,spawnSync}=require('node:child_process');const init=spawnSync('npm run build',{stdio:'inherit',shell:true});if(init.status!==0){process.exit(init.status??1);}const t=spawn('npm run build -- --watch',{stdio:'inherit',shell:true});const n=spawn('node --watch dist/main',{stdio:'inherit',shell:true});const stop=(code=0)=>{if(!t.killed)t.kill();if(!n.killed)n.kill();process.exit(code);};process.on('SIGINT',()=>stop(0));process.on('SIGTERM',()=>stop(0));t.on('exit',(code)=>{if(code&&code!==0)stop(code);});n.on('exit',(code)=>{if(code&&code!==0)stop(code);});\"",
     "start": "node dist/main",
     "start:prod": "node dist/main",
+    "lint": "cd ../.. && eslint \"packages/server/src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
     "smoke:http": "node scripts/http-smoke.mjs",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",

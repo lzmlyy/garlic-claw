@@ -37,6 +37,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "cd ../.. && eslint \"packages/plugin-sdk/src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.js"
   },
   "dependencies": {

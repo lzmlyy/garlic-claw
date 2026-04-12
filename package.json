@@ -13,7 +13,14 @@
     "build:server": "npm run build -w packages/server",
     "build:web": "npm run build -w packages/web",
     "build:shared": "npm run build -w packages/shared",
-    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/plugins/*/src/**/*.ts\""
+    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/plugins/*/src/**/*.ts\"",
+    "typecheck:shared": "npm run typecheck -w packages/shared",
+    "typecheck:plugin-sdk": "npm run typecheck -w packages/plugin-sdk",
+    "typecheck:server": "npm run typecheck -w packages/server",
+    "typecheck:web": "npm run typecheck -w packages/web",
+    "typecheck:plugin-pc": "npm run typecheck -w packages/plugins/plugin-pc",
+    "typecheck": "npm run typecheck:shared && npm run typecheck:plugin-sdk && npm run typecheck:server && npm run typecheck:web && npm run typecheck:plugin-pc",
+    "check": "npm run lint && npm run typecheck"
   },
   "engines": {
     "node": ">=22.0.0"

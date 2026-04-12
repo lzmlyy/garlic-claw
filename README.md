@@ -216,16 +216,23 @@ catalog provider 现在分成两层：
 
 ## 类型检查与构建
 
-项目使用 SWC 开发编译，提交前必须手动跑类型检查。
+项目使用 SWC 开发编译，提交前必须显式跑 lint 和类型检查。
 
 ```bash
-cd packages/shared && npm run build
-cd packages/plugin-sdk && npm run build
-cd packages/server && npx tsc --noEmit
+npm run lint
+npm run typecheck
+
 cd packages/server && npm test -- --runInBand
 cd packages/server && npm run build
-cd packages/web && npx vue-tsc --noEmit
 cd packages/web && npm run build
+```
+
+如果只想检查单个包：
+
+```bash
+npm run typecheck -w packages/server
+npm run typecheck -w packages/web
+npm run lint -w packages/server
 ```
 
 ## 主要能力

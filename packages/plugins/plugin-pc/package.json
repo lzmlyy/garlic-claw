@@ -6,8 +6,10 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "lint": "cd ../../.. && eslint \"packages/plugins/plugin-pc/src/**/*.ts\"",
     "start": "node dist/index.js",
-    "dev": "tsc && node dist/index.js"
+    "dev": "tsc && node dist/index.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@garlic-claw/plugin-sdk": "*",
