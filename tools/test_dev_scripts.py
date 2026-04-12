@@ -88,7 +88,10 @@ class DevLauncherRedTests(unittest.TestCase):
         )
         services = launcher.createDevServices()
         self.assertEqual(set(services.keys()), {'backend_tsc', 'backend_app', 'web'})
-        self.assertEqual(services['backend_app']['command'], ['node', 'dist/main.js'])
+        self.assertEqual(
+            services['backend_app']['command'],
+            ['node', '--watch', 'dist/main.js'],
+        )
         self.assertEqual(services['backend_app']['port'], 23330)
         self.assertEqual(
             services['web']['command'],
@@ -107,7 +110,7 @@ class DevLauncherRedTests(unittest.TestCase):
         self.assertEqual(launcher.DEFAULT_PORTS, [23330, 23331, 23333])
 
     def testCreateBuildStepsMatchesLegacyStartWorkflow(self) -> None:
-        """构建步骤应补齐 Prisma Client 生成，再执行 shared/server 构建。"""
+        """构建步骤应补齐 plugin-sdk 与 Prisma Client，再执行 server 构建。"""
         launcher = loadModule('dev_launcher_build_steps', LAUNCHER_PATH)
         self.assertTrue(
             hasattr(launcher, 'createBuildSteps'),
@@ -116,7 +119,7 @@ class DevLauncherRedTests(unittest.TestCase):
         buildSteps = launcher.createBuildSteps()
         self.assertEqual(
             [step[0] for step in buildSteps],
-            ['构建 shared', '生成 Prisma Client', '构建 server'],
+            ['构建 shared', '构建 plugin-sdk', '生成 Prisma Client', '构建 server'],
         )
 
     def testBackendWaitTimeoutExtendsOnNonWindows(self) -> None:
