@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { readBootstrapAdminConfig } from './bootstrap-admin-config';
+import { uuidv7 } from '@garlic-claw/shared';
 
 /**
  * 启动期 bootstrap 管理员账号补建服务。
@@ -55,6 +56,7 @@ export class BootstrapAdminService {
 
     await this.prisma.user.create({
       data: {
+        id: uuidv7(),
         username: bootstrapAdmin.username,
         email: bootstrapAdmin.email,
         passwordHash,

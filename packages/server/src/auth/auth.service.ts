@@ -11,6 +11,7 @@ import type { StringValue } from 'ms';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminIdentityCandidate, AdminIdentityService } from './admin-identity.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { uuidv7 } from '@garlic-claw/shared';
 
 @Injectable()
 export class AuthService {
@@ -37,6 +38,7 @@ export class AuthService {
       const userCount = await tx.user.count();
       return tx.user.create({
         data: {
+          id: uuidv7(),
           username: dto.username,
           email: dto.email,
           passwordHash,
@@ -120,6 +122,7 @@ export class AuthService {
       const passwordHash = await bcrypt.hash('dev-login-password', 12);
       user = await this.prisma.user.create({
         data: {
+          id: uuidv7(),
           username: normalizedUsername,
           email: `${normalizedUsername}@dev.local`,
           passwordHash,

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { JsonValue } from '../common/types/json-value';
 import { PrismaService } from '../prisma/prisma.service';
+import { uuidv7 } from '@garlic-claw/shared';
 import {
   normalizePluginCronJobRecord,
   parsePluginCronInterval,
@@ -108,6 +109,7 @@ export class PluginCronService implements OnModuleDestroy {
         },
       },
       create: {
+        id: uuidv7(),
         pluginName: pluginId,
         name: input.name,
         source: 'host',
@@ -221,6 +223,7 @@ export class PluginCronService implements OnModuleDestroy {
           },
         },
         create: {
+          id: uuidv7(),
           pluginName: pluginId,
           name: descriptor.name,
           source: 'manifest',

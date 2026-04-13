@@ -1,3 +1,4 @@
+import { uuidv7 } from 'uuidv7';
 import {
   type ActionConfig,
   type AutomationEventDispatchInfo,
@@ -1858,7 +1859,7 @@ export class PluginClient {
       return Promise.reject(new Error('插件尚未连接到服务器'));
     }
 
-    const requestId = crypto.randomUUID();
+    const requestId = uuidv7();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingHostCalls.delete(requestId);

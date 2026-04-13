@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { uuidv7 } from '@garlic-claw/shared';
 import type { PrismaService } from '../../../prisma/prisma.service';
 
 export type MessageRepositoryClient = Pick<PrismaService, 'conversation' | 'message'>;
@@ -18,7 +19,8 @@ export class MessageRepository {
     data: Prisma.MessageCreateInput | Prisma.MessageUncheckedCreateInput,
     client?: MessageRepositoryClient,
   ) {
-    return this.resolveClient(client).message.create({ data });
+    const dataWithId = 'id' in data && data.id ? data : { ...data, id: uuidv7() };
+    return this.resolveClient(client).message.create({ data: dataWithId });
   }
 
   async updateMessage(

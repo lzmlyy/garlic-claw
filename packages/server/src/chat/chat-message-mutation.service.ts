@@ -25,6 +25,7 @@ import {
 import { ChatMessageOrchestrationService } from './chat-message-orchestration.service';
 import { type UpdateMessageDto } from './dto/chat.dto';
 import { ChatTaskService } from './chat-task.service';
+import { uuidv7 } from '@garlic-claw/shared';
 import { MessageMutationOrchestrator } from './message-mutation/message-mutation.orchestrator';
 import { MessagePartsMapper } from './message-mutation/domain/message-parts.mapper';
 import { MessageRepository } from './message-mutation/domain/message-repository';
@@ -431,6 +432,7 @@ export class ChatMessageMutationService {
     return this.messageRepository.withTransaction(async (db) => {
       const created = await this.messageRepository.createMessage(
         {
+          id: uuidv7(),
           conversationId,
           role: message.role,
           content: message.content ?? '',

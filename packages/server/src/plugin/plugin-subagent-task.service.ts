@@ -19,6 +19,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import type { JsonValue } from '../common/types/json-value';
 import { PrismaService } from '../prisma/prisma.service';
+import { uuidv7 } from '@garlic-claw/shared';
 
 export interface StartPluginSubagentTaskInput {
   pluginId: string;
@@ -79,6 +80,7 @@ export class PluginSubagentTaskService {
       : null;
     const record = await this.prisma.pluginSubagentTask.create({
       data: {
+        id: uuidv7(),
         pluginId: input.pluginId,
         pluginDisplayName: input.pluginDisplayName ?? null,
         runtimeKind: input.runtimeKind,

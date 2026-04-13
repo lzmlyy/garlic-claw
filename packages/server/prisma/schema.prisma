@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id           String   @id
   username     String   @unique
   email        String   @unique
   passwordHash String   @map("password_hash")
@@ -25,7 +25,7 @@ model User {
 }
 
 model ApiKey {
-  id         String   @id @default(uuid())
+  id         String   @id
   userId     String   @map("user_id")
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name       String
@@ -43,7 +43,7 @@ model ApiKey {
 }
 
 model Conversation {
-  id              String    @id @default(uuid())
+  id              String    @id
   title           String    @default("New Chat")
   userId          String    @map("user_id")
   activePersonaId String?   @map("active_persona_id")
@@ -87,7 +87,7 @@ model KnowledgeBaseEntry {
 }
 
 model Message {
-  id             String       @id @default(uuid())
+  id             String       @id
   conversationId String       @map("conversation_id")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           String       // system | user | assistant | tool
@@ -107,7 +107,7 @@ model Message {
 }
 
 model ConversationImageTranscription {
-  id             String       @id @default(uuid())
+  id             String       @id
   conversationId String       @map("conversation_id")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   imageHash      String       @map("image_hash")
@@ -121,7 +121,7 @@ model ConversationImageTranscription {
 }
 
 model Plugin {
-  id                 String   @id @default(uuid())
+  id                 String   @id
   name               String   @unique
   displayName        String?  @map("display_name")
   deviceType         String   @default("pc") @map("device_type")
@@ -152,7 +152,7 @@ model Plugin {
 }
 
 model PluginCronJob {
-  id          String   @id @default(uuid())
+  id          String   @id
   pluginName  String   @map("plugin_name")
   plugin      Plugin   @relation(fields: [pluginName], references: [name], onDelete: Cascade)
   name        String
@@ -172,7 +172,7 @@ model PluginCronJob {
 }
 
 model PluginStorage {
-  id        String   @id @default(uuid())
+  id        String   @id
   pluginId  String   @map("plugin_id")
   plugin    Plugin   @relation(fields: [pluginId], references: [id], onDelete: Cascade)
   key       String
@@ -185,7 +185,7 @@ model PluginStorage {
 }
 
 model PluginEvent {
-  id           String   @id @default(uuid())
+  id           String   @id
   pluginId     String   @map("plugin_id")
   plugin       Plugin   @relation(fields: [pluginId], references: [id], onDelete: Cascade)
   type         String
@@ -198,7 +198,7 @@ model PluginEvent {
 }
 
 model PluginSubagentTask {
-  id                 String   @id @default(uuid())
+  id                 String   @id
   pluginId           String   @map("plugin_id")
   pluginDisplayName  String?  @map("plugin_display_name")
   runtimeKind        String   @map("runtime_kind")
@@ -227,7 +227,7 @@ model PluginSubagentTask {
 }
 
 model Memory {
-  id        String   @id @default(uuid())
+  id        String   @id
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   content   String   // 记忆内容
@@ -239,7 +239,7 @@ model Memory {
 }
 
 model Automation {
-  id        String   @id @default(uuid())
+  id        String   @id
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
@@ -256,7 +256,7 @@ model Automation {
 }
 
 model AutomationLog {
-  id           String   @id @default(uuid())
+  id           String   @id
   automationId String   @map("automation_id")
   automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
   status       String   // success | error

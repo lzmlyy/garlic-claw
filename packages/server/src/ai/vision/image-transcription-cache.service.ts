@@ -18,6 +18,7 @@
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { uuidv7 } from '@garlic-claw/shared';
 
 /**
  * 保存图片转述时所需的参数。
@@ -76,6 +77,7 @@ export class ImageTranscriptionCacheService {
         },
       },
       create: {
+        id: uuidv7(),
         conversationId: input.conversationId,
         imageHash,
         mimeType: input.mimeType,

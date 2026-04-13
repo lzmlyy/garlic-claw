@@ -17,6 +17,7 @@ import type { JsonValue } from '../common/types/json-value';
 import { toJsonValue } from '../common/utils/json-value';
 import type { PluginRuntimeService } from '../plugin/plugin-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { uuidv7 } from '@garlic-claw/shared';
 
 interface CronEntry {
   automationId: string;
@@ -56,6 +57,7 @@ export class AutomationService implements OnModuleDestroy {
   ): Promise<AutomationInfo> {
     const automation = await this.prisma.automation.create({
       data: {
+        id: uuidv7(),
         userId,
         name,
         trigger: JSON.stringify(trigger),
@@ -268,6 +270,7 @@ export class AutomationService implements OnModuleDestroy {
     // 记录执行日志
     await this.prisma.automationLog.create({
       data: {
+        id: uuidv7(),
         automationId,
         status,
         result: JSON.stringify(afterRunPayload.results),
