@@ -38,30 +38,14 @@
 
 ## 检查
 
-```bash
-# 根目录统一检查
-npm run typecheck
-
-# 或按包单独检查
-npm run typecheck -w packages/server
-npm run typecheck -w packages/web
-```
-
+- Python 使用 mypy 和 ruff
 - Node 使用 lint 和 typecheck
 - 修改后要通过上述检查来防止编辑错误
 
 ## 命名
 
 - 命名记得统一风格，并明确边界和职责，不要模糊地叫 `helper`
-
-## 导入顺序
-
-1. 外部库 → 2. 内部模块(`@/`) → 3. `import type` → 4. 相对路径，各组间空行。优先命名导出。
-
-## 注释
-
-- 公共API/服务方法用 JSDoc（含 @param/@returns/@throws）
-- 关键逻辑用 `//`，标记用 TODO/FIXME/NOTE
+- 公共API/服务方法用 JSDoc，关键逻辑用 `//`，标记用 TODO/FIXME/NOTE
 
 ## AI Provider 适配维护
 
@@ -127,10 +111,6 @@ packages/: server(NestJS) | web(Vue) | shared | plugin-sdk | plugins
 - `修复: 修复登录超时问题`
 - `文档: 更新接口说明`
 
-## 代码格式
-
-2空格缩进，单引号优先，多行尾随逗号
-
 ## 错误处理
 
 用 NestJS 内置异常（NotFoundException/BadRequestException等），Prisma 错误用 try-catch 转换为对应HTTP异常
@@ -182,4 +162,5 @@ taskkill /F /IM node.exe
 
 ## 约定
 
+- 如需安装库，直接安装
 - 所有注释一律使用中文，回复也使用中文

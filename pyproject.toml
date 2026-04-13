@@ -44,10 +44,13 @@ select = [
 ignore = [
     "E501", # 行太长（由 formatter 处理）
     "E731", # 不要将 lambda 赋值给变量
+    "N",    # 当前脚本已采用 camelCase/中文命名混合，不做强制改名
+    "RUF001", # 允许中文全角标点
+    "RUF002", # 允许中文注释/文档中的全角标点
+    "TC003", # 脚本工具函数不强制移动到 TYPE_CHECKING
+    "TC006", # 允许运行时 cast 使用现有泛型写法
 ]
 
-# 自动修复问题
-fix = true
 fixable = ["ALL"]
 unfixable = []
 
@@ -74,12 +77,12 @@ ignore_missing_imports = true
 show_error_codes = true
 # 美化错误输出
 pretty = true
-# 不允许返回 None 的函数隐式返回 Any
-no_implicit_return = true 
+# 不允许函数隐式缺少返回
+warn_no_return = true
 
 # Mypy 特定路径配置（可选）
 # 可以为特定模块设置不同的检查规则
 [[tool.mypy.overrides]]
 # 示例：对测试文件放宽某些检查
-module = ["tests.*", "test_*"]
+module = ["tests.*"]
 disallow_untyped_defs = false
