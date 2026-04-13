@@ -28,6 +28,7 @@
         <div class="user-meta">
           <span class="user-label">当前用户</span>
           <strong>{{ auth.user?.username ?? 'unknown' }}</strong>
+          <small class="user-role">{{ roleLabel }}</small>
         </div>
         <button type="button" class="logout-button" @click="handleLogout">
           退出
@@ -42,6 +43,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -73,6 +75,17 @@ const navItems: Array<{
   { name: 'automations', label: '自动化', icon: '⚡' },
   { name: 'ai-settings', label: 'AI 设置', icon: '🧠' },
 ]
+
+const roleLabel = computed(() => {
+  if (auth.user?.role === 'super_admin') {
+    return '超级管理员'
+  }
+  if (auth.user?.role === 'admin') {
+    return '管理员'
+  }
+
+  return '普通用户'
+})
 
 function handleLogout() {
   auth.logout()
@@ -180,6 +193,10 @@ function handleLogout() {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.user-role {
+  color: var(--text-muted);
 }
 
 .logout-button {

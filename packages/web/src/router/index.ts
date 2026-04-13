@@ -33,7 +33,7 @@ const router = createRouter({
       path: '/',
       name: 'admin-shell',
       component: () => import('@/features/admin/layouts/AdminConsoleLayout.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresAdmin: true },
       children: [
         {
           path: 'devices',
@@ -89,12 +89,17 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  await auth.ensureInitialized()
+
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { name: 'login' }
   }
   if (to.meta.guest && auth.isLoggedIn) {
+    return { name: 'chat' }
+  }
+  if (to.meta.requiresAdmin && !auth.isAdmin) {
     return { name: 'chat' }
   }
 })

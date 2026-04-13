@@ -1,12 +1,28 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  HttpCode,
+  HttpStatus,
+  Post,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
+import {
+  DevLoginDto,
+  LoginDto,
+  RefreshTokenDto,
+  RegisterDto,
+} from './dto/auth.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('register')
   register(@Body() dto: RegisterDto) {
@@ -23,5 +39,15 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto.refreshToken);
+  }
+
+  @Post('dev-login')
+  @HttpCode(HttpStatus.OK)
+  devLogin(@Body() dto: DevLoginDto) {
+    if (this.configService.get<string>('NODE_ENV') === 'production') {
+      throw new ForbiddenException('仅开发模式支持一键登录');
+    }
+
+    return this.authService.devLogin(dto.username, dto.role);
   }
 }

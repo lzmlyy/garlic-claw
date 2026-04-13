@@ -22,6 +22,18 @@ export function login(username: string, password: string) {
   return post<{ accessToken: string; refreshToken: string }>('/auth/login', payload)
 }
 
+export function devLogin(
+  username: string,
+  role: 'super_admin' | 'admin' | 'user',
+) {
+  const payload = {
+    username: ensureRequiredText(username, 'username'),
+    role,
+  }
+
+  return post<{ accessToken: string; refreshToken: string }>('/auth/dev-login', payload)
+}
+
 export function register(username: string, email: string, password: string) {
   const payload = {
     username: ensureRequiredText(username, 'username'),

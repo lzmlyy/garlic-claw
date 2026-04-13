@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { AllExceptionsFilter } from '../common/filters/all-exceptions.filter';
 import { GlobalResponseInterceptor } from '../common/interceptors/global-response.interceptor';
@@ -10,6 +11,7 @@ describe('AuthController response envelope', () => {
     register: jest.fn(),
     login: jest.fn(),
     refreshTokens: jest.fn(),
+    devLogin: jest.fn(),
   };
 
   let app: INestApplication;
@@ -22,6 +24,12 @@ describe('AuthController response envelope', () => {
         {
           provide: AuthService,
           useValue: authService,
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockReturnValue('development'),
+          },
         },
       ],
     }).compile();
@@ -148,6 +156,39 @@ describe('AuthController response envelope', () => {
     expect(payload.data).toBeNull();
     expect(payload.message).toContain('property nickname should not exist');
     expect(authService.register).not.toHaveBeenCalled();
+  });
+
+  it('returns { code: 0, message: "", data } for dev-login success', async () => {
+    authService.devLogin.mockResolvedValue({
+      accessToken: 'dev-access-token',
+      refreshToken: 'dev-refresh-token',
+    });
+
+    const response = await fetch(`${baseUrl}/auth/dev-login`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: 'dev-admin',
+        role: 'admin',
+      }),
+    });
+    const payload = await response.json() as ApiEnvelope<{
+      accessToken: string;
+      refreshToken: string;
+    }>;
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({
+      code: 0,
+      message: '',
+      data: {
+        accessToken: 'dev-access-token',
+        refreshToken: 'dev-refresh-token',
+      },
+    });
+    expect(authService.devLogin).toHaveBeenCalledWith('dev-admin', 'admin');
   });
 });
 

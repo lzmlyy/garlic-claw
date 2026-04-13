@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -15,7 +16,7 @@ import { RequestAuthService } from './request-auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), PrismaModule],
+  imports: [ConfigModule, PassportModule, JwtModule.register({}), PrismaModule],
   controllers: [AuthController, ApiKeyController],
   providers: [
     AuthService,

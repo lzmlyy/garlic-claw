@@ -1,4 +1,4 @@
-import { IsEmail, IsString, Length } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Length } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
@@ -24,4 +24,13 @@ export class LoginDto {
 export class RefreshTokenDto {
   @IsString()
   refreshToken!: string;
+}
+
+export class DevLoginDto {
+  @IsString()
+  username!: string;
+
+  @IsOptional()
+  @IsIn(['super_admin', 'admin', 'user'])
+  role?: 'super_admin' | 'admin' | 'user';
 }

@@ -5,7 +5,11 @@
         <div class="brand-block">
           <span class="brand-kicker">Chat Workbench</span>
           <h1>Garlic Claw</h1>
-          <RouterLink class="admin-entry" :to="{ name: 'plugins' }">
+          <RouterLink
+            v-if="auth.isAdmin"
+            class="admin-entry"
+            :to="{ name: 'plugins' }"
+          >
             管理后台
           </RouterLink>
         </div>

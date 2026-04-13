@@ -1,6 +1,15 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatWorkbenchLayout from './ChatWorkbenchLayout.vue'
+
+const authState = vi.hoisted(() => ({
+  user: {
+    username: 'codex',
+    role: 'admin',
+  },
+  isAdmin: true,
+  logout: vi.fn(),
+}))
 
 vi.mock('@/features/chat/store/chat', () => ({
   useChatStore: () => ({
@@ -22,12 +31,7 @@ vi.mock('@/features/chat/store/chat', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({
-    user: {
-      username: 'codex',
-    },
-    logout: vi.fn(),
-  }),
+  useAuthStore: () => authState,
 }))
 
 vi.mock('vue-router', async () => {
@@ -45,6 +49,15 @@ vi.mock('vue-router', async () => {
 })
 
 describe('ChatWorkbenchLayout', () => {
+  beforeEach(() => {
+    authState.user = {
+      username: 'codex',
+      role: 'admin',
+    }
+    authState.isAdmin = true
+    authState.logout.mockClear()
+  })
+
   it('renders the conversation rail without admin workspace controls mixed into the main view', () => {
     const wrapper = mount(ChatWorkbenchLayout, {
       global: {
@@ -63,5 +76,29 @@ describe('ChatWorkbenchLayout', () => {
     expect(wrapper.text()).toContain('最近一次对话')
     expect(wrapper.text()).toContain('新对话')
     expect(wrapper.text()).toContain('管理后台')
+  })
+
+  it('hides the admin entry for regular users', () => {
+    authState.user = {
+      username: 'guest',
+      role: 'user',
+    }
+    authState.isAdmin = false
+
+    const wrapper = mount(ChatWorkbenchLayout, {
+      global: {
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+          RouterView: {
+            template: '<div class="router-view-stub" />',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('管理后台')
   })
 })

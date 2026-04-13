@@ -11,7 +11,16 @@ jest.mock('bcrypt');
 
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: { user: { findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock } };
+  let prisma: {
+    user: {
+      findFirst: jest.Mock;
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      count: jest.Mock;
+      update: jest.Mock;
+    };
+    $transaction: jest.Mock;
+  };
   let jwt: { sign: jest.Mock; verify: jest.Mock };
   let adminIdentity: { resolveRole: jest.Mock };
 
@@ -21,12 +30,16 @@ describe('AuthService', () => {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
         create: jest.fn(),
+        count: jest.fn(),
+        update: jest.fn(),
       },
+      $transaction: jest.fn(),
     };
     jwt = { sign: jest.fn().mockReturnValue('mock-token'), verify: jest.fn() };
     adminIdentity = {
       resolveRole: jest.fn((user: { role: string }) => user.role),
     };
+    prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) => callback(prisma as never));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -47,6 +60,7 @@ describe('AuthService', () => {
   describe('register', () => {
     it('should create user and return tokens', async () => {
       prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.count.mockResolvedValue(1);
       prisma.user.create.mockResolvedValue({
         id: 'uid-1',
         username: 'alice',
@@ -68,6 +82,38 @@ describe('AuthService', () => {
       );
       expect(result).toHaveProperty('accessToken', 'mock-token');
       expect(result).toHaveProperty('refreshToken', 'mock-token');
+    });
+
+    it('should promote the first registered user to super_admin', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.create.mockResolvedValue({
+        id: 'uid-1',
+        username: 'owner',
+        email: 'owner@test.com',
+        role: 'super_admin',
+      });
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-pw');
+
+      await service.register({
+        username: 'owner',
+        email: 'owner@test.com',
+        password: 'pass1234',
+      });
+
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'super_admin',
+          }),
+        }),
+      );
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'super_admin',
+        }),
+        expect.any(Object),
+      );
     });
 
     it('should throw ConflictException if user exists', async () => {
@@ -172,6 +218,61 @@ describe('AuthService', () => {
 
       await expect(service.refreshTokens('bad-token')).rejects.toThrow(
         UnauthorizedException,
+      );
+    });
+  });
+
+  describe('devLogin', () => {
+    it('creates a requested admin user in development mode', async () => {
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-dev');
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.count.mockResolvedValue(2);
+      prisma.user.create.mockResolvedValue({
+        id: 'dev-admin-id',
+        username: 'dev-admin',
+        email: 'dev-admin@dev.local',
+        passwordHash: 'hashed-dev',
+        role: 'admin',
+      });
+
+      await service.devLogin('dev-admin', 'admin');
+
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            username: 'dev-admin',
+            role: 'admin',
+          }),
+        }),
+      );
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'admin',
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('keeps the first dev-login user as super_admin', async () => {
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-dev');
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.create.mockResolvedValue({
+        id: 'dev-user-id',
+        username: 'dev-user',
+        email: 'dev-user@dev.local',
+        passwordHash: 'hashed-dev',
+        role: 'super_admin',
+      });
+
+      await service.devLogin('dev-user', 'user');
+
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'super_admin',
+          }),
+        }),
       );
     });
   });

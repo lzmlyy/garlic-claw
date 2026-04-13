@@ -1,14 +1,24 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const authState = vi.hoisted(() => ({
+  isLoggedIn: true,
+  isAdmin: true,
+  ensureInitialized: vi.fn(async () => undefined),
+}))
 
 vi.mock('../stores/auth', () => ({
-  useAuthStore: () => ({
-    isLoggedIn: true,
-  }),
+  useAuthStore: () => authState,
 }))
 
 import router from './index'
 
 describe('router', () => {
+  beforeEach(() => {
+    authState.isLoggedIn = true
+    authState.isAdmin = true
+    authState.ensureInitialized.mockClear()
+  })
+
   it('mounts the chat route inside the dedicated chat shell', () => {
     const resolved = router.resolve({ name: 'chat' })
 
@@ -44,5 +54,15 @@ describe('router', () => {
   it('registers the scoped api key management route', () => {
     expect(router.hasRoute('api-keys')).toBe(true)
     expect(router.resolve({ name: 'api-keys' }).path).toBe('/api-keys')
+  })
+
+  it('redirects non-admin users away from admin routes', async () => {
+    authState.isAdmin = false
+
+    const result = await router.push({ name: 'plugins' }).catch(() => undefined)
+
+    expect(router.currentRoute.value.name).toBe('chat')
+    expect(result).toBeUndefined()
+    authState.isAdmin = true
   })
 })
