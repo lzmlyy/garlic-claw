@@ -74,4 +74,16 @@ describe('router', () => {
     expect(router.currentRoute.value.name).toBe('chat')
     authState.isAdmin = true
   })
+
+  it('redirects non-admin users away from api key and ai settings routes', async () => {
+    authState.isAdmin = false
+
+    await router.push({ name: 'api-keys' }).catch(() => undefined)
+    expect(router.currentRoute.value.name).toBe('chat')
+
+    await router.push({ name: 'ai-settings' }).catch(() => undefined)
+    expect(router.currentRoute.value.name).toBe('chat')
+
+    authState.isAdmin = true
+  })
 })

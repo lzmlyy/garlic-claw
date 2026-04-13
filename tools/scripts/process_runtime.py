@@ -504,11 +504,12 @@ def quoteCommandArgument(value: str) -> str:
 
 def relayLogOutput(prefix: str, line: str) -> None:
     """带前缀输出 relay 日志。"""
+    header = f'[{prefix}] ' if prefix else ''
     try:
-        sys.stdout.write(f'[{prefix}] {line}')
+        sys.stdout.write(f'{header}{line}')
         sys.stdout.flush()
     except UnicodeEncodeError:
-        safe = f'[{prefix}] {line}'.encode(
+        safe = f'{header}{line}'.encode(
             sys.stdout.encoding or 'utf-8',
             errors='replace',
         ).decode(sys.stdout.encoding or 'utf-8')
