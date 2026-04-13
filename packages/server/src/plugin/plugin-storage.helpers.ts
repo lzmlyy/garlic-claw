@@ -1,4 +1,4 @@
-import type { JsonValue } from '@garlic-claw/shared';
+import { uuidv7, type JsonValue } from '@garlic-claw/shared';
 import { parseStoredPluginJsonValue } from './plugin-persistence.helpers';
 
 export function buildPluginStorageKey(pluginId: string, key: string) {
@@ -18,6 +18,7 @@ export function buildPluginStorageUpsertData(input: {
   return {
     where: buildPluginStorageKey(input.pluginId, input.key),
     create: {
+      id: uuidv7(),
       pluginId: input.pluginId,
       key: input.key,
       valueJson: JSON.stringify(input.value),

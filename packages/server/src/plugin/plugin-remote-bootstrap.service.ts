@@ -13,6 +13,7 @@ import type { StringValue } from 'ms';
 import { PrismaService } from '../prisma/prisma.service';
 import { createPluginEvent } from './plugin-event.helpers';
 import { serializePersistedPluginManifest } from './plugin-manifest.persistence';
+import { uuidv7 } from '@garlic-claw/shared';
 
 interface IssueRemotePluginBootstrapInput {
   pluginName: string;
@@ -82,6 +83,7 @@ export class PluginRemoteBootstrapService {
       })
       : await this.prisma.plugin.create({
         data: {
+          id: uuidv7(),
           name: pluginName,
           displayName,
           deviceType: input.deviceType,

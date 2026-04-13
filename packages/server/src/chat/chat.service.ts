@@ -8,6 +8,7 @@ import {
 } from '@garlic-claw/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { SkillSessionService } from '../skill/skill-session.service';
+import { uuidv7 } from '@garlic-claw/shared';
 
 @Injectable()
 export class ChatService {
@@ -28,6 +29,7 @@ export class ChatService {
   async createConversation(userId: string, dto: { title?: string }) {
     const conversation = await this.prisma.conversation.create({
       data: {
+        id: uuidv7(),
         title: dto.title || 'New Chat',
         hostServicesJson: JSON.stringify(DEFAULT_CONVERSATION_HOST_SERVICES),
         skillsJson: JSON.stringify([]),

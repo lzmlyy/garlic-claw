@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { uuidv7 } from '@garlic-claw/shared';
 import type {
   ActiveRequestContext,
   PendingRequest,
@@ -81,7 +81,7 @@ export class ConnectionContextAggregate {
     };
     this.connections.set(socket, connection);
     this.contextsBySocket.set(socket, {
-      connectionId: randomUUID(),
+      connectionId: uuidv7(),
       socket,
       pendingRequests: new Set<string>(),
       lastHeartbeat: now,

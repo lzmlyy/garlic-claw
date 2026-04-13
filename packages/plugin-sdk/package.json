@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@garlic-claw/shared": "*",
+    "uuidv7": "^1.2.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

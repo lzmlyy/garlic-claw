@@ -12,6 +12,7 @@ import type {
 import type { HostCallPayload, HostResultPayload } from './types/plugin-host';
 import type { RouteInvokePayload, RouteResultPayload } from './types/plugin-route';
 import type { JsonValue } from './types/json';
+import { uuidv7 } from './uuid';
 
 const OPEN_SOCKET_READY_STATE = 1;
 
@@ -85,7 +86,7 @@ export function sendPluginGatewayRequest(input: {
     return Promise.reject(new Error('插件连接不可用'));
   }
 
-  const requestId = crypto.randomUUID();
+  const requestId = uuidv7();
   const activeContext = input.extractContext?.(input.payload);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {

@@ -11,7 +11,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { uuidv7 } from '@garlic-claw/shared';
 import { API_KEY_TOKEN_PATTERN, API_KEY_TOKEN_PREFIX } from './api-key.constants';
 import type { AuthenticatedUser } from './auth-user';
 import { AdminIdentityService } from './admin-identity.service';
@@ -55,7 +56,7 @@ export class ApiKeyService {
   ): Promise<CreateApiKeyResponse> {
     const scopes = normalizeScopes(input.scopes);
     const expiresAt = normalizeExpiry(input.expiresAt);
-    const id = randomUUID();
+    const id = uuidv7();
     const secret = randomBytes(32).toString('base64url');
     const token = `${API_KEY_TOKEN_PREFIX}_${id}_${secret}`;
     const key = await this.prisma.apiKey.create({

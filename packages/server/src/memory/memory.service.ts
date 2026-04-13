@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { uuidv7 } from '@garlic-claw/shared';
 
 @Injectable()
 export class MemoryService {
@@ -14,7 +15,7 @@ export class MemoryService {
     keywords?: string,
   ) {
     const memory = await this.prisma.memory.create({
-      data: { userId, content, category, keywords },
+      data: { id: uuidv7(), userId, content, category, keywords },
     });
     this.logger.log(`已为用户 ${userId} 保存记忆："${content.slice(0, 50)}..."`);
     return memory;

@@ -5,6 +5,7 @@ import type {
 } from '@garlic-claw/shared';
 import { BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { uuidv7 } from '@garlic-claw/shared';
 
 export function readPluginEventQuery(raw: {
   limit?: string;
@@ -61,6 +62,7 @@ export async function createPluginEvent(input: {
 }): Promise<void> {
   await input.prisma.pluginEvent.create({
     data: {
+      id: uuidv7(),
       pluginId: input.pluginId,
       type: input.type,
       level: input.level,

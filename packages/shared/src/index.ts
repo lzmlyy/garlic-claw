@@ -67,3 +67,4 @@ export * from './types/plugin';
 export * from './types/roles';
 export * from './types/skill';
 export * from './types/tool';
+export * from './uuid';

@@ -1,4 +1,4 @@
-import type { PluginManifest } from '@garlic-claw/shared';
+import { uuidv7, type PluginManifest } from '@garlic-claw/shared';
 import { serializePersistedPluginManifest } from './plugin-manifest.persistence';
 
 export function buildPluginRegistrationUpsertData(input: {
@@ -11,6 +11,7 @@ export function buildPluginRegistrationUpsertData(input: {
 
   return {
     create: {
+      id: uuidv7(),
       name: input.name,
       displayName: input.manifest.name,
       deviceType: input.deviceType,
