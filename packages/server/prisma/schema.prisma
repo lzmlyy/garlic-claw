@@ -44,7 +44,7 @@ model ApiKey {
 
 model Conversation {
   id              String    @id
-  title           String    @default("New Chat")
+  title           String    @default("新对话")
   userId          String    @map("user_id")
   activePersonaId String?   @map("active_persona_id")
   hostServicesJson String?  @map("host_services_json")

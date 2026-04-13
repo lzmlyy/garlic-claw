@@ -70,6 +70,7 @@ async function newChat() {
   min-width: 280px;
   display: flex;
   flex-direction: column;
+  height: 100%;
   border-right: 1px solid var(--border);
   background:
     linear-gradient(180deg, rgba(9, 15, 24, 0.98), rgba(9, 15, 24, 0.9)),
@@ -109,9 +110,10 @@ async function newChat() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.75rem;
+  padding: 0.75rem 0.75rem 0;
   display: grid;
   gap: 0.45rem;
+  align-content: start;
 }
 
 .conversation-item {
@@ -145,7 +147,6 @@ async function newChat() {
 
 .rail-footer {
   min-height: 16px;
-  border-top: 1px solid var(--border);
 }
 
 .chat-content {

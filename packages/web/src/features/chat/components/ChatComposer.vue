@@ -30,39 +30,37 @@
         @input="handleInput"
         @keydown.enter.exact.prevent="$emit('send')"
       ></textarea>
-      <label class="composer-button upload-button">
+      <label class="composer-button upload-button" title="上传图片">
         <input accept="image/*" multiple type="file" @change="$emit('file-change', $event)" />
-        图片
+        <Icon :icon="galleryAddBold" class="button-icon" aria-hidden="true" />
       </label>
-      <button
-        type="button"
-        class="composer-button retry-button"
-        :disabled="!canTriggerRetry"
-        @click="$emit('retry')"
-      >
-        {{ retryLabel }}
-      </button>
       <button
         v-if="streaming"
         type="button"
         class="composer-button stop-button"
+        title="停止"
         @click="$emit('stop')"
       >
-        停止
+        <Icon :icon="stopBold" class="button-icon" aria-hidden="true" />
       </button>
       <button
         v-else
         class="composer-button send-button"
+        title="发送"
         :disabled="!canSend"
         @click="$emit('send')"
       >
-        发送
+        <Icon :icon="plainBold" class="button-icon" aria-hidden="true" />
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import galleryAddBold from '@iconify-icons/solar/gallery-add-bold'
+import plainBold from '@iconify-icons/solar/plain-bold'
+import stopBold from '@iconify-icons/solar/stop-bold'
 import type { PendingImage, UploadNotice } from '@/features/chat/composables/use-chat-view'
 
 defineProps<{
@@ -70,8 +68,6 @@ defineProps<{
   pendingImages: PendingImage[]
   uploadNotices: UploadNotice[]
   canSend: boolean
-  canTriggerRetry: boolean
-  retryLabel: string
   streaming: boolean
 }>()
 
@@ -79,7 +75,6 @@ const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void
   (event: 'file-change', value: Event): void
   (event: 'remove-image', index: number): void
-  (event: 'retry'): void
   (event: 'send'): void
   (event: 'stop'): void
 }>()
@@ -95,13 +90,8 @@ function handleInput(event: Event) {
 
 <style scoped>
 .input-area {
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  background: rgba(14, 24, 38, 0.85);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.08);
+  padding: 0;
+  background: transparent;
 }
 
 .upload-notices {
@@ -161,7 +151,7 @@ function handleInput(event: Event) {
 
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 86px 86px 86px;
+  grid-template-columns: minmax(0, 1fr) 58px 58px;
   gap: 10px;
   align-items: stretch;
 }
@@ -188,18 +178,22 @@ function handleInput(event: Event) {
 
 .composer-button {
   min-height: 58px;
-  padding: 0 14px;
+  padding: 0;
   border-radius: 18px;
   border: 1px solid var(--border);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  letter-spacing: 0.04em;
   transition:
     transform 0.16s ease,
     background 0.16s ease,
     border-color 0.16s ease;
+}
+
+.button-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
 .upload-button {
@@ -221,12 +215,6 @@ function handleInput(event: Event) {
   border-color: transparent;
 }
 
-.retry-button {
-  background: rgba(68, 204, 136, 0.14);
-  border-color: rgba(68, 204, 136, 0.3);
-  color: var(--success);
-}
-
 .stop-button {
   background: rgba(226, 74, 74, 0.16);
   border-color: rgba(226, 74, 74, 0.3);
@@ -235,7 +223,7 @@ function handleInput(event: Event) {
 
 @media (max-width: 768px) {
   .composer {
-    grid-template-columns: minmax(0, 1fr) 72px 72px 72px;
+    grid-template-columns: minmax(0, 1fr) 54px 54px;
     gap: 8px;
   }
 

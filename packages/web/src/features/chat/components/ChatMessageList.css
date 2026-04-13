@@ -35,7 +35,15 @@
 .message {
   display: flex;
   gap: 14px;
-  align-items: start;
+  align-items: flex-start;
+}
+
+.message-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  max-width: min(720px, calc(100% - 86px));
 }
 
 .message.user {
@@ -46,22 +54,22 @@
   order: 2;
 }
 
-.message.user .message-body {
+.message.user .message-main {
   order: 1;
   margin-left: auto;
+  align-items: flex-end;
 }
 
 .message-role {
   flex: 0 0 auto;
-  min-height: 44px;
-  padding: 10px 12px;
-  border-radius: 999px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   border: 1px solid rgba(92, 203, 255, 0.26);
   background: rgba(92, 203, 255, 0.08);
   color: #9fe9ff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.14em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -78,7 +86,7 @@
   flex: 0 1 auto;
   min-width: 0;
   width: fit-content;
-  max-width: min(720px, calc(100% - 86px));
+  max-width: 100%;
   padding: 16px 18px;
   border-radius: 24px;
   border: 1px solid rgba(133, 163, 199, 0.18);
@@ -100,7 +108,6 @@
 }
 
 .message-meta,
-.message-actions,
 .editor-actions {
   display: flex;
   gap: 8px;
@@ -109,7 +116,6 @@
 }
 
 .message.user .message-meta,
-.message.user .message-actions,
 .message.user .editor-actions {
   justify-content: flex-end;
 }
@@ -349,7 +355,49 @@
 }
 
 .message-actions {
-  margin-top: 14px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 0 4px;
+  margin-left: 12px;
+}
+
+.message.user .message-actions {
+  justify-content: flex-end;
+  margin-right: 12px;
+}
+
+.action-text {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.edit-text {
+  color: rgba(255, 184, 77, 0.8);
+}
+
+.edit-text:hover {
+  color: #ffd48d;
+}
+
+.retry-text {
+  color: rgba(68, 204, 136, 0.8);
+}
+
+.retry-text:hover {
+  color: #a6efd0;
+}
+
+.delete-text {
+  color: rgba(226, 74, 74, 0.8);
+}
+
+.delete-text:hover {
+  color: #ffaaaa;
 }
 
 .message-editor textarea {

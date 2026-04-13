@@ -22,159 +22,173 @@
           :class="row.message.role"
         >
           <div class="message-role">{{ getRoleLabel(row.message) }}</div>
-          <div class="message-body">
-            <div class="message-meta">
-              <span class="message-status" :class="row.message.status">
-                {{ statusLabelMap[row.message.status] }}
-              </span>
-              <span
-                v-if="row.message.provider && row.message.model"
-                class="message-model"
+          <div class="message-main">
+            <div class="message-body">
+              <div class="message-meta">
+                <span class="message-status" :class="row.message.status">
+                  {{ statusLabelMap[row.message.status] }}
+                </span>
+                <span
+                  v-if="row.message.provider && row.message.model"
+                  class="message-model"
+                >
+                  {{ row.message.provider }}/{{ row.message.model }}
+                </span>
+                <span
+                  v-if="visionFallbackChipLabel(row.message)"
+                  class="message-model-detail"
+                  :class="row.message.metadata?.visionFallback?.state"
+                >
+                  {{ visionFallbackChipLabel(row.message) }}
+                </span>
+              </div>
+
+              <div
+                v-if="editingMessageId === row.message.id"
+                class="message-editor"
               >
-                {{ row.message.provider }}/{{ row.message.model }}
-              </span>
+                <textarea
+                  v-model="editingText"
+                  rows="4"
+                  placeholder="修改当前消息内容"
+                ></textarea>
+                <div v-if="hasEditableImages(row.message)" class="editor-note">
+                  当前消息里的图片会保留，本次只修改文本内容。
+                </div>
+                <div class="editor-actions">
+                  <button
+                    type="button"
+                    class="action-button save-button"
+                    @click="saveEdit(row.message)"
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    class="action-button cancel-button"
+                    @click="cancelEdit"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+
+              <template v-else>
+                <div v-if="row.message.parts?.length" class="message-parts">
+                  <template
+                    v-for="(part, partIndex) in row.message.parts"
+                    :key="partIndex"
+                  >
+                    <div
+                      v-if="part.type === 'text'"
+                      class="message-content"
+                      v-html="renderMarkdown(part.text)"
+                    ></div>
+                    <img
+                      v-else
+                      :src="part.image"
+                      alt="用户上传的图片"
+                      class="message-image"
+                      @load="handleRenderedContentChange"
+                    />
+                  </template>
+                </div>
+                <div
+                  v-else
+                  class="message-content"
+                  v-html="renderMarkdown(row.message.content)"
+                ></div>
+
+                <div v-if="row.message.error" class="message-error">
+                  错误: {{ row.message.error }}
+                </div>
+
+                <details
+                  v-if="shouldShowVisionFallbackDetails(row.message)"
+                  class="vision-fallback-details"
+                  @toggle="handleRenderedContentChange"
+                >
+                  <summary>查看图像转述</summary>
+                  <div class="vision-fallback-list">
+                    <div
+                      v-for="(entry, entryIndex) in row.message.metadata
+                        ?.visionFallback?.entries ?? []"
+                      :key="`${row.key}-vision-${entryIndex}`"
+                      class="vision-fallback-entry"
+                    >
+                      <span class="vision-fallback-source">
+                        {{ entry.source === "cache" ? "缓存复用" : "实时转述" }}
+                      </span>
+                      <div
+                        class="vision-fallback-text"
+                        v-html="renderMarkdown(entry.text)"
+                      ></div>
+                    </div>
+                  </div>
+                </details>
+
+                <div v-if="row.message.toolCalls?.length" class="tool-calls">
+                  <div
+                    v-for="(toolCall, toolIndex) in row.message.toolCalls"
+                    :key="toolIndex"
+                    class="tool-call"
+                  >
+                    工具调用 <strong>{{ toolCall.toolName }}</strong>
+                    <code>{{ toolCall.input }}</code>
+                  </div>
+                </div>
+
+                <div v-if="row.message.toolResults?.length" class="tool-results">
+                  <div
+                    v-for="(toolResult, toolIndex) in row.message.toolResults"
+                    :key="toolIndex"
+                    class="tool-result"
+                  >
+                    工具结果 <strong>{{ toolResult.toolName }}</strong>
+                    <code>{{ toolResult.output }}</code>
+                  </div>
+                </div>
+              </template>
+
               <span
-                v-if="visionFallbackChipLabel(row.message)"
-                class="message-model-detail"
-                :class="row.message.metadata?.visionFallback?.state"
+                v-if="
+                  row.message.status === 'pending' ||
+                  row.message.status === 'streaming'
+                "
+                class="cursor"
               >
-                {{ visionFallbackChipLabel(row.message) }}
+                ▋
               </span>
             </div>
 
             <div
-              v-if="editingMessageId === row.message.id"
-              class="message-editor"
+              v-if="row.message.id && editingMessageId !== row.message.id"
+              class="message-actions"
             >
-              <textarea
-                v-model="editingText"
-                rows="4"
-                placeholder="修改当前消息内容"
-              ></textarea>
-              <div v-if="hasEditableImages(row.message)" class="editor-note">
-                当前消息里的图片会保留，本次只修改文本内容。
-              </div>
-              <div class="editor-actions">
-                <button
-                  type="button"
-                  class="action-button save-button"
-                  @click="saveEdit(row.message)"
-                >
-                  保存
-                </button>
-                <button
-                  type="button"
-                  class="action-button cancel-button"
-                  @click="cancelEdit"
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-
-            <template v-else>
-              <div v-if="row.message.parts?.length" class="message-parts">
-                <template
-                  v-for="(part, partIndex) in row.message.parts"
-                  :key="partIndex"
-                >
-                  <div
-                    v-if="part.type === 'text'"
-                    class="message-content"
-                    v-html="renderMarkdown(part.text)"
-                  ></div>
-                  <img
-                    v-else
-                    :src="part.image"
-                    alt="用户上传的图片"
-                    class="message-image"
-                    @load="handleRenderedContentChange"
-                  />
-                </template>
-              </div>
-              <div
-                v-else
-                class="message-content"
-                v-html="renderMarkdown(row.message.content)"
-              ></div>
-
-              <div v-if="row.message.error" class="message-error">
-                错误: {{ row.message.error }}
-              </div>
-
-              <details
-                v-if="shouldShowVisionFallbackDetails(row.message)"
-                class="vision-fallback-details"
-                @toggle="handleRenderedContentChange"
+              <button
+                v-if="row.message.role === 'user'"
+                type="button"
+                class="action-text edit-text"
+                @click="startEdit(row.message)"
               >
-                <summary>查看图像转述</summary>
-                <div class="vision-fallback-list">
-                  <div
-                    v-for="(entry, entryIndex) in row.message.metadata
-                      ?.visionFallback?.entries ?? []"
-                    :key="`${row.key}-vision-${entryIndex}`"
-                    class="vision-fallback-entry"
-                  >
-                    <span class="vision-fallback-source">
-                      {{ entry.source === "cache" ? "缓存复用" : "实时转述" }}
-                    </span>
-                    <div
-                      class="vision-fallback-text"
-                      v-html="renderMarkdown(entry.text)"
-                    ></div>
-                  </div>
-                </div>
-              </details>
-
-              <div v-if="row.message.toolCalls?.length" class="tool-calls">
-                <div
-                  v-for="(toolCall, toolIndex) in row.message.toolCalls"
-                  :key="toolIndex"
-                  class="tool-call"
-                >
-                  工具调用 <strong>{{ toolCall.toolName }}</strong>
-                  <code>{{ toolCall.input }}</code>
-                </div>
-              </div>
-
-              <div v-if="row.message.toolResults?.length" class="tool-results">
-                <div
-                  v-for="(toolResult, toolIndex) in row.message.toolResults"
-                  :key="toolIndex"
-                  class="tool-result"
-                >
-                  工具结果 <strong>{{ toolResult.toolName }}</strong>
-                  <code>{{ toolResult.output }}</code>
-                </div>
-              </div>
-
-              <div v-if="row.message.id" class="message-actions">
-                <button
-                  type="button"
-                  class="action-button edit-button"
-                  @click="startEdit(row.message)"
-                >
-                  修改
-                </button>
-                <button
-                  type="button"
-                  class="action-button delete-button"
-                  @click="emit('delete-message', row.message.id)"
-                >
-                  删除
-                </button>
-              </div>
-            </template>
-
-            <span
-              v-if="
-                row.message.status === 'pending' ||
-                row.message.status === 'streaming'
-              "
-              class="cursor"
-            >
-              ▋
-            </span>
+                修改
+              </button>
+              <button
+                v-else
+                type="button"
+                class="action-text retry-text"
+                @click="emit('retry-message', row.message.id)"
+              >
+                重试
+              </button>
+              <button
+                type="button"
+                class="action-text delete-text"
+                @click="emit('delete-message', row.message.id)"
+              >
+                删除
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -221,6 +235,7 @@ const emit = defineEmits<{
     value: { messageId: string; content?: string; parts?: ChatMessagePart[] },
   ): void;
   (event: "delete-message", messageId: string): void;
+  (event: "retry-message", messageId: string): void;
 }>();
 
 const statusLabelMap = {
@@ -487,7 +502,7 @@ function renderMarkdown(text: string): string {
 }
 
 function getRoleLabel(message: ChatMessage): string {
-  return message.role === "user" ? "[USER]" : "[AI]";
+  return message.role === "user" ? "用户" : "AI";
 }
 
 function startEdit(message: ChatMessage) {
