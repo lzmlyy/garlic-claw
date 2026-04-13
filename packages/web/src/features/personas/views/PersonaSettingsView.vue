@@ -2,7 +2,7 @@
   <div class="persona-page">
     <header class="page-header">
       <div>
-        <h1>Persona 设置</h1>
+        <h1>人设设置</h1>
         <p>把会话人设入口从插件底层里提出来，用户直接在业务页理解和切换。</p>
       </div>
       <button class="ghost-button" :disabled="loading" @click="refreshAll">
@@ -15,26 +15,26 @@
         <span class="hero-kicker">Current Conversation</span>
         <h2>{{ currentConversationTitle ?? '当前未选中对话' }}</h2>
         <p v-if="currentPersona">
-          当前生效 Persona：
+          当前生效人设：
           <strong>{{ currentPersona.name }}</strong>
           <span class="persona-source">来源：{{ sourceLabelMap[currentPersona.source] }}</span>
         </p>
         <p v-else>
-          当前没有会话级 Persona 信息，页面会回退展示默认 Persona。
+          当前没有会话级人设信息，页面会回退展示默认人设。
         </p>
         <p class="hero-hint">
           {{ hasCurrentConversation
-            ? '在左侧对话列表切换会话后，这里的 Persona 状态会跟着刷新。'
-            : '先在左侧选中一个对话，再把 Persona 应用到该会话。' }}
+            ? '在左侧对话列表切换会话后，这里的人设状态会跟着刷新。'
+            : '先在左侧选中一个对话，再把人设应用到该会话。' }}
         </p>
       </article>
 
       <article class="hero-card">
         <span class="hero-kicker">Plugin Config</span>
-        <h2>Persona 路由插件</h2>
+        <h2>人设路由插件</h2>
         <p>
           <code>builtin.persona-router</code>
-          负责按关键字切换当前会话 Persona。这里保留直接入口，但把它放到 Persona 业务页里解释清楚。
+          负责按关键字切换当前会话人设。这里保留直接入口，但把它放到人设业务页里解释清楚。
         </p>
         <RouterLink
           class="primary-link"
@@ -56,15 +56,15 @@
       <section class="persona-list-card">
         <div class="section-header">
           <div>
-            <span class="section-kicker">Persona Index</span>
-            <h2>可用 Persona</h2>
+            <span class="section-kicker">人设索引</span>
+            <h2>可用人设</h2>
           </div>
           <span class="section-meta">{{ personas.length }} 个</span>
         </div>
 
         <div v-if="loading" class="section-state">加载中...</div>
         <div v-else-if="personas.length === 0" class="section-state">
-          当前还没有可用 Persona。
+          当前还没有可用人设。
         </div>
         <div v-else class="persona-list">
           <button
@@ -78,7 +78,7 @@
               <strong>{{ persona.name }}</strong>
               <span v-if="persona.isDefault" class="persona-badge">默认</span>
             </div>
-            <p>{{ persona.description ?? '当前 Persona 没有额外描述。' }}</p>
+            <p>{{ persona.description ?? '当前人设没有额外描述。' }}</p>
             <code>{{ persona.id }}</code>
           </button>
         </div>
@@ -87,8 +87,8 @@
       <section class="persona-detail-card">
         <div class="section-header">
           <div>
-            <span class="section-kicker">Persona Detail</span>
-            <h2>{{ selectedPersona?.name ?? '选择一个 Persona' }}</h2>
+            <span class="section-kicker">人设详情</span>
+            <h2>{{ selectedPersona?.name ?? '选择一个人设' }}</h2>
           </div>
           <button
             class="primary-button"
@@ -100,27 +100,27 @@
         </div>
 
         <div v-if="!selectedPersona" class="section-state">
-          先从左侧选中一个 Persona。
+          先从左侧选中一个人设。
         </div>
         <template v-else>
           <div class="detail-summary">
             <div class="summary-item">
-              <span class="summary-label">Persona ID</span>
+              <span class="summary-label">人设 ID</span>
               <code>{{ selectedPersona.id }}</code>
             </div>
             <div class="summary-item">
               <span class="summary-label">当前会话状态</span>
               <span v-if="loadingCurrentPersona">读取中...</span>
               <span v-else-if="currentPersona">
-                {{ currentPersona.personaId === selectedPersona.id ? '当前对话已使用此 Persona' : `当前使用：${currentPersona.name}` }}
+                {{ currentPersona.personaId === selectedPersona.id ? '当前对话已使用此人设' : `当前使用：${currentPersona.name}` }}
               </span>
-              <span v-else>未读取到当前会话 Persona</span>
+              <span v-else>未读取到当前会话人设</span>
             </div>
           </div>
 
           <div class="detail-block">
             <span class="summary-label">描述</span>
-            <p>{{ selectedPersona.description ?? '当前 Persona 没有额外描述。' }}</p>
+            <p>{{ selectedPersona.description ?? '当前人设没有额外描述。' }}</p>
           </div>
 
           <div class="detail-block">
@@ -129,7 +129,7 @@
           </div>
 
           <p class="detail-note">
-            Persona 的“路由规则”仍由插件统一承载；业务页负责提供可理解入口，不再要求用户先理解内建插件结构。
+            人设的“路由规则”仍由插件统一承载；业务页负责提供可理解入口，不再要求用户先理解内建插件结构。
           </p>
         </template>
       </section>
@@ -138,8 +138,8 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
-import { usePersonaSettings } from '../composables/use-persona-settings'
+import { RouterLink } from 'vue-router';
+import { usePersonaSettings } from '../composables/use-persona-settings';
 
 const {
   loading,
@@ -229,7 +229,7 @@ const sourceLabelMap = {
 
 .ghost-button {
   background: transparent;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: 1px solid var(--border, rgba(133, 163, 199, 0.24));
   color: var(--text);
 }
 
@@ -244,15 +244,17 @@ const sourceLabelMap = {
   gap: 14px;
   padding: 18px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(15, 25, 40, 0.96), rgba(10, 17, 29, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  border: 1px solid var(--border, rgba(133, 163, 199, 0.16));
   min-width: 0;
 }
 
 .hero-card {
   background:
-    linear-gradient(135deg, rgba(11, 99, 181, 0.08), rgba(39, 174, 96, 0.05)),
-    rgba(255, 255, 255, 0.95);
+    linear-gradient(135deg, rgba(11, 99, 181, 0.12), rgba(39, 174, 96, 0.08)),
+    linear-gradient(180deg, rgba(15, 25, 40, 0.96), rgba(10, 17, 29, 0.96));
 }
 
 .hero-kicker,
@@ -313,8 +315,8 @@ const sourceLabelMap = {
   gap: 10px;
   padding: 14px;
   border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(248, 250, 252, 0.96);
+  border: 1px solid var(--border, rgba(133, 163, 199, 0.16));
+  background: rgba(18, 32, 51, 0.82);
   text-align: left;
 }
 
@@ -352,7 +354,7 @@ const sourceLabelMap = {
 
 .detail-note {
   padding-top: 4px;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-top: 1px solid var(--border, rgba(133, 163, 199, 0.16));
 }
 
 @media (max-width: 1080px) {

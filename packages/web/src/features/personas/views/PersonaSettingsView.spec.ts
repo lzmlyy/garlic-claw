@@ -64,7 +64,7 @@ describe('PersonaSettingsView', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Persona 设置')
+    expect(wrapper.text()).toContain('人设设置')
     expect(wrapper.text()).toContain('当前对话')
     expect(wrapper.text()).toContain('Writer')
     expect(wrapper.text()).toContain('writer prompt')

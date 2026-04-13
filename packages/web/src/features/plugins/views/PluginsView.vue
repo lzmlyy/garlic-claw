@@ -364,10 +364,10 @@ function pluginHighlights(plugin: PluginInfo): string[] {
     pushHighlight('可读取系统知识库')
   }
   if (permissions.has('persona:read')) {
-    pushHighlight('可读取 Persona 上下文')
+    pushHighlight('可读取人设上下文')
   }
   if (permissions.has('persona:write')) {
-    pushHighlight('可切换当前 Persona')
+    pushHighlight('可切换当前人设')
   }
   if (permissions.has('llm:generate')) {
     pushHighlight('可二次调用模型')
