@@ -80,8 +80,8 @@ describe('ChatView', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('当前 Skills')
+    expect(wrapper.text()).toContain('当前 技能')
     expect(wrapper.text()).toContain('规划执行')
-    expect(wrapper.text()).toContain('管理 Skills')
+    expect(wrapper.text()).toContain('管理 技能')
   })
 })

@@ -7,7 +7,7 @@
     <div class="skill-card-top">
       <div>
         <strong>{{ skill.name }}</strong>
-        <p>{{ skill.description || '当前 skill 没有额外说明。' }}</p>
+        <p>{{ skill.description || '当前技能没有额外说明。' }}</p>
       </div>
       <SkillActiveStateToggle
         :label="toggleLabel"

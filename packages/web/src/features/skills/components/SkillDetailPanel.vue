@@ -28,7 +28,7 @@
           {{ trustLevelDescription(skill.governance.trustLevel) }}
         </p>
         <p class="detail-line muted-text">
-          `skill` 的统一在线启用 / 停用已收敛到工具治理页里的 `Active Skill Packages` source，这里只保留单个 skill 的 trust level。
+          `技能` 的统一在线启用 / 停用已收敛到工具治理页里的 `Active Skill Packages` source，这里只保留单个技能的 trust level。
         </p>
         <div class="governance-actions">
           <label class="trust-level-field">
@@ -68,7 +68,7 @@
           资产读取和脚本执行都依赖当前会话激活状态，以及这里设定的信任等级。
         </p>
         <div v-if="skill.assets.length === 0" class="empty-state compact">
-          当前 skill 没有附属资产。
+          当前技能没有附属资产。
         </div>
         <div v-else class="asset-list">
           <article
@@ -174,11 +174,11 @@ function trustLevelLabel(trustLevel: SkillTrustLevel): string {
 function trustLevelDescription(trustLevel: SkillTrustLevel): string {
   switch (trustLevel) {
     case 'asset-read':
-      return '当前会话激活后，模型可以通过统一 skill 工具读取模板、参考资料和脚本文本。'
+      return '当前会话激活后，模型可以通过统一技能工具读取模板、参考资料和脚本文本。'
     case 'local-script':
-      return '当前会话激活后，模型既可以读取资产，也可以通过统一 skill 工具执行本地脚本。'
+      return '当前会话激活后，模型既可以读取资产，也可以通过统一技能工具执行本地脚本。'
     default:
-      return '当前 skill 只会作为提示和工作流资产注入上下文，不会开放附属文件读取或脚本执行。'
+      return '当前技能只会作为提示和工作流资产注入上下文，不会开放附属文件读取或脚本执行。'
   }
 }
 

@@ -90,7 +90,7 @@ const navItems: Array<{
   { name: 'plugins', label: '插件', icon: widgetBold, section: 'core' },
   { name: 'persona-settings', label: '人设', icon: userIdBold, section: 'core' },
   { name: 'tools', label: '工具', icon: widgetAddBold, section: 'core' },
-  { name: 'skills', label: 'Skills', icon: magicStick3Bold, section: 'core' },
+  { name: 'skills', label: '技能', icon: magicStick3Bold, section: 'core' },
   { name: 'commands', label: '命令', icon: keyboardBold, section: 'core' },
   { name: 'subagent-tasks', label: '后台代理', icon: cpuBold, section: 'core' },
   { name: 'api-keys', label: 'API Keys', icon: keyBold, section: 'admin' },

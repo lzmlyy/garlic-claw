@@ -50,7 +50,7 @@
           </div>
           <div class="skill-row">
             <template v-if="conversationSkillState?.activeSkills?.length">
-              <span class="service-label">当前 Skills</span>
+              <span class="service-label">当前 技能</span>
               <div class="skill-chip-list">
                 <span
                   v-for="skill in conversationSkillState.activeSkills"
@@ -68,9 +68,9 @@
                 </span>
               </div>
             </template>
-            <span v-else class="service-warning">当前会话未激活 skill</span>
+            <span v-else class="service-warning">当前会话未激活技能</span>
             <RouterLink class="service-link" :to="{ name: 'skills' }">
-              管理 Skills
+              管理 技能
             </RouterLink>
           </div>
         </template>

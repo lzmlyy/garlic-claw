@@ -3,28 +3,35 @@
     <section class="skill-hero">
       <header class="skill-hero-header">
         <div>
-          <span class="hero-kicker">Skill Workspace</span>
-          <h1>Skill 工作台</h1>
+          <span class="hero-kicker">技能 Workspace</span>
+          <h1>技能工作台</h1>
           <p>把高层 workflow / prompt 资产挂到当前会话，不再把编排逻辑散落在聊天输入里。</p>
         </div>
         <div class="hero-actions">
-          <button type="button" class="hero-button" :disabled="refreshing" @click="refreshAll()">
-            {{ refreshing ? '刷新中...' : '刷新目录' }}
+          <button
+            type="button"
+            class="hero-button icon-only"
+            title="刷新目录"
+            :disabled="refreshing"
+            @click="refreshAll()"
+          >
+            <Icon :icon="refreshBold" class="hero-button-icon" aria-hidden="true" />
           </button>
           <button
             type="button"
-            class="hero-button secondary"
+            class="hero-button secondary icon-only"
+            title="清空当前会话"
             :disabled="!chat.currentConversationId || activeCount === 0"
             @click="clearConversationSkills()"
           >
-            清空当前会话
+            <Icon :icon="trashBinMinimalisticBold" class="hero-button-icon" aria-hidden="true" />
           </button>
         </div>
       </header>
 
       <div class="overview-grid">
         <article class="overview-card accent">
-          <span class="overview-label">Skill 总数</span>
+          <span class="overview-label">技能总数</span>
           <strong>{{ totalCount }}</strong>
           <p>来自项目本地或用户目录的 `SKILL.md` 资产。</p>
         </article>
@@ -34,14 +41,14 @@
           <p>会话级激活后，会在模型调用前统一注入提示和工具策略。</p>
         </article>
         <article class="overview-card neutral">
-          <span class="overview-label">Skill Package</span>
+          <span class="overview-label">技能包</span>
           <strong>{{ packageCount }}</strong>
           <p>其中 {{ restrictedCount }} 个还声明了工具 allow / deny 策略。</p>
         </article>
         <article class="overview-card warning">
           <span class="overview-label">本地脚本信任</span>
           <strong>{{ scriptCapableCount }}</strong>
-          <p>这些 skill 在当前会话激活后，允许通过统一 skill 工具执行本地脚本。</p>
+          <p>这些技能在当前会话激活后，允许通过统一技能工具执行本地脚本。</p>
         </article>
       </div>
     </section>
@@ -74,6 +81,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Icon } from '@iconify/vue'
+import refreshBold from '@iconify-icons/solar/refresh-bold'
+import trashBinMinimalisticBold from '@iconify-icons/solar/trash-bin-minimalistic-bold'
 import type { SkillTrustLevel } from '@garlic-claw/shared'
 import SkillDetailPanel from '@/features/skills/components/SkillDetailPanel.vue'
 import SkillsList from '@/features/skills/components/SkillsList.vue'

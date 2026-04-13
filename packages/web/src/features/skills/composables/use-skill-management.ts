@@ -88,7 +88,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
     try {
       replaceSkills(await loadSkillCatalog())
     } catch (cause) {
-      requestState.setError(cause, '加载 skills 失败')
+      requestState.setError(cause, '加载技能失败')
     } finally {
       loading.value = false
     }
@@ -102,7 +102,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
       replaceSkills(await refreshSkillCatalog())
       await refreshConversationSkillState(chat.currentConversationId)
     } catch (cause) {
-      requestState.setError(cause, '刷新 skills 失败')
+      requestState.setError(cause, '刷新技能失败')
     } finally {
       refreshing.value = false
     }
@@ -140,7 +140,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
       replaceSkills(applySkillUpdate(skills.value, updated))
       await refreshConversationSkillState(chat.currentConversationId)
     } catch (cause) {
-      requestState.setError(cause, '更新 skill 治理失败')
+      requestState.setError(cause, '更新技能治理失败')
     } finally {
       if (mutatingSkillId.value === skillId) {
         mutatingSkillId.value = null
@@ -162,7 +162,7 @@ export function useSkillManagement(chat: ReturnType<typeof useChatStore>) {
         activeSkillIds,
       )
     } catch (cause) {
-      requestState.setError(cause, '更新当前会话 skills 失败')
+      requestState.setError(cause, '更新当前会话技能失败')
     }
   }
 

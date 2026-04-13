@@ -134,7 +134,7 @@ describe('SkillsView', () => {
   it('renders the skill workspace, active state, and markdown preview', () => {
     const wrapper = mount(SkillsView)
 
-    expect(wrapper.text()).toContain('Skill 工作台')
+    expect(wrapper.text()).toContain('技能工作台')
     expect(wrapper.text()).toContain('规划执行')
     expect(wrapper.text()).toContain('当前会话已激活')
     expect(wrapper.text()).toContain('kb.search')

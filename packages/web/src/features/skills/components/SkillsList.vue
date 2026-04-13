@@ -3,8 +3,8 @@
     <div class="panel-header">
       <div>
         <span class="panel-kicker">Catalog</span>
-        <h2>Skill 目录</h2>
-        <p>当前会话可激活的 skills。项目内置和用户自定义都统一在这里治理。</p>
+        <h2>技能目录</h2>
+        <p>当前会话可激活的技能。项目内置和用户自定义都统一在这里治理。</p>
       </div>
     </div>
 
@@ -12,12 +12,12 @@
       :value="searchKeyword"
       class="skill-search"
       type="text"
-      placeholder="搜索 skill 名称、说明、标签"
+      placeholder="搜索技能名称、说明、标签"
       @input="onSearchInput"
     >
 
     <div v-if="loading" class="empty-state">加载中...</div>
-    <div v-else-if="skills.length === 0" class="empty-state">当前筛选下没有 skill。</div>
+    <div v-else-if="skills.length === 0" class="empty-state">当前筛选下没有技能。</div>
     <div v-else class="skill-list">
       <SkillCard
         v-for="skill in skills"

@@ -134,6 +134,20 @@
   cursor: not-allowed;
 }
 
+.skills-page .hero-button.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.skills-page .hero-button-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .skills-page .meta-row {
   flex-wrap: wrap;
 }
@@ -239,6 +253,11 @@
 .skills-page .markdown-preview p,
 .skills-page .markdown-preview li {
   line-height: 1.6;
+}
+
+.skills-page .markdown-preview ol,
+.skills-page .markdown-preview ul {
+  padding-left: 1.5rem;
 }
 
 @media (max-width: 1100px) {

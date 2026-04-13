@@ -5,7 +5,7 @@
         <span class="panel-kicker">Session</span>
         <h2>当前会话已激活</h2>
         <p v-if="conversationId">会话 ID: {{ conversationId }}</p>
-        <p v-else>先选择一个会话，再激活 skill。</p>
+        <p v-else>先选择一个会话，再激活技能。</p>
       </div>
     </div>
 
@@ -29,7 +29,7 @@
       </article>
     </div>
     <div v-else class="empty-state">
-      当前会话还没有激活 skill。
+      当前会话还没有激活技能。
     </div>
   </div>
 </template>
