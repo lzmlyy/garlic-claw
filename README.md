@@ -51,9 +51,14 @@ packages/
 config/
   ai-settings.example.json   AI provider / model / vision fallback 示例配置
 tools/
-  一键启停脚本.py            开发模式主入口
+  一键启停脚本.py            开发/生产/脚本测试统一主入口
   start-dev.bat              兼容旧入口
   stop-dev.bat               兼容旧入口
+  scripts/
+    dev_runtime.py           开发态编排
+    docker_runtime.py        Docker / 生产模式编排
+    process_runtime.py       底层进程宿主能力
+    test_runtime_scripts.py  脚本回归测试
 ```
 
 ## 配置方式
@@ -144,6 +149,18 @@ python tools/一键启停脚本.py --status
 
 ```bash
 python tools/一键启停脚本.py --tail-logs
+```
+
+运行脚本回归测试：
+
+```bash
+python tools/一键启停脚本.py --test
+```
+
+或：
+
+```bash
+python tools/一键启停脚本.py test
 ```
 
 默认地址：

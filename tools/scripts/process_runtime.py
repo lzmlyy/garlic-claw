@@ -26,11 +26,12 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable, Iterable
+from io import TextIOBase
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, cast
 
-
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 OTHER_DIR = ROOT / 'other'
 LOG_DIR = OTHER_DIR / 'logs'
 STATE_FILE = OTHER_DIR / 'dev-processes.json'
@@ -281,7 +282,11 @@ def loadState(
     """
     if stateFile.exists():
         try:
-            return json.loads(stateFile.read_text(encoding='utf-8'))
+            payload = json.loads(stateFile.read_text(encoding='utf-8'))
+            if isinstance(payload, dict):
+                return cast(dict[str, Any], payload)
+            warn(f'状态文件格式异常，忽略: {stateFile}')
+            return {}
         except json.JSONDecodeError:
             warn(f'状态文件损坏，忽略: {stateFile}')
             return {}
@@ -356,10 +361,10 @@ def isPidRunning(pid: int) -> bool:
 def isWindowsPidRunning(
     pid: int,
     *,
-    openProcess=None,
-    getExitCodeProcess=None,
-    closeHandle=None,
-    getLastError=None,
+    openProcess: Callable[[int, bool, int], int] | None = None,
+    getExitCodeProcess: Callable[[int, Any], int] | None = None,
+    closeHandle: Callable[[int], Any] | None = None,
+    getLastError: Callable[[], int] | None = None,
 ) -> bool:
     """使用 Win32 API 判断 PID 是否仍在运行。
 
@@ -545,7 +550,7 @@ def relayProcessOutput(
     stdoutLabel = str(service.get('stdoutLabel', service.get('name', 'stdout')))
     stderrLabel = str(service.get('stderrLabel', service.get('name', 'stderr')))
 
-    def forwardStream(stream, logPath: Path, prefix: str) -> None:
+    def forwardStream(stream: Iterable[str] | TextIOBase | None, logPath: Path, prefix: str) -> None:
         if stream is None:
             return
         with logPath.open('a', encoding='utf-8') as logFile:
@@ -702,7 +707,11 @@ def terminateProcess(pid: int, source: str) -> bool:
             )
         else:
             try:
-                os.killpg(pid, signal.SIGTERM)
+                killProcessGroup = getattr(os, 'killpg', None)
+                if callable(killProcessGroup):
+                    killProcessGroup(pid, signal.SIGTERM)
+                else:
+                    raise ProcessLookupError()
             except (ProcessLookupError, OSError):
                 os.kill(pid, signal.SIGTERM)
         ok(f'已关闭 {source} (PID {pid})')
@@ -758,9 +767,9 @@ def findPortPids(port: int) -> list[int]:
         except FileNotFoundError:
             continue
 
-        pids = parsePortPidOutput(command[0], result.stdout, port)
-        if pids:
-            return pids
+        parsedPids = parsePortPidOutput(command[0], result.stdout, port)
+        if parsedPids:
+            return parsedPids
 
     return []
 
@@ -827,7 +836,7 @@ def stopServices(
     seenPids: set[int] = set()
 
     orderedNames = [name for name in DEFAULT_SERVICE_ORDER if name in services]
-    orderedNames.extend(name for name in services.keys() if name not in orderedNames)
+    orderedNames.extend(name for name in services if name not in orderedNames)
 
     for serviceName in orderedNames:
         service = services.get(serviceName, {})
