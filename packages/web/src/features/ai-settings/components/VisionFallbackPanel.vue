@@ -403,7 +403,7 @@ function parseMaxDescriptionLength(value: string): number | undefined {
   border: 1px dashed var(--border);
   border-radius: 12px;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.15);
 }
 
 .model-option-list {

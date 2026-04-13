@@ -48,10 +48,8 @@
   gap: 14px;
   padding: 18px;
   border-radius: 20px;
-  background:
-    linear-gradient(135deg, rgba(11, 99, 181, 0.1), rgba(39, 174, 96, 0.08)),
-    var(--panel-bg, #ffffff);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
 }
 
 .quick-panel-header h2,
@@ -77,15 +75,15 @@
   gap: 10px;
   padding: 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
 }
 
 .quick-kicker {
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #0b63b5;
+  color: var(--accent);
 }
 
 .quick-card p {
