@@ -244,7 +244,7 @@ describe('PluginHostService', () => {
     personaService.listPersonas.mockResolvedValue([
       {
         id: 'builtin.default-assistant',
-        name: 'Default Assistant',
+        name: '默认助手',
         prompt: '你是 Garlic Claw',
         description: '默认通用助手',
         isDefault: true,
@@ -299,7 +299,7 @@ describe('PluginHostService', () => {
     ).resolves.toEqual([
       {
         id: 'builtin.default-assistant',
-        name: 'Default Assistant',
+        name: '默认助手',
         prompt: '你是 Garlic Claw',
         description: '默认通用助手',
         isDefault: true,

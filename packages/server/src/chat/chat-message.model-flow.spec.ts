@@ -91,7 +91,7 @@ describe('ChatMessageService model flow', () => {
     personaService.getCurrentPersona.mockResolvedValue({
       source: 'default',
       personaId: 'builtin.default-assistant',
-      name: 'Default Assistant',
+      name: '默认助手',
       prompt: '你是 Garlic Claw',
       isDefault: true,
     });
@@ -947,7 +947,7 @@ describe('ChatMessageService model flow', () => {
     personaService.getCurrentPersona.mockResolvedValue({
       source: 'default',
       personaId: 'builtin.default-assistant',
-      name: 'Default Assistant',
+      name: '默认助手',
       prompt: '你是 Garlic Claw',
       isDefault: true,
     });

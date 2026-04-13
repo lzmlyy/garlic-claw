@@ -7,11 +7,12 @@
       </div>
       <button
         type="button"
-        class="ghost-button"
+        class="ghost-button save-button"
+        title="保存配置"
         :disabled="saving || !hasSchema"
         @click="submit"
       >
-        {{ saving ? '保存中...' : '保存配置' }}
+        <Icon :icon="disketteBold" class="save-icon" aria-hidden="true" />
       </button>
     </div>
 
@@ -58,6 +59,8 @@
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import disketteBold from '@iconify-icons/solar/diskette-bold'
 import { computed, ref, watch } from 'vue'
 import type {
   JsonValue,
@@ -247,6 +250,26 @@ function parseStructuredField(
 .ghost-button {
   background: transparent;
   border: 1px solid var(--border);
+}
+
+.save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.save-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text);
 }
 
 .section-error {

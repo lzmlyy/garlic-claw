@@ -569,7 +569,7 @@ describe('PluginRuntimeService host api', () => {
     hostService.call.mockResolvedValue({
       source: 'default',
       personaId: 'builtin.default-assistant',
-      name: 'Default Assistant',
+      name: '默认助手',
       prompt: '你是 Garlic Claw',
       isDefault: true,
     });
@@ -589,7 +589,7 @@ describe('PluginRuntimeService host api', () => {
     ).resolves.toEqual({
       source: 'default',
       personaId: 'builtin.default-assistant',
-      name: 'Default Assistant',
+      name: '默认助手',
       prompt: '你是 Garlic Claw',
       isDefault: true,
     });

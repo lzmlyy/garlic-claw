@@ -554,7 +554,7 @@ describe('BuiltinPluginTransport host facade', () => {
       .mockResolvedValueOnce([
         {
           id: 'builtin.default-assistant',
-          name: 'Default Assistant',
+          name: '默认助手',
           prompt: '你是 Garlic Claw',
           description: '默认通用助手',
           isDefault: true,
@@ -691,7 +691,7 @@ describe('BuiltinPluginTransport host facade', () => {
       personas: [
         {
           id: 'builtin.default-assistant',
-          name: 'Default Assistant',
+          name: '默认助手',
           prompt: '你是 Garlic Claw',
           description: '默认通用助手',
           isDefault: true,

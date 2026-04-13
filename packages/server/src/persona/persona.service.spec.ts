@@ -23,7 +23,7 @@ describe('PersonaService', () => {
   it('falls back to the default persona when the conversation has no override', async () => {
     prisma.persona.upsert.mockResolvedValue({
       id: 'builtin.default-assistant',
-      name: 'Default Assistant',
+      name: '默认助手',
       prompt: '你是 Garlic Claw',
       description: '默认通用助手',
       isDefault: true,
@@ -42,7 +42,7 @@ describe('PersonaService', () => {
     ).resolves.toEqual({
       source: 'default',
       personaId: 'builtin.default-assistant',
-      name: 'Default Assistant',
+      name: '默认助手',
       prompt: '你是 Garlic Claw',
       description: '默认通用助手',
       isDefault: true,

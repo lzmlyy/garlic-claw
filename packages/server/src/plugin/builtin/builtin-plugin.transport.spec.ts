@@ -862,7 +862,7 @@ describe('BuiltinPluginTransport', () => {
       .mockResolvedValueOnce({
         source: 'conversation',
         personaId: 'builtin.default-assistant',
-        name: 'Default Assistant',
+        name: '默认助手',
       })
       .mockResolvedValueOnce({
         id: 'persona-writer',

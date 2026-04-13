@@ -6,7 +6,7 @@ export interface PluginConversationTitleConfig {
   maxMessages?: number;
 }
 
-export const CONVERSATION_TITLE_DEFAULT_TITLE = 'New Chat';
+export const CONVERSATION_TITLE_DEFAULT_TITLE = '新对话';
 export const CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES = 4;
 
 export const CONVERSATION_TITLE_CONFIG_FIELDS = [

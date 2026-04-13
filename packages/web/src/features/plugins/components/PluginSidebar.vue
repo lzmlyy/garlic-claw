@@ -6,7 +6,9 @@
         <h2>插件</h2>
         <p>默认聚焦用户可感知插件，系统内建按需展开。</p>
       </div>
-      <button type="button" class="ghost-button" @click="$emit('refresh')">刷新</button>
+      <button type="button" class="ghost-button refresh-button" title="刷新" @click="$emit('refresh')">
+        <Icon :icon="refreshBold" class="refresh-icon" aria-hidden="true" />
+      </button>
     </div>
 
     <div v-if="!loading && plugins.length > 0" class="sidebar-overview">
@@ -32,17 +34,13 @@
         placeholder="搜索名称、描述或问题摘要"
       >
       <div v-if="systemBuiltinCount > 0" class="sidebar-system-hint">
-        <span>
-          {{ showSystemBuiltins ? `已显示系统内建插件（${systemBuiltinCount}）` : `已隐藏 ${systemBuiltinCount} 个系统内建插件` }}
+        <span class="system-hint-text">
+          {{ showSystemBuiltins ? `已显示 ${systemBuiltinCount} 个系统内建插件` : `已隐藏 ${systemBuiltinCount} 个系统内建插件` }}
         </span>
-        <button
-          type="button"
-          class="results-clear"
-          data-test="plugin-sidebar-toggle-system"
-          @click="showSystemBuiltins = !showSystemBuiltins"
-        >
-          {{ showSystemBuiltins ? '隐藏系统内建' : '显示系统内建' }}
-        </button>
+        <label class="switch" data-test="plugin-sidebar-toggle-system">
+          <input v-model="showSystemBuiltins" type="checkbox">
+          <span class="slider" />
+        </label>
       </div>
       <div class="filter-chips">
         <button
@@ -178,6 +176,8 @@
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import refreshBold from '@iconify-icons/solar/refresh-bold'
 import { computed, ref, watch } from 'vue'
 import type { PluginInfo } from '@garlic-claw/shared'
 import { usePagination } from '@/composables/use-pagination'

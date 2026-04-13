@@ -115,7 +115,7 @@
           <span class="tag-count">{{ highlights.length }}</span>
         </div>
         <div class="token-list">
-          <span v-for="highlight in highlights" :key="highlight" class="token accent-token">
+          <span v-for="highlight in highlights" :key="highlight" class="token">
             {{ highlight }}
           </span>
           <span v-if="highlights.length === 0" class="token muted-token">基础工具插件</span>

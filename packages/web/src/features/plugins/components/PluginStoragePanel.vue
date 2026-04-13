@@ -8,17 +8,29 @@
       <div class="section-actions">
         <input
           v-model="prefix"
+          class="prefix-input"
           data-test="storage-prefix-input"
           type="text"
           placeholder="按前缀筛选，例如 cursor."
         >
         <button
           type="button"
-          class="ghost-button"
+          class="ghost-button refresh-button"
+          title="刷新 KV"
           :disabled="loading"
           @click="requestRefresh"
         >
-          {{ loading ? '刷新中...' : '刷新 KV' }}
+          <Icon :icon="refreshBold" class="refresh-icon" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="ghost-button save-button"
+          data-test="storage-save-button"
+          title="保存 KV"
+          :disabled="saving"
+          @click="submit"
+        >
+          <Icon :icon="disketteBold" class="save-icon" aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -38,15 +50,6 @@
         rows="4"
         placeholder="输入 JSON 或纯文本"
       />
-      <button
-        type="button"
-        class="ghost-button"
-        data-test="storage-save-button"
-        :disabled="saving"
-        @click="submit"
-      >
-        {{ saving ? '保存中...' : '保存 KV' }}
-      </button>
     </div>
 
     <div v-if="loading" class="section-empty">加载中...</div>
@@ -77,6 +80,9 @@
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import refreshBold from '@iconify-icons/solar/refresh-bold'
+import disketteBold from '@iconify-icons/solar/diskette-bold'
 import { computed, ref, watch } from 'vue'
 import type { JsonValue, PluginStorageEntry } from '@garlic-claw/shared'
 
@@ -180,7 +186,7 @@ function parseStorageValue(raw: string): JsonValue {
 
 .section-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -197,8 +203,15 @@ function parseStorageValue(raw: string): JsonValue {
 
 .section-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 10px;
+}
+
+.prefix-input {
+  width: 160px;
+  min-width: 120px;
+  flex-shrink: 1;
 }
 
 .storage-editor {
@@ -209,6 +222,28 @@ function parseStorageValue(raw: string): JsonValue {
 .ghost-button {
   background: transparent;
   border: 1px solid var(--border);
+}
+
+.refresh-button,
+.save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.refresh-icon,
+.save-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text);
 }
 
 .danger-button {

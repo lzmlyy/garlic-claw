@@ -91,7 +91,7 @@ describe('usePersonaSettings', () => {
 
   it('loads persona list and prefers the current conversation persona as selection', async () => {
     vi.mocked(personaData.loadPersonas).mockResolvedValue([
-      createPersona('builtin.default-assistant', 'Default Assistant'),
+      createPersona('builtin.default-assistant', '默认助手'),
       createPersona('persona.writer', 'Writer'),
     ])
     vi.mocked(personaData.loadCurrentPersona).mockResolvedValue(
@@ -109,7 +109,7 @@ describe('usePersonaSettings', () => {
 
   it('applies the selected persona to the current conversation and refreshes current state', async () => {
     vi.mocked(personaData.loadPersonas).mockResolvedValue([
-      createPersona('builtin.default-assistant', 'Default Assistant'),
+      createPersona('builtin.default-assistant', '默认助手'),
       createPersona('persona.writer', 'Writer'),
     ])
     vi.mocked(personaData.loadCurrentPersona).mockResolvedValue(
@@ -133,7 +133,7 @@ describe('usePersonaSettings', () => {
 
   it('refreshes current persona when the selected conversation changes', async () => {
     vi.mocked(personaData.loadPersonas).mockResolvedValue([
-      createPersona('builtin.default-assistant', 'Default Assistant'),
+      createPersona('builtin.default-assistant', '默认助手'),
       createPersona('persona.writer', 'Writer'),
     ])
     vi.mocked(personaData.loadCurrentPersona)

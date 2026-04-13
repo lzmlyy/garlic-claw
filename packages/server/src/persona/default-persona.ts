@@ -6,7 +6,7 @@ export const DEFAULT_PERSONA_ID = 'builtin.default-assistant';
 /**
  * 默认 persona 的展示名称。
  */
-export const DEFAULT_PERSONA_NAME = 'Default Assistant';
+export const DEFAULT_PERSONA_NAME = '默认助手';
 
 /**
  * 默认 persona 的描述。

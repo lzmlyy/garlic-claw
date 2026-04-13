@@ -88,7 +88,7 @@ const navItems: Array<{
 }> = [
   { name: 'chat', label: '对话', icon: chatRoundLineBold, section: 'core' },
   { name: 'plugins', label: '插件', icon: widgetBold, section: 'core' },
-  { name: 'persona-settings', label: 'Persona', icon: userIdBold, section: 'core' },
+  { name: 'persona-settings', label: '人设', icon: userIdBold, section: 'core' },
   { name: 'tools', label: '工具', icon: widgetAddBold, section: 'core' },
   { name: 'skills', label: 'Skills', icon: magicStick3Bold, section: 'core' },
   { name: 'commands', label: '命令', icon: keyboardBold, section: 'core' },

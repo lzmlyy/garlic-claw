@@ -3,7 +3,7 @@
     <div class="quick-panel-header">
       <div>
         <h2>高级扩展</h2>
-        <p>模型与 Persona 路由底层统一走插件系统，这里提供直接入口。</p>
+        <p>模型与人设路由底层统一走插件系统，这里提供直接入口。</p>
       </div>
     </div>
 
@@ -26,16 +26,16 @@
       </article>
 
       <article class="quick-card">
-        <span class="quick-kicker">Persona Settings</span>
+        <span class="quick-kicker">人设设置</span>
         <h3>人设配置</h3>
-        <p>Persona 相关入口已提升到独立业务页，里面会解释 `persona-router` 的作用并提供插件配置入口。</p>
+        <p>人设相关入口已提升到独立业务页，里面会解释 `persona-router` 的作用并提供插件配置入口。</p>
         <RouterLink
           class="quick-link"
           :to="{
             name: 'persona-settings',
           }"
         >
-          打开 Persona 页面
+          打开人设页面
         </RouterLink>
       </article>
     </div>

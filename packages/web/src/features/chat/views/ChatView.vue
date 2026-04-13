@@ -1,91 +1,97 @@
 <template>
   <div class="chat-view">
     <template v-if="chat.currentConversationId">
-      <div class="chat-toolbar">
-        <ModelQuickInput
-          :model="chat.selectedModel"
-          :provider="chat.selectedProvider"
-          placeholder="选择 provider/model"
-          @change="handleModelChange"
-        />
-        <div v-if="selectedCapabilities" class="capability-row">
-          <span v-if="selectedCapabilities.reasoning" class="capability-chip">推理</span>
-          <span v-if="selectedCapabilities.toolCall" class="capability-chip">工具</span>
-          <span v-if="selectedCapabilities.input.image" class="capability-chip">支持图片</span>
-        </div>
-        <div class="service-row">
-          <span class="service-label">会话服务</span>
-          <span
-            class="service-chip"
-            :class="{ disabled: conversationHostServices?.sessionEnabled === false }"
-          >
-            {{ conversationHostServices?.sessionEnabled === false ? '宿主已停用' : '宿主已启用' }}
-          </span>
-          <button
-            class="service-toggle"
-            type="button"
-            @click="setConversationSessionEnabled(conversationHostServices?.sessionEnabled === false)"
-          >
-            {{ conversationHostServices?.sessionEnabled === false ? '开启会话宿主' : '停用会话宿主' }}
-          </button>
-          <button
-            class="service-toggle"
-            type="button"
-            :disabled="conversationHostServices?.sessionEnabled === false"
-            @click="setConversationLlmEnabled(conversationHostServices?.llmEnabled === false)"
-          >
-            {{ conversationHostServices?.llmEnabled === false ? '开启 LLM 回复' : '关闭 LLM 回复' }}
-          </button>
-          <span v-if="conversationSendDisabledReason" class="service-warning">
-            {{ conversationSendDisabledReason }}
-          </span>
-        </div>
-        <div class="skill-row">
-          <span class="service-label">当前 Skills</span>
-          <div
-            v-if="conversationSkillState?.activeSkills?.length"
-            class="skill-chip-list"
-          >
-            <span
-              v-for="skill in conversationSkillState.activeSkills"
-              :key="skill.id"
-              class="skill-chip"
-            >
-              {{ skill.name }}
-              <button
-                type="button"
-                class="skill-chip-remove"
-                @click="removeConversationSkill(skill.id)"
-              >
-                ×
-              </button>
-            </span>
+      <div class="chat-toolbar" :class="{ collapsed: !toolbarExpanded }">
+        <div class="toolbar-header">
+          <div class="toolbar-input-wrap">
+            <ModelQuickInput
+              :model="chat.selectedModel"
+              :provider="chat.selectedProvider"
+              placeholder="选择 provider/model"
+              @change="handleModelChange"
+            />
           </div>
-          <span v-else class="service-warning">当前会话未激活 skill</span>
-          <RouterLink class="service-link" :to="{ name: 'skills' }">
-            管理 Skills
-          </RouterLink>
+          <button
+            type="button"
+            class="toolbar-toggle"
+            :title="toolbarExpanded ? '收起' : '展开'"
+            @click="toolbarExpanded = !toolbarExpanded"
+          >
+            <Icon
+              class="toolbar-toggle-icon"
+              :icon="toolbarExpanded ? altArrowUpBold : altArrowDownBold"
+              aria-hidden="true"
+            />
+          </button>
         </div>
+        <template v-if="toolbarExpanded">
+          <div v-if="selectedCapabilities" class="capability-row">
+            <span v-if="selectedCapabilities.reasoning" class="capability-chip">推理</span>
+            <span v-if="selectedCapabilities.toolCall" class="capability-chip">工具</span>
+            <span v-if="selectedCapabilities.input.image" class="capability-chip">支持图片</span>
+          </div>
+          <div class="service-row">
+            <span class="service-label">会话服务</span>
+            <button
+              class="service-toggle"
+              type="button"
+              @click="setConversationSessionEnabled(conversationHostServices?.sessionEnabled === false)"
+            >
+              {{ conversationHostServices?.sessionEnabled === false ? '已停用会话宿主' : '已开启会话宿主' }}
+            </button>
+            <button
+              class="service-toggle"
+              type="button"
+              :disabled="conversationHostServices?.sessionEnabled === false"
+              @click="setConversationLlmEnabled(conversationHostServices?.llmEnabled === false)"
+            >
+              {{ conversationHostServices?.llmEnabled === false ? '已关闭 LLM 回复' : '已开启 LLM 回复' }}
+            </button>
+          </div>
+          <div class="skill-row">
+            <template v-if="conversationSkillState?.activeSkills?.length">
+              <span class="service-label">当前 Skills</span>
+              <div class="skill-chip-list">
+                <span
+                  v-for="skill in conversationSkillState.activeSkills"
+                  :key="skill.id"
+                  class="skill-chip"
+                >
+                  {{ skill.name }}
+                  <button
+                    type="button"
+                    class="skill-chip-remove"
+                    @click="removeConversationSkill(skill.id)"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            </template>
+            <span v-else class="service-warning">当前会话未激活 skill</span>
+            <RouterLink class="service-link" :to="{ name: 'skills' }">
+              管理 Skills
+            </RouterLink>
+          </div>
+        </template>
       </div>
 
       <ChatMessageList
         :loading="chat.loading"
         :messages="chat.messages"
         @delete-message="deleteMessage"
+        @retry-message="retryMessage"
         @update-message="updateMessage"
       />
 
       <ChatComposer
         v-model="inputText"
         :can-send="canSend"
-        :can-trigger-retry="canTriggerRetryAction"
         :pending-images="pendingImages"
-        :retry-label="retryActionLabel"
         :streaming="chat.streaming"
         :upload-notices="uploadNotices"
         @file-change="handleFileChange"
         @remove-image="removeImage"
-        @retry="triggerRetryAction"
         @send="send"
         @stop="chat.stopStreaming()"
       />
@@ -98,6 +104,10 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+import { Icon } from '@iconify/vue'
+import altArrowUpBold from '@iconify-icons/solar/alt-arrow-up-bold'
+import altArrowDownBold from '@iconify-icons/solar/alt-arrow-down-bold'
 import ModelQuickInput from '@/components/ModelQuickInput.vue'
 import { useChatView } from '@/features/chat/composables/use-chat-view'
 import ChatComposer from '@/features/chat/components/ChatComposer.vue'
@@ -105,24 +115,22 @@ import ChatMessageList from '@/features/chat/components/ChatMessageList.vue'
 import { useChatStore } from '@/features/chat/store/chat'
 
 const chat = useChatStore()
+const toolbarExpanded = ref(true)
 const {
   inputText,
   pendingImages,
   selectedCapabilities,
   conversationHostServices,
   conversationSkillState,
-  conversationSendDisabledReason,
   uploadNotices,
   canSend,
-  canTriggerRetryAction,
   handleModelChange,
   send,
   handleFileChange,
   removeImage,
   updateMessage,
   deleteMessage,
-  retryActionLabel,
-  triggerRetryAction,
+  retryMessage,
   setConversationLlmEnabled,
   setConversationSessionEnabled,
   removeConversationSkill,
@@ -146,6 +154,56 @@ const {
   box-shadow: var(--shadow-sm), 0 0 15px rgba(103, 199, 207, 0.1);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.toolbar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-toggle {
+  flex: 0 0 auto;
+  width: 32px;
+  align-self: stretch;
+  border: 1px solid rgba(103, 199, 207, 0.2);
+  border-radius: 8px;
+  background: rgba(10, 19, 24, 0.38);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.toolbar-toggle:hover {
+  opacity: 0.8;
+}
+
+.toolbar-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.chat-toolbar.collapsed .toolbar-toggle {
+  background: rgba(10, 19, 24, 0.62);
+  border-color: rgba(103, 199, 207, 0.28);
+  color: var(--accent-hover);
 }
 
 .capability-row {

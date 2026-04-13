@@ -171,14 +171,15 @@
 
 .tag-group {
   display: grid;
-  gap: 8px;
-  padding: 1rem;
+  gap: 6px;
+  padding: 0.75rem;
   border-radius: 18px;
+  align-content: start;
 }
 
 .tag-group-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
@@ -195,17 +196,17 @@
 .token-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .token {
   display: inline-flex;
   align-items: center;
-  padding: 0.28rem 0.6rem;
-  border-radius: 999px;
+  padding: 0.22rem 0.5rem;
+  border-radius: 6px;
   border: 1px solid rgba(133, 163, 199, 0.14);
   background: rgba(18, 32, 51, 0.82);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 
 .muted-token {

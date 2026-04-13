@@ -6,31 +6,32 @@
         <p>查看插件最近的失败、治理动作与健康检查记录。</p>
       </div>
       <div class="section-actions">
-        <label class="control-field">
-          <span>最近</span>
-          <select
-            :value="selectedLimit"
-            data-test="event-limit"
-            @change="handleLimitChange"
-          >
-            <option v-for="option in limitOptions" :key="option" :value="option">
-              {{ option }}
-            </option>
-          </select>
-        </label>
         <button
           type="button"
-          class="ghost-button"
+          class="ghost-button refresh-button"
           data-test="event-refresh"
+          title="刷新日志"
           :disabled="loading"
           @click="emitRefresh()"
         >
-          {{ loading ? '刷新中...' : '刷新日志' }}
+          <Icon :icon="refreshBold" class="refresh-icon" aria-hidden="true" />
         </button>
       </div>
     </div>
 
     <div class="filter-grid">
+      <label class="control-field">
+        <span>最近</span>
+        <select
+          :value="selectedLimit"
+          data-test="event-limit"
+          @change="handleLimitChange"
+        >
+          <option v-for="option in limitOptions" :key="option" :value="option">
+            {{ option }}
+          </option>
+        </select>
+      </label>
       <label class="control-field">
         <span>级别</span>
         <select v-model="levelFilter" data-test="event-level-filter">
@@ -92,6 +93,8 @@
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import refreshBold from '@iconify-icons/solar/refresh-bold'
 import { computed, ref, watch } from 'vue'
 import type { PluginEventQuery, PluginEventRecord } from '@garlic-claw/shared'
 
@@ -222,7 +225,7 @@ function buildQuery(): PluginEventQuery {
 }
 
 .filter-grid {
-  grid-template-columns: 160px 200px minmax(0, 1fr);
+  grid-template-columns: 120px 120px 160px minmax(0, 1fr);
 }
 
 .control-field {
@@ -244,8 +247,23 @@ function buildQuery(): PluginEventQuery {
   border: 1px solid var(--border);
 }
 
+.refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.refresh-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .load-more-button {
-  justify-self: start;
+  justify-self: end;
 }
 
 .event-list {

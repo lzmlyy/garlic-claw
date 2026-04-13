@@ -7,7 +7,9 @@
         <p>统一管理内建插件与远程插件的配置、作用域、健康和治理动作。</p>
       </div>
       <div class="hero-side">
-        <button type="button" class="hero-action" @click="$emit('refresh')">刷新全部</button>
+        <button type="button" class="hero-action" title="刷新全部" @click="$emit('refresh')">
+          <Icon :icon="refreshBold" class="refresh-icon" aria-hidden="true" />
+        </button>
         <div class="hero-note">
           <span class="hero-note-label">统一协议运行面</span>
           <strong>{{ headline }}</strong>
@@ -32,6 +34,9 @@
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import refreshBold from '@iconify-icons/solar/refresh-bold'
+
 defineProps<{
   headline: string
   cards: Array<{
@@ -123,11 +128,21 @@ defineEmits<{
 }
 
 .hero-action {
-  justify-self: start;
-  padding: 0.7rem 1.05rem;
-  border-radius: 14px;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
   background: linear-gradient(135deg, #63c7cd, #4f9ee8);
   box-shadow: 0 12px 28px rgba(52, 116, 168, 0.28);
+}
+
+.refresh-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .hero-action:hover:not(:disabled) {

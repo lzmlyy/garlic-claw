@@ -30,7 +30,7 @@ export class ChatService {
     const conversation = await this.prisma.conversation.create({
       data: {
         id: uuidv7(),
-        title: dto.title || 'New Chat',
+        title: dto.title || '新对话',
         hostServicesJson: JSON.stringify(DEFAULT_CONVERSATION_HOST_SERVICES),
         skillsJson: JSON.stringify([]),
         userId,
