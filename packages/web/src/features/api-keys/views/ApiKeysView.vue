@@ -8,7 +8,14 @@
           <p>为外部系统创建最小权限凭据，不再复用管理端 JWT。</p>
         </div>
         <div class="api-hero-side">
-          <button type="button" class="hero-action" @click="refreshAll()">刷新全部</button>
+          <button
+            type="button"
+            class="hero-action icon-only"
+            title="刷新全部"
+            @click="refreshAll()"
+          >
+            <Icon :icon="refreshBold" class="hero-action-icon" aria-hidden="true" />
+          </button>
           <div class="hero-note">
             <span class="hero-note-label">当前凭据面</span>
             <strong>{{ activeCount }} 个可用 key</strong>
@@ -163,6 +170,8 @@
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import refreshBold from '@iconify-icons/solar/refresh-bold'
 import { useApiKeyManagement } from '../composables/use-api-key-management'
 
 const {
@@ -251,6 +260,20 @@ function formatTime(iso: string) {
 
 .hero-action {
   align-self: flex-start;
+}
+
+.hero-action.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.hero-action-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .field span {
