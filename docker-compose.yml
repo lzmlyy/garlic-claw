@@ -2,7 +2,7 @@ services:
   server:
     build:
       context: .
-      dockerfile: Dockerfile.server
+      dockerfile: packages/server/Dockerfile
     ports:
       - "23330:23330"
       - "23331:23331"
@@ -17,7 +17,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: packages/web/Dockerfile
     ports:
       - "80:80"
     depends_on:

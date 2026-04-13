@@ -1,5 +1,5 @@
 # 构建阶段
-FROM node:24-alpine AS builder
+FROM node:24-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -17,13 +17,13 @@ COPY packages/plugin-sdk/ packages/plugin-sdk/
 COPY packages/plugins/plugin-pc/ packages/plugins/plugin-pc/
 
 RUN npm run build -w packages/shared
+RUN npm run build -w packages/plugin-sdk
 RUN npx prisma generate --schema=packages/server/prisma/schema.prisma
 RUN npm run build -w packages/server
-RUN npm run build -w packages/plugin-sdk
 RUN npm run build -w packages/plugins/plugin-pc
 
 # 生产阶段
-FROM node:24-alpine AS production
+FROM node:24-bookworm-slim AS production
 
 WORKDIR /app
 

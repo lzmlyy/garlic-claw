@@ -1,0 +1,40 @@
+# Git 与编辑器元数据
+.git/
+.gitignore
+.vscode/
+
+# Node 依赖与构建产物
+node_modules/
+packages/*/node_modules/
+packages/plugins/*/node_modules/
+dist/
+packages/*/dist/
+packages/plugins/*/dist/
+coverage/
+.turbo/
+
+# Python 与本地缓存
+__pycache__/
+*.pyc
+.cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# 本地运行状态与临时文件
+tmp/
+other/
+*.log
+*.pid
+run.pid
+
+# 本地环境与数据库文件
+.env
+*.db
+*.db-journal
+
+# 文档与过程产物
+task_plan.md
+progress.md
+findings.md
+docs/superpowers/
