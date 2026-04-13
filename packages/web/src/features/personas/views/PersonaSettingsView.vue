@@ -5,8 +5,8 @@
         <h1>人设设置</h1>
         <p>把会话人设入口从插件底层里提出来，用户直接在业务页理解和切换。</p>
       </div>
-      <button class="ghost-button" :disabled="loading" @click="refreshAll">
-        {{ loading ? '刷新中...' : '刷新' }}
+      <button type="button" class="ghost-button refresh-button" :disabled="loading" title="刷新" @click="refreshAll">
+        <Icon :icon="refreshBold" class="refresh-icon" aria-hidden="true" />
       </button>
     </header>
 
@@ -138,8 +138,10 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink } from 'vue-router';
-import { usePersonaSettings } from '../composables/use-persona-settings';
+import { Icon } from '@iconify/vue'
+import refreshBold from '@iconify-icons/solar/refresh-bold'
+import { RouterLink } from 'vue-router'
+import { usePersonaSettings } from '../composables/use-persona-settings'
 
 const {
   loading,
@@ -355,6 +357,26 @@ const sourceLabelMap = {
 .detail-note {
   padding-top: 4px;
   border-top: 1px solid var(--border, rgba(133, 163, 199, 0.16));
+}
+
+.refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.refresh-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text);
 }
 
 @media (max-width: 1080px) {
