@@ -19,10 +19,10 @@ describe('router', () => {
     authState.ensureInitialized.mockClear()
   })
 
-  it('mounts the chat route inside the dedicated chat shell', () => {
+  it('mounts the chat route inside the admin console shell', () => {
     const resolved = router.resolve({ name: 'chat' })
 
-    expect(resolved.matched[0]?.name).toBe('chat-shell')
+    expect(resolved.matched[0]?.name).toBe('admin-shell')
   })
 
   it('mounts the plugin route inside the dedicated admin shell', () => {
@@ -63,6 +63,15 @@ describe('router', () => {
 
     expect(router.currentRoute.value.name).toBe('chat')
     expect(result).toBeUndefined()
+    authState.isAdmin = true
+  })
+
+  it('allows non-admin users to stay on the chat route', async () => {
+    authState.isAdmin = false
+
+    await router.push({ name: 'chat' })
+
+    expect(router.currentRoute.value.name).toBe('chat')
     authState.isAdmin = true
   })
 })

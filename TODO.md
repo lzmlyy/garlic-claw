@@ -172,3 +172,4 @@
 - [ ] 继续拆 `packages/plugin-sdk` 的超大入口与宿主入口
 - [ ] 继续清理 `core` 中仍然偏厚的 owner / facade / orchestration 聚合点
 - [ ] 基于当前热点重新定义下一轮分阶段计划，而不是复用已经完成的 `阶段 -1 ~ 8`
+- [ ] 将所有uuid改成uuid7

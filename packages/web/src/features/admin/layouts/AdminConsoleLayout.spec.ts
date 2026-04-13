@@ -6,7 +6,9 @@ vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
     user: {
       username: 'codex',
+      role: 'admin',
     },
+    isAdmin: true,
     logout: vi.fn(),
   }),
 }))
@@ -20,13 +22,13 @@ vi.mock('vue-router', async () => {
       push: vi.fn(),
     }),
     useRoute: () => ({
-      name: 'plugins',
+      name: 'chat',
     }),
   }
 })
 
 describe('AdminConsoleLayout', () => {
-  it('renders admin navigation without the chat conversation rail', () => {
+  it('renders the compact admin navigation with the chat entry', () => {
     const wrapper = mount(AdminConsoleLayout, {
       global: {
         stubs: {
@@ -41,10 +43,14 @@ describe('AdminConsoleLayout', () => {
       },
     })
 
+    expect(wrapper.text()).toContain('对话')
     expect(wrapper.text()).toContain('插件')
     expect(wrapper.text()).toContain('工具')
     expect(wrapper.text()).toContain('AI 设置')
-    expect(wrapper.text()).toContain('返回对话')
-    expect(wrapper.text()).not.toContain('新对话')
+    expect(wrapper.text()).toContain('控制台')
+    expect(wrapper.text()).toContain('继续收起')
+    expect(wrapper.findAll('svg').length).toBeGreaterThan(0)
+    expect(wrapper.text()).not.toContain('返回对话')
+    expect(wrapper.text()).not.toContain('最近一次对话')
   })
 })

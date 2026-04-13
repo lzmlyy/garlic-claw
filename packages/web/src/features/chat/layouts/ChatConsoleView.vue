@@ -1,17 +1,10 @@
 <template>
-  <div class="chat-shell">
+  <div class="chat-console-view">
     <aside class="chat-rail">
       <header class="rail-header">
         <div class="brand-block">
           <span class="brand-kicker">Chat Workbench</span>
           <h1>Garlic Claw</h1>
-          <RouterLink
-            v-if="auth.isAdmin"
-            class="admin-entry"
-            :to="{ name: 'plugins' }"
-          >
-            管理后台
-          </RouterLink>
         </div>
         <button type="button" class="new-chat-button" @click="newChat">
           新对话
@@ -39,31 +32,20 @@
         </button>
       </div>
 
-      <footer class="rail-footer">
-        <div class="user-meta">
-          <span class="user-label">当前用户</span>
-          <strong>{{ auth.user?.username ?? 'unknown' }}</strong>
-        </div>
-        <button type="button" class="logout-button" @click="handleLogout">
-          退出
-        </button>
-      </footer>
+      <footer class="rail-footer" />
     </aside>
 
     <main class="chat-content">
-      <RouterView />
+      <ChatView />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { RouterLink, RouterView, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import ChatView from '@/features/chat/views/ChatView.vue'
 import { useChatStore } from '@/features/chat/store/chat'
 
-const router = useRouter()
-const auth = useAuthStore()
 const chat = useChatStore()
 
 onMounted(() => {
@@ -74,17 +56,13 @@ async function newChat() {
   const conversation = await chat.createConversation()
   await chat.selectConversation(conversation.id)
 }
-
-function handleLogout() {
-  auth.logout()
-  void router.push({ name: 'login' })
-}
 </script>
 
 <style scoped>
-.chat-shell {
+.chat-console-view {
   display: flex;
-  min-height: 100vh;
+  min-height: 100%;
+  height: 100%;
 }
 
 .chat-rail {
@@ -121,11 +99,6 @@ function handleLogout() {
 .brand-block h1 {
   margin: 0;
   font-size: 1.3rem;
-}
-
-.admin-entry {
-  color: var(--accent);
-  font-size: 0.9rem;
 }
 
 .new-chat-button {
@@ -171,40 +144,19 @@ function handleLogout() {
 }
 
 .rail-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1rem 1.1rem;
+  min-height: 16px;
   border-top: 1px solid var(--border);
-}
-
-.user-meta {
-  display: grid;
-  gap: 0.15rem;
-}
-
-.user-label {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.logout-button {
-  background: transparent;
-  color: var(--danger);
 }
 
 .chat-content {
   flex: 1;
   min-width: 0;
-  min-height: 100vh;
+  min-height: 100%;
   overflow: hidden;
 }
 
 @media (max-width: 900px) {
-  .chat-shell {
+  .chat-console-view {
     flex-direction: column;
   }
 
