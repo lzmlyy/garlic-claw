@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import time
 from collections.abc import Callable
@@ -43,6 +44,31 @@ SERVER_APP_STDERR = LOG_DIR / "server-app.err.log"
 WEB_STDOUT = LOG_DIR / "web-vite.log"
 WEB_STDERR = LOG_DIR / "web-vite.err.log"
 DEV_DOCKER_SERVICES: list[str] = []
+
+
+def parseEnvFile(envPath: Path) -> dict[str, str]:
+    env: dict[str, str] = {}
+    if not envPath.exists():
+        return env
+
+    for rawLine in envPath.read_text(encoding='utf-8').splitlines():
+        line = rawLine.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        env[key.strip()] = value.strip()
+    return env
+
+
+def loadProjectEnv() -> dict[str, str]:
+    envPath = docker_runtime.获取可用env文件()
+    if envPath is None:
+        return {}
+
+    loaded = parseEnvFile(envPath)
+    for key, value in loaded.items():
+        os.environ[key] = value
+    return loaded
 
 
 def 获取状态输出宽度(messages: list[str]) -> int:
@@ -156,6 +182,7 @@ def createBuildSteps() -> list[tuple[str, list[str]]]:
         ("构建 shared", ["npm", "run", "build", "-w", "packages/shared"]),
         ("构建 plugin-sdk", ["npm", "run", "build", "-w", "packages/plugin-sdk"]),
         ("生成 Prisma Client", ["npm", "run", "prisma:generate", "-w", "packages/server"]),
+        ("同步开发数据库", ["npm", "run", "prisma:push", "-w", "packages/server"]),
         ("构建 server", ["npm", "run", "build", "-w", "packages/server"]),
     ]
 
@@ -181,7 +208,7 @@ def createDevServices() -> dict[str, dict[str, Any]]:
         "backend_app": {
             "name": "后端应用",
             "cwd": SERVER_DIR,
-            "command": ["node", "--watch", "dist/main.js"],
+            "command": ["node", "--watch", "dist/src/main.js"],
             "stdoutPath": str(SERVER_APP_STDOUT),
             "stderrPath": str(SERVER_APP_STDERR),
             "stdoutLabel": "",
@@ -437,6 +464,7 @@ def 启动开发服务(allowAutoStop: bool, tailLogs: bool) -> int:
     if not 执行启动前预检():
         return 1
     docker_runtime.确保env文件()
+    loadProjectEnv()
     if not 确保npm依赖已安装():
         return 1
     if not 执行构建步骤():

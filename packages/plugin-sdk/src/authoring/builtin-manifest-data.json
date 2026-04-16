@@ -1,0 +1,695 @@
+{
+  "defaults": {
+    "memoryContextLimit": 5,
+    "memoryContextPromptPrefix": "与此用户相关的记忆",
+    "kbContextLimit": 3,
+    "kbContextPromptPrefix": "与当前问题相关的系统知识",
+    "subagentDelegateMaxSteps": 4,
+    "conversationTitleDefaultTitle": "New Chat",
+    "conversationTitleMaxMessages": 4,
+    "providerRouterDefaultShortCircuitReply": "本轮请求已由 provider-router 直接处理。"
+  },
+  "memoryContextConfigFields": [
+    {
+      "key": "limit",
+      "type": "number",
+      "description": "每次检索长期记忆的最大条数",
+      "defaultValue": 5
+    },
+    {
+      "key": "promptPrefix",
+      "type": "string",
+      "description": "记忆摘要写入系统提示词时的前缀",
+      "defaultValue": "与此用户相关的记忆"
+    }
+  ],
+  "kbContextConfigFields": [
+    {
+      "key": "limit",
+      "type": "number",
+      "description": "每次检索系统知识的最大条数",
+      "defaultValue": 3
+    },
+    {
+      "key": "promptPrefix",
+      "type": "string",
+      "description": "知识摘要写入系统提示词时的前缀",
+      "defaultValue": "与当前问题相关的系统知识"
+    }
+  ],
+  "subagentDelegateConfigFields": [
+    {
+      "key": "targetProviderId",
+      "type": "string",
+      "description": "子代理默认使用的 provider ID"
+    },
+    {
+      "key": "targetModelId",
+      "type": "string",
+      "description": "子代理默认使用的 model ID"
+    },
+    {
+      "key": "allowedToolNames",
+      "type": "string",
+      "description": "允许子代理使用的工具名列表，使用英文逗号分隔"
+    },
+    {
+      "key": "maxSteps",
+      "type": "number",
+      "description": "子代理最多允许多少轮工具调用",
+      "defaultValue": 4
+    }
+  ],
+  "conversationTitleConfigFields": [
+    {
+      "key": "defaultTitle",
+      "type": "string",
+      "description": "仍命中该默认标题时才尝试自动改标题",
+      "defaultValue": "New Chat"
+    },
+    {
+      "key": "maxMessages",
+      "type": "number",
+      "description": "参与标题生成的最大消息条数",
+      "defaultValue": 4
+    }
+  ],
+  "providerRouterConfigFields": [
+    {
+      "key": "targetProviderId",
+      "type": "string",
+      "description": "命中路由时切换到的 provider ID"
+    },
+    {
+      "key": "targetModelId",
+      "type": "string",
+      "description": "命中路由时切换到的 model ID"
+    },
+    {
+      "key": "allowedToolNames",
+      "type": "string",
+      "description": "允许暴露给模型的工具名列表，使用英文逗号分隔"
+    },
+    {
+      "key": "shortCircuitKeyword",
+      "type": "string",
+      "description": "当最近一条用户消息包含该关键字时，直接返回 short-circuit"
+    },
+    {
+      "key": "shortCircuitReply",
+      "type": "string",
+      "description": "short-circuit 时直接写回给 assistant 的文本",
+      "defaultValue": "本轮请求已由 provider-router 直接处理。"
+    }
+  ],
+  "personaRouterConfigFields": [
+    {
+      "key": "targetPersonaId",
+      "type": "string",
+      "description": "命中路由后要切换到的 persona ID"
+    },
+    {
+      "key": "switchKeyword",
+      "type": "string",
+      "description": "当最近一条用户消息包含该关键字时，切换到目标 persona"
+    }
+  ],
+  "memoryToolsManifestTools": [
+    {
+      "name": "save_memory",
+      "description": "将重要信息保存到长期记忆中",
+      "parameters": {
+        "content": {
+          "type": "string",
+          "description": "要记住的信息",
+          "required": true
+        },
+        "category": {
+          "type": "string",
+          "description": "记忆类别"
+        },
+        "keywords": {
+          "type": "string",
+          "description": "逗号分隔的关键词"
+        }
+      }
+    },
+    {
+      "name": "recall_memory",
+      "description": "搜索用户长期记忆",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "搜索查询",
+          "required": true
+        }
+      }
+    }
+  ],
+  "coreToolsManifestTools": [
+    {
+      "name": "getCurrentTime",
+      "description": "获取当前日期和时间",
+      "parameters": {}
+    },
+    {
+      "name": "getSystemInfo",
+      "description": "获取服务器的基本系统信息",
+      "parameters": {}
+    },
+    {
+      "name": "calculate",
+      "description": "执行数学计算",
+      "parameters": {
+        "expression": {
+          "type": "string",
+          "description": "简单数学表达式，例如 2 + 3 * 4",
+          "required": true
+        }
+      }
+    }
+  ],
+  "automationToolsManifestTools": [
+    {
+      "name": "create_automation",
+      "description": "创建自动化规则。支持 cron 计划（例如 \"5m\"、\"1h\"、\"30s\"）和设备命令。当用户要求设置重复任务或自动化操作时使用此工具。",
+      "parameters": {
+        "name": {
+          "type": "string",
+          "description": "此自动化的描述性名称",
+          "required": true
+        },
+        "triggerType": {
+          "type": "string",
+          "description": "触发类型：cron 为计划执行，manual 为手动触发，event 为事件触发",
+          "required": true
+        },
+        "cronInterval": {
+          "type": "string",
+          "description": "对于 cron 触发：间隔如 \"5m\"、\"1h\"、\"30s\""
+        },
+        "eventName": {
+          "type": "string",
+          "description": "对于 event 触发：要监听的事件名"
+        },
+        "actions": {
+          "type": "array",
+          "description": "要执行的动作列表",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "emit_automation_event",
+      "description": "发出一个自动化事件，触发当前用户下匹配该事件名的自动化。",
+      "parameters": {
+        "event": {
+          "type": "string",
+          "description": "要发出的事件名",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "list_automations",
+      "description": "列出当前用户的所有自动化。",
+      "parameters": {}
+    },
+    {
+      "name": "toggle_automation",
+      "description": "通过 ID 启用或禁用自动化。",
+      "parameters": {
+        "automationId": {
+          "type": "string",
+          "description": "要切换的自动化 ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "run_automation",
+      "description": "手动触发自动化立即执行。",
+      "parameters": {
+        "automationId": {
+          "type": "string",
+          "description": "要运行的自动化 ID",
+          "required": true
+        }
+      }
+    }
+  ],
+  "subagentDelegateManifestTools": [
+    {
+      "name": "delegate_summary",
+      "description": "将当前任务委托给宿主子代理做简短总结",
+      "parameters": {
+        "prompt": {
+          "type": "string",
+          "description": "要交给子代理处理的提示词",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "delegate_summary_background",
+      "description": "将当前任务委托给宿主子代理后台执行，并可在完成后回写当前会话",
+      "parameters": {
+        "prompt": {
+          "type": "string",
+          "description": "要交给后台子代理处理的提示词",
+          "required": true
+        },
+        "writeBack": {
+          "type": "boolean",
+          "description": "完成后是否回写到当前会话；默认在存在会话上下文时开启"
+        }
+      }
+    }
+  ],
+  "routeInspectorManifestRoutes": [
+    {
+      "path": "inspect/context",
+      "methods": ["GET"],
+      "description": "返回当前插件路由看到的用户与会话上下文"
+    }
+  ],
+  "memoryContextManifest": {
+    "id": "builtin.memory-context",
+    "name": "记忆上下文",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "在模型调用前检索并注入用户长期记忆摘要的内建插件。",
+    "permissions": ["memory:read", "config:read"],
+    "tools": [],
+    "hooks": [
+      {
+        "name": "chat:before-model",
+        "description": "在模型调用前补入用户长期记忆摘要"
+      }
+    ],
+    "config": {
+      "fields": [
+        {
+          "key": "limit",
+          "type": "number",
+          "description": "每次检索长期记忆的最大条数",
+          "defaultValue": 5
+        },
+        {
+          "key": "promptPrefix",
+          "type": "string",
+          "description": "记忆摘要写入系统提示词时的前缀",
+          "defaultValue": "与此用户相关的记忆"
+        }
+      ]
+    }
+  },
+  "kbContextManifest": {
+    "id": "builtin.kb-context",
+    "name": "知识库上下文",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "在模型调用前检索并注入系统知识摘要的内建插件。",
+    "permissions": ["kb:read", "config:read"],
+    "tools": [],
+    "hooks": [
+      {
+        "name": "chat:before-model",
+        "description": "在模型调用前补入系统知识摘要"
+      }
+    ],
+    "config": {
+      "fields": [
+        {
+          "key": "limit",
+          "type": "number",
+          "description": "每次检索系统知识的最大条数",
+          "defaultValue": 3
+        },
+        {
+          "key": "promptPrefix",
+          "type": "string",
+          "description": "知识摘要写入系统提示词时的前缀",
+          "defaultValue": "与当前问题相关的系统知识"
+        }
+      ]
+    }
+  },
+  "conversationTitleManifest": {
+    "id": "builtin.conversation-title",
+    "name": "会话标题",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "在首次回复后为默认标题会话自动生成更合适标题的内建插件。",
+    "permissions": ["config:read", "conversation:read", "conversation:write", "llm:generate"],
+    "tools": [],
+    "hooks": [
+      {
+        "name": "chat:after-model",
+        "description": "在 assistant 完成回复后为会话生成标题"
+      }
+    ],
+    "config": {
+      "fields": [
+        {
+          "key": "defaultTitle",
+          "type": "string",
+          "description": "仍命中该默认标题时才尝试自动改标题",
+          "defaultValue": "New Chat"
+        },
+        {
+          "key": "maxMessages",
+          "type": "number",
+          "description": "参与标题生成的最大消息条数",
+          "defaultValue": 4
+        }
+      ]
+    }
+  },
+  "providerRouterManifest": {
+    "id": "builtin.provider-router",
+    "name": "模型路由",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "按规则切换 provider/model、裁剪工具或直接短路回复的内建插件。",
+    "permissions": ["config:read", "provider:read"],
+    "tools": [],
+    "hooks": [
+      {
+        "name": "chat:before-model",
+        "description": "按配置改写当前 provider/model、裁剪工具或直接短路回复"
+      }
+    ],
+    "config": {
+      "fields": [
+        {
+          "key": "targetProviderId",
+          "type": "string",
+          "description": "命中路由时切换到的 provider ID"
+        },
+        {
+          "key": "targetModelId",
+          "type": "string",
+          "description": "命中路由时切换到的 model ID"
+        },
+        {
+          "key": "allowedToolNames",
+          "type": "string",
+          "description": "允许暴露给模型的工具名列表，使用英文逗号分隔"
+        },
+        {
+          "key": "shortCircuitKeyword",
+          "type": "string",
+          "description": "当最近一条用户消息包含该关键字时，直接返回 short-circuit"
+        },
+        {
+          "key": "shortCircuitReply",
+          "type": "string",
+          "description": "short-circuit 时直接写回给 assistant 的文本",
+          "defaultValue": "本轮请求已由 provider-router 直接处理。"
+        }
+      ]
+    }
+  },
+  "personaRouterManifest": {
+    "id": "builtin.persona-router",
+    "name": "人设路由",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "按规则切换当前会话人设并同步改写系统提示词的内建插件。",
+    "permissions": ["config:read", "persona:read", "persona:write"],
+    "tools": [],
+    "hooks": [
+      {
+        "name": "chat:before-model",
+        "description": "按规则切换当前会话 persona，并同步改写本轮系统提示词"
+      }
+    ],
+    "config": {
+      "fields": [
+        {
+          "key": "targetPersonaId",
+          "type": "string",
+          "description": "命中路由后要切换到的 persona ID"
+        },
+        {
+          "key": "switchKeyword",
+          "type": "string",
+          "description": "当最近一条用户消息包含该关键字时，切换到目标 persona"
+        }
+      ]
+    }
+  },
+  "cronHeartbeatManifest": {
+    "id": "builtin.cron-heartbeat",
+    "name": "定时心跳",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "用于验证统一 cron 插件协议链路的内建插件",
+    "permissions": ["cron:read", "cron:write", "storage:read", "storage:write"],
+    "tools": [],
+    "hooks": [
+      {
+        "name": "cron:tick",
+        "description": "处理插件定时任务 tick"
+      }
+    ],
+    "crons": [
+      {
+        "name": "heartbeat",
+        "cron": "10s",
+        "description": "定时写入插件心跳计数"
+      }
+    ]
+  },
+  "coreToolsManifest": {
+    "id": "builtin.core-tools",
+    "name": "内建工具",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "提供时间、系统信息和计算器等基础能力的内建插件。",
+    "permissions": [],
+    "tools": [
+      {
+        "name": "getCurrentTime",
+        "description": "获取当前日期和时间",
+        "parameters": {}
+      },
+      {
+        "name": "getSystemInfo",
+        "description": "获取服务器的基本系统信息",
+        "parameters": {}
+      },
+      {
+        "name": "calculate",
+        "description": "执行数学计算",
+        "parameters": {
+          "expression": {
+            "type": "string",
+            "description": "简单数学表达式，例如 2 + 3 * 4",
+            "required": true
+          }
+        }
+      }
+    ],
+    "hooks": []
+  },
+  "memoryToolsManifest": {
+    "id": "builtin.memory-tools",
+    "name": "记忆工具",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "提供长期记忆写入与检索能力的内建插件。",
+    "permissions": ["memory:read", "memory:write"],
+    "tools": [
+      {
+        "name": "save_memory",
+        "description": "将重要信息保存到长期记忆中",
+        "parameters": {
+          "content": {
+            "type": "string",
+            "description": "要记住的信息",
+            "required": true
+          },
+          "category": {
+            "type": "string",
+            "description": "记忆类别"
+          },
+          "keywords": {
+            "type": "string",
+            "description": "逗号分隔的关键词"
+          }
+        }
+      },
+      {
+        "name": "recall_memory",
+        "description": "搜索用户长期记忆",
+        "parameters": {
+          "query": {
+            "type": "string",
+            "description": "搜索查询",
+            "required": true
+          }
+        }
+      }
+    ],
+    "hooks": []
+  },
+  "automationToolsManifest": {
+    "id": "builtin.automation-tools",
+    "name": "自动化工具",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "提供自动化创建、事件触发、启停和执行能力的内建插件。",
+    "permissions": ["automation:read", "automation:write"],
+    "tools": [
+      {
+        "name": "create_automation",
+        "description": "创建自动化规则。支持 cron 计划（例如 \"5m\"、\"1h\"、\"30s\"）和设备命令。当用户要求设置重复任务或自动化操作时使用此工具。",
+        "parameters": {
+          "name": {
+            "type": "string",
+            "description": "此自动化的描述性名称",
+            "required": true
+          },
+          "triggerType": {
+            "type": "string",
+            "description": "触发类型：cron 为计划执行，manual 为手动触发，event 为事件触发",
+            "required": true
+          },
+          "cronInterval": {
+            "type": "string",
+            "description": "对于 cron 触发：间隔如 \"5m\"、\"1h\"、\"30s\""
+          },
+          "eventName": {
+            "type": "string",
+            "description": "对于 event 触发：要监听的事件名"
+          },
+          "actions": {
+            "type": "array",
+            "description": "要执行的动作列表",
+            "required": true
+          }
+        }
+      },
+      {
+        "name": "emit_automation_event",
+        "description": "发出一个自动化事件，触发当前用户下匹配该事件名的自动化。",
+        "parameters": {
+          "event": {
+            "type": "string",
+            "description": "要发出的事件名",
+            "required": true
+          }
+        }
+      },
+      {
+        "name": "list_automations",
+        "description": "列出当前用户的所有自动化。",
+        "parameters": {}
+      },
+      {
+        "name": "toggle_automation",
+        "description": "通过 ID 启用或禁用自动化。",
+        "parameters": {
+          "automationId": {
+            "type": "string",
+            "description": "要切换的自动化 ID",
+            "required": true
+          }
+        }
+      },
+      {
+        "name": "run_automation",
+        "description": "手动触发自动化立即执行。",
+        "parameters": {
+          "automationId": {
+            "type": "string",
+            "description": "要运行的自动化 ID",
+            "required": true
+          }
+        }
+      }
+    ],
+    "hooks": []
+  },
+  "subagentDelegateManifest": {
+    "id": "builtin.subagent-delegate",
+    "name": "子代理委派",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "将当前任务委派给宿主子代理执行的内建插件。",
+    "permissions": ["config:read", "conversation:write", "subagent:run"],
+    "tools": [
+      {
+        "name": "delegate_summary",
+        "description": "将当前任务委托给宿主子代理做简短总结",
+        "parameters": {
+          "prompt": {
+            "type": "string",
+            "description": "要交给子代理处理的提示词",
+            "required": true
+          }
+        }
+      },
+      {
+        "name": "delegate_summary_background",
+        "description": "将当前任务委托给宿主子代理后台执行，并可在完成后回写当前会话",
+        "parameters": {
+          "prompt": {
+            "type": "string",
+            "description": "要交给后台子代理处理的提示词",
+            "required": true
+          },
+          "writeBack": {
+            "type": "boolean",
+            "description": "完成后是否回写到当前会话；默认在存在会话上下文时开启"
+          }
+        }
+      }
+    ],
+    "hooks": [],
+    "config": {
+      "fields": [
+        {
+          "key": "targetProviderId",
+          "type": "string",
+          "description": "子代理默认使用的 provider ID"
+        },
+        {
+          "key": "targetModelId",
+          "type": "string",
+          "description": "子代理默认使用的 model ID"
+        },
+        {
+          "key": "allowedToolNames",
+          "type": "string",
+          "description": "允许子代理使用的工具名列表，使用英文逗号分隔"
+        },
+        {
+          "key": "maxSteps",
+          "type": "number",
+          "description": "子代理最多允许多少轮工具调用",
+          "defaultValue": 4
+        }
+      ]
+    }
+  },
+  "routeInspectorManifest": {
+    "id": "builtin.route-inspector",
+    "name": "路由探针",
+    "version": "1.0.0",
+    "runtime": "builtin",
+    "description": "用于查看插件 Web Route 可见上下文的内建诊断插件。",
+    "permissions": ["conversation:read", "user:read"],
+    "tools": [],
+    "hooks": [],
+    "routes": [
+      {
+        "path": "inspect/context",
+        "methods": ["GET"],
+        "description": "返回当前插件路由看到的用户与会话上下文"
+      }
+    ]
+  }
+}

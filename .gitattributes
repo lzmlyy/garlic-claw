@@ -10,11 +10,13 @@
 *.cjs text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+*.py text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.vue text eol=lf
 *.css text eol=lf
 *.html text eol=lf
+.env* text eol=lf
 
 # 强制所有 .sh 文件在检出时使用 LF
 *.sh text eol=lf

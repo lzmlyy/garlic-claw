@@ -37,12 +37,9 @@ export interface RegisterRequest {
   password: string;
 }
 
-export const API_KEY_SCOPES = [
-  'plugin.route.invoke',
-  'conversation.message.write',
-] as const;
-
-export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
+export type ApiKeyScope =
+  | 'plugin.route.invoke'
+  | 'conversation.message.write';
 
 export interface ApiKeySummary {
   id: string;

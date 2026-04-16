@@ -19,6 +19,7 @@ vi.mock('@/features/plugins/composables/use-plugin-management', () => {
     deviceType: 'builtin',
     status: 'online',
     connected: true,
+    defaultEnabled: true,
     runtimeKind: 'builtin',
     supportedActions: ['health-check', 'reload'],
     crons: [

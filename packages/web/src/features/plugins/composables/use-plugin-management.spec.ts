@@ -31,6 +31,7 @@ function createPlugin(
     deviceType: input.deviceType ?? 'builtin',
     status: input.status ?? 'online',
     connected: input.connected ?? true,
+    defaultEnabled: input.defaultEnabled ?? true,
     runtimeKind: input.runtimeKind ?? 'builtin',
     manifest: input.manifest ?? {
       id: input.name,

@@ -1,44 +1,39 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import * as bcrypt from 'bcrypt';
+import type { Prisma } from '@prisma/client';
+import type { StringValue } from 'ms';
+import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
-import type { StringValue } from 'ms';
-import { PrismaService } from '../prisma/prisma.service';
+import { getPrismaClient } from '../infrastructure/prisma/prisma-client';
 import { AdminIdentityCandidate, AdminIdentityService } from './admin-identity.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
-import { uuidv7 } from '@garlic-claw/shared';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-    private configService: ConfigService,
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
     private readonly adminIdentity: AdminIdentityService,
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findFirst({
+    const prisma = getPrismaClient();
+    const existing = await prisma.user.findFirst({
       where: {
         OR: [{ username: dto.username }, { email: dto.email }],
       },
     });
-
     if (existing) {
       throw new ConflictException('Username or email already exists');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
-    const user = await this.prisma.$transaction(async (tx) => {
+    const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const userCount = await tx.user.count();
       return tx.user.create({
         data: {
-          id: uuidv7(),
+          id: randomUUID(),
           username: dto.username,
           email: dto.email,
           passwordHash,
@@ -55,16 +50,14 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
+    const user = await getPrismaClient().user.findUnique({
       where: { username: dto.username },
     });
-
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
-
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -79,13 +72,15 @@ export class AuthService {
   async refreshTokens(refreshToken: string) {
     try {
       const payload = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      });
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'fallback-refresh-secret'),
+      }) as { sub?: unknown };
+      if (typeof payload.sub !== 'string' || !payload.sub.trim()) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
 
-      const user = await this.prisma.user.findUnique({
+      const user = await getPrismaClient().user.findUnique({
         where: { id: payload.sub },
       });
-
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
@@ -95,7 +90,10 @@ export class AuthService {
         user.username,
         this.resolveRuntimeRole(user),
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
@@ -113,24 +111,40 @@ export class AuthService {
       throw new UnauthorizedException('用户名不能为空');
     }
 
-    let user = await this.prisma.user.findUnique({
+    const prisma = getPrismaClient();
+    let user = await prisma.user.findUnique({
       where: { username: normalizedUsername },
     });
 
     if (!user) {
-      const userCount = await this.prisma.user.count();
+      const userCount = await prisma.user.count();
       const passwordHash = await bcrypt.hash('dev-login-password', 12);
-      user = await this.prisma.user.create({
-        data: {
-          id: uuidv7(),
-          username: normalizedUsername,
-          email: `${normalizedUsername}@dev.local`,
-          passwordHash,
-          role: userCount === 0 ? 'super_admin' : requestedRole,
-        },
-      });
-    } else if (user.role !== requestedRole && requestedRole !== 'user') {
-      user = await this.prisma.user.update({
+      try {
+        user = await prisma.user.create({
+          data: {
+            id: randomUUID(),
+            username: normalizedUsername,
+            email: `${normalizedUsername}@dev.local`,
+            passwordHash,
+            role: userCount === 0 ? 'super_admin' : requestedRole,
+          },
+        });
+      } catch (error) {
+        if (!isUsernameUniqueConflict(error)) {
+          throw error;
+        }
+
+        user = await prisma.user.findUnique({
+          where: { username: normalizedUsername },
+        });
+        if (!user) {
+          throw error;
+        }
+      }
+    }
+
+    if (user.role !== requestedRole && requestedRole !== 'user') {
+      user = await prisma.user.update({
         where: { id: user.id },
         data: { role: requestedRole },
       });
@@ -143,43 +157,54 @@ export class AuthService {
     );
   }
 
-  /**
-   * 解析 JWT 中应写入的最终角色。
-   * @param user 当前用户
-   * @returns 运行时最终角色
-   */
   private resolveRuntimeRole(user: AdminIdentityCandidate): string {
     return this.adminIdentity.resolveRole(user);
   }
 
   private generateTokens(userId: string, username: string, role: string) {
     const payload = { sub: userId, username, role };
-    const accessTokenExpiresIn = this.readJwtExpiresIn('JWT_EXPIRES_IN', '15m');
-    const refreshTokenExpiresIn = this.readJwtExpiresIn(
-      'JWT_REFRESH_EXPIRES_IN',
-      '7d',
-    );
-
+    const accessTokenSecret = this.configService.get<string>('JWT_SECRET') ?? 'fallback-secret';
+    const refreshTokenSecret = this.configService.get<string>('JWT_REFRESH_SECRET') ?? 'fallback-refresh-secret';
     const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_SECRET'),
-      expiresIn: accessTokenExpiresIn,
+      secret: accessTokenSecret,
+      expiresIn: this.readJwtExpiresIn('JWT_EXPIRES_IN', '15m'),
     });
-
     const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn: refreshTokenExpiresIn,
+      secret: refreshTokenSecret,
+      expiresIn: this.readJwtExpiresIn('JWT_REFRESH_EXPIRES_IN', '7d'),
     });
-
     return { accessToken, refreshToken };
   }
 
-  /**
-   * 读取 JWT 过期时间配置。
-   * @param key 配置键名
-   * @param fallback 默认过期时间
-   * @returns 可直接传给 JWT 签名器的过期时间
-   */
   private readJwtExpiresIn(key: string, fallback: StringValue): StringValue {
-    return this.configService.get<StringValue>(key) ?? fallback;
+    const configured = this.configService.get<string>(key);
+    return (configured as StringValue | undefined) ?? fallback;
   }
+}
+
+function isUsernameUniqueConflict(error: unknown): boolean {
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    !('code' in error) ||
+    error.code !== 'P2002'
+  ) {
+    return false;
+  }
+
+  if (!('meta' in error)) {
+    return true;
+  }
+
+  const meta = error.meta;
+  if (
+    typeof meta !== 'object' ||
+    meta === null ||
+    !('target' in meta) ||
+    !Array.isArray(meta.target)
+  ) {
+    return true;
+  }
+
+  return meta.target.includes('username');
 }

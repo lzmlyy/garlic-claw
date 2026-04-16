@@ -46,6 +46,7 @@ progress.md
 findings.md
 tmp/
 docs/superpowers/
+.worktrees/
 
 # 系统自带
 .DS_Store

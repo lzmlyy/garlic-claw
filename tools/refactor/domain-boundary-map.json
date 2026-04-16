@@ -1,0 +1,140 @@
+{
+  "server": {
+    "owners": {
+      "bootstrap": [
+        "packages/server/src/main.ts",
+        "packages/server/src/app.module.ts",
+        "packages/server/src/core/bootstrap/bootstrap-http-app.ts",
+        "packages/server/src/infrastructure/prisma/prisma-client.ts",
+        "packages/server/src/adapters/http/ai/ai.controller.ts",
+        "packages/server/src/adapters/http/auth/api-key.controller.ts",
+        "packages/server/src/adapters/http/plugin-route.constants.ts",
+        "packages/server/src/adapters/http/auth/auth.controller.ts",
+        "packages/server/src/adapters/http/automation/automation.controller.ts",
+        "packages/server/src/adapters/http/conversation/conversation.controller.ts",
+        "packages/server/src/adapters/http/conversation/conversation.dto.ts",
+        "packages/server/src/adapters/http/conversation/open-api-message.controller.ts",
+        "packages/server/src/adapters/http/health/health.controller.ts",
+        "packages/server/src/adapters/http/http-request.codec.ts",
+        "packages/server/src/adapters/http/mcp/mcp.controller.ts",
+        "packages/server/src/adapters/http/memory/memory.controller.ts",
+        "packages/server/src/adapters/http/persona/persona.controller.ts",
+        "packages/server/src/adapters/http/plugin/plugin.controller.ts",
+        "packages/server/src/adapters/http/skill/skill.controller.ts",
+        "packages/server/src/adapters/http/tool/tool.controller.ts",
+        "packages/server/src/adapters/http/user/user.controller.ts",
+        "packages/server/src/adapters/ws/plugin-gateway/plugin-gateway.constants.ts",
+        "packages/server/src/adapters/ws/plugin-gateway/plugin-gateway.module.ts",
+        "packages/server/src/adapters/ws/plugin-gateway/plugin-gateway-ws-inbound.service.ts",
+        "packages/server/src/adapters/ws/plugin-gateway/plugin-gateway.protocol.ts"
+      ],
+      "auth-runtime": [
+        "packages/server/src/auth/admin-identity.service.ts",
+        "packages/server/src/auth/api-key.constants.ts",
+        "packages/server/src/auth/api-key.service.ts",
+        "packages/server/src/auth/auth.service.ts",
+        "packages/server/src/auth/bootstrap-admin.service.ts",
+        "packages/server/src/auth/dto/api-key.dto.ts",
+        "packages/server/src/auth/dto/auth.dto.ts",
+        "packages/server/src/auth/http-auth.ts",
+        "packages/server/src/auth/request-auth.service.ts"
+      ],
+      "ai-runtime": [
+        "packages/server/src/ai/ai-model-execution.service.ts",
+        "packages/server/src/ai-management/ai-management-model-config.ts",
+        "packages/server/src/ai-management/ai-management-settings.store.ts",
+        "packages/server/src/ai-management/ai-management.service.ts",
+        "packages/server/src/ai-management/ai-management.types.ts",
+        "packages/server/src/ai-management/ai-provider-catalog.ts",
+        "packages/server/src/ai-management/ai-provider-settings.service.ts",
+        "packages/server/src/vision/ai-vision.service.ts"
+      ],
+      "automation-runtime": [
+        "packages/server/src/execution/automation/automation-execution.service.ts",
+        "packages/server/src/execution/automation/automation.service.ts"
+      ],
+      "conversation-runtime": [
+        "packages/server/src/conversation/conversation-message-planning.service.ts",
+        "packages/server/src/conversation/conversation-message-lifecycle.service.ts",
+        "packages/server/src/conversation/conversation-task.service.ts"
+      ],
+      "mcp-runtime": [
+        "packages/server/src/execution/mcp/mcp-config-store.service.ts",
+        "packages/server/src/execution/mcp/mcp.service.ts"
+      ],
+      "plugin-kernel": [
+        "packages/server/src/plugin/bootstrap/plugin-bootstrap.service.ts",
+        "packages/server/src/plugin/builtin/builtin-plugin-definition.ts",
+        "packages/server/src/plugin/builtin/builtin-plugin-registry.service.ts",
+        "packages/server/src/plugin/builtin/tools/builtin-subagent-delegate.plugin.ts",
+        "packages/server/src/plugin/governance/plugin-governance.service.ts",
+        "packages/server/src/plugin/plugin.constants.ts",
+        "packages/server/src/plugin/persistence/plugin-read-model.ts",
+        "packages/server/src/plugin/persistence/plugin-persistence.service.ts",
+        "packages/server/src/plugin/plugin.module.ts"
+      ],
+      "runtime-kernel": [
+        "packages/server/src/runtime/gateway/runtime-gateway.module.ts",
+        "packages/server/src/runtime/gateway/runtime-gateway-connection-lifecycle.service.ts",
+        "packages/server/src/runtime/gateway/runtime-gateway-request-ledger.ts",
+        "packages/server/src/runtime/gateway/runtime-gateway-remote-transport.service.ts",
+        "packages/server/src/runtime/gateway/runtime-gateway.types.ts",
+        "packages/server/src/runtime/host/runtime-host-conversation-message.service.ts",
+        "packages/server/src/runtime/host/runtime-host-conversation-record.service.ts",
+        "packages/server/src/runtime/host/runtime-host.constants.ts",
+        "packages/server/src/runtime/host/runtime-host-knowledge.service.ts",
+        "packages/server/src/runtime/host/runtime-host-plugin-dispatch.service.ts",
+        "packages/server/src/runtime/host/runtime-host-plugin-runtime.service.ts",
+        "packages/server/src/runtime/host/runtime-host-subagent-runner.service.ts",
+        "packages/server/src/runtime/host/runtime-host-subagent-task-store.service.ts",
+        "packages/server/src/runtime/host/runtime-host-user-context.service.ts",
+        "packages/server/src/runtime/host/runtime-host-values.ts",
+        "packages/server/src/runtime/host/runtime-host.module.ts",
+        "packages/server/src/runtime/host/runtime-host.service.ts",
+        "packages/server/src/runtime/kernel/runtime-kernel.module.ts",
+        "packages/server/src/runtime/kernel/runtime-plugin-hook-governance.ts",
+        "packages/server/src/runtime/kernel/runtime-plugin-governance.service.ts"
+      ],
+      "skill-runtime": [
+        "packages/server/src/execution/skill/skill-registry.service.ts",
+        "packages/server/src/execution/skill/skill-package-tools.ts",
+        "packages/server/src/execution/skill/skill-session.service.ts"
+      ],
+      "tool-runtime": [
+        "packages/server/src/execution/tool/tool-registry.service.ts"
+      ],
+      "user-runtime": [
+        "packages/server/src/user/dto/user.dto.ts",
+        "packages/server/src/user/user.service.ts"
+      ]
+    },
+    "moduleRefAllowlist": []
+  },
+  "server-execution-domains": {
+    "owners": {
+      "execution-adapter": [
+        "packages/server/src/adapters/http/automation/automation.controller.ts",
+        "packages/server/src/adapters/http/mcp/mcp.controller.ts",
+        "packages/server/src/adapters/http/skill/skill.controller.ts",
+        "packages/server/src/adapters/http/tool/tool.controller.ts"
+      ],
+      "automation-runtime": [
+        "packages/server/src/execution/automation/automation-execution.service.ts",
+        "packages/server/src/execution/automation/automation.service.ts"
+      ],
+      "mcp-runtime": [
+        "packages/server/src/execution/mcp/mcp-config-store.service.ts",
+        "packages/server/src/execution/mcp/mcp.service.ts"
+      ],
+      "skill-runtime": [
+        "packages/server/src/execution/skill/skill-registry.service.ts",
+        "packages/server/src/execution/skill/skill-package-tools.ts",
+        "packages/server/src/execution/skill/skill-session.service.ts"
+      ],
+      "tool-runtime": [
+        "packages/server/src/execution/tool/tool-registry.service.ts"
+      ]
+    },
+    "moduleRefAllowlist": []
+  }
+}

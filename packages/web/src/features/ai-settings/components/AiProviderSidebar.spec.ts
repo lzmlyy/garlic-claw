@@ -2,20 +2,9 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { AiProviderCatalogItem, AiProviderSummary } from '@garlic-claw/shared'
 import AiProviderSidebar from './AiProviderSidebar.vue'
-import {
-  coreProviderCatalogFixture,
-  createCatalogPresetFixture,
-} from './provider-test.fixtures'
+import { coreProviderCatalogFixture } from './provider-test.fixtures'
 
-const catalog: AiProviderCatalogItem[] = [
-  coreProviderCatalogFixture[0],
-  createCatalogPresetFixture({
-    id: 'groq',
-    name: 'Groq',
-    defaultBaseUrl: 'https://api.groq.com/openai/v1',
-    defaultModel: 'llama-3.3-70b-versatile',
-  }),
-]
+const catalog: AiProviderCatalogItem[] = coreProviderCatalogFixture
 
 function createProviders(count: number): AiProviderSummary[] {
   return Array.from({ length: count }, (_, index): AiProviderSummary => ({
@@ -25,7 +14,7 @@ function createProviders(count: number): AiProviderSummary[] {
     driver:
       index % 2 === 0
         ? index % 3 === 0
-          ? 'groq'
+          ? 'gemini'
           : 'openai'
         : 'openai',
     defaultModel: `model-${index + 1}`,
@@ -50,7 +39,7 @@ describe('AiProviderSidebar', () => {
     expect(wrapper.findAll('.provider-item')).toHaveLength(6)
     expect(wrapper.text()).toContain('匹配 11 / 11')
     expect(wrapper.text()).toContain('第 1 / 2 页')
-    expect(wrapper.text()).toContain('目录模板')
+    expect(wrapper.text()).toContain('核心协议族')
 
     await wrapper.get('[data-test="provider-sidebar-next-page"]').trigger('click')
 

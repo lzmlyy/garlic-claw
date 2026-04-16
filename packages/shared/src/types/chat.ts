@@ -37,14 +37,6 @@ export type ChatMessageStatus =
   | 'stopped'
   | 'error';
 
-export const CHAT_MESSAGE_STATUS_VALUES = [
-  'pending',
-  'streaming',
-  'completed',
-  'stopped',
-  'error',
-] as const satisfies ChatMessageStatus[];
-
 /**
  * 图像转述来源。
  */

@@ -3,30 +3,31 @@ import { ConfigService } from '@nestjs/config';
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
-import { API_KEY_TOKEN_PATTERN } from './api-key.constants';
-import type { AuthenticatedUser } from './auth-user';
+import { type AuthenticatedUser } from './http-auth';
 import { ApiKeyService } from './api-key.service';
-import type { JwtPayload } from './strategies/jwt.strategy';
-import { JwtStrategy } from './strategies/jwt.strategy';
+import { AdminIdentityService } from './admin-identity.service';
+import { getPrismaClient } from '../infrastructure/prisma/prisma-client';
+
+const API_KEY_TOKEN_PATTERN =
+  /^gca_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_([A-Za-z0-9_-]+)$/i;
+
+type JwtPayload = {
+  sub?: string;
+};
 
 @Injectable()
 export class RequestAuthService {
   constructor(
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
-    private readonly jwtStrategy: JwtStrategy,
+    private readonly adminIdentity: AdminIdentityService,
     private readonly apiKeys: ApiKeyService,
   ) {}
 
-  async authenticateAnyRequest(request: Request): Promise<AuthenticatedUser> {
-    const apiKeyToken = extractApiKeyToken(request);
-    if (apiKeyToken) {
-      return this.apiKeys.authenticateToken(apiKeyToken);
-    }
-
+  async authenticateJwtRequest(request: Request): Promise<AuthenticatedUser> {
     const jwtToken = extractJwtToken(request);
     if (!jwtToken) {
-      throw new UnauthorizedException('Missing authentication credentials');
+      throw new UnauthorizedException('Missing access token');
     }
 
     return this.authenticateJwtToken(jwtToken);
@@ -42,14 +43,40 @@ export class RequestAuthService {
   }
 
   private async authenticateJwtToken(token: string): Promise<AuthenticatedUser> {
+    let payload: JwtPayload;
     try {
-      const payload = this.jwtService.verify<JwtPayload>(token, {
+      payload = this.jwtService.verify<JwtPayload>(token, {
         secret: this.configService.get<string>('JWT_SECRET') || 'fallback-secret',
       });
-      return this.jwtStrategy.validate(payload);
     } catch {
       throw new UnauthorizedException('Invalid access token');
     }
+
+    if (!payload.sub?.trim()) {
+      throw new UnauthorizedException('Invalid access token');
+    }
+
+    const user = await getPrismaClient().user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+      },
+    });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return {
+      authType: 'jwt',
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: this.adminIdentity.resolveRole(user),
+      scopes: [],
+    };
   }
 }
 

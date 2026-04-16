@@ -1,0 +1,43 @@
+{
+  "scopes": {
+    "shared": {
+      "packageFile": "packages/shared/package.json",
+      "packageFields": {
+        "main": "dist/index.js",
+        "types": "dist/index.d.ts"
+      },
+      "allowlist": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "require": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      }
+    },
+    "plugin-sdk": {
+      "packageFile": "packages/plugin-sdk/package.json",
+      "packageFields": {
+        "main": "dist/index.js",
+        "types": "dist/index.d.ts"
+      },
+      "allowlist": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "./authoring": {
+          "types": "./dist/authoring/index.d.ts",
+          "default": "./dist/authoring/index.js"
+        },
+        "./host": {
+          "types": "./dist/host/index.d.ts",
+          "default": "./dist/host/index.js"
+        },
+        "./client": {
+          "types": "./dist/client/index.d.ts",
+          "default": "./dist/client/index.js"
+        }
+      }
+    }
+  }
+}

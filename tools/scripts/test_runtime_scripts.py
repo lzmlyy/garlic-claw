@@ -26,8 +26,6 @@ TOOLS_DIR = SCRIPTS_DIR.parent
 LAUNCHER_PATH = TOOLS_DIR / '一键启停脚本.py'
 DEV_RUNTIME_PATH = SCRIPTS_DIR / 'dev_runtime.py'
 COMMON_PATH = SCRIPTS_DIR / 'process_runtime.py'
-START_BAT_PATH = TOOLS_DIR / 'start-dev.bat'
-STOP_BAT_PATH = TOOLS_DIR / 'stop-dev.bat'
 
 
 def loadModule(module_name: str, path: Path) -> ModuleType:
@@ -59,22 +57,6 @@ def loadPackageModule(module_name: str) -> ModuleType:
 
 class DevLauncherEntryTests(unittest.TestCase):
     """主入口分发回归测试。"""
-
-    def testBatchLaunchersUseCrlfLineEndings(self) -> None:
-        """Windows 批处理脚本应使用 CRLF，避免 cmd.exe 子程序解析异常。"""
-        for scriptPath in (START_BAT_PATH, STOP_BAT_PATH):
-            content = scriptPath.read_bytes()
-            self.assertIn(
-                b'\r\n',
-                content,
-                f'{scriptPath.name} 应至少包含 CRLF 行尾',
-            )
-            normalized = content.replace(b'\r\n', b'')
-            self.assertNotIn(
-                b'\n',
-                normalized,
-                f'{scriptPath.name} 不应包含裸 LF 行尾',
-            )
 
     def testStateFileMovesToOtherDirectoryJson(self) -> None:
         """应将状态文件迁移到 other/dev-processes.json。"""
@@ -408,6 +390,51 @@ class DevLauncherEntryTests(unittest.TestCase):
 class DevRuntimeTests(unittest.TestCase):
     """开发态编排回归测试。"""
 
+    def testParseEnvFileReadsKeyValues(self) -> None:
+        """应能从根目录 env 文件读取键值。"""
+        devRuntime = loadPackageModule('tools.scripts.dev_runtime')
+        envPath = SCRIPTS_DIR / 'tmp-test.env'
+        envPath.write_text(
+            '\n'.join(
+                [
+                    '# comment',
+                    'DATABASE_URL=file:./dev.db',
+                    'JWT_SECRET=test-secret',
+                    '',
+                ]
+            ),
+            encoding='utf-8',
+        )
+        self.addCleanup(lambda: envPath.unlink(missing_ok=True))
+
+        self.assertEqual(
+            devRuntime.parseEnvFile(envPath),
+            {
+                'DATABASE_URL': 'file:./dev.db',
+                'JWT_SECRET': 'test-secret',
+            },
+        )
+
+    def testLoadProjectEnvLoadsComposeEnvIntoProcess(self) -> None:
+        """开发态启动前应把根目录 env 注入当前进程。"""
+        devRuntime = loadPackageModule('tools.scripts.dev_runtime')
+        envPath = SCRIPTS_DIR / 'tmp-load.env'
+        envPath.write_text('DATABASE_URL=file:./dev.db\n', encoding='utf-8')
+        self.addCleanup(lambda: envPath.unlink(missing_ok=True))
+
+        original = devRuntime.os.environ.get('DATABASE_URL')
+        self.addCleanup(
+            lambda: devRuntime.os.environ.__setitem__('DATABASE_URL', original)
+            if original is not None
+            else devRuntime.os.environ.pop('DATABASE_URL', None)
+        )
+
+        with mock.patch.object(devRuntime.docker_runtime, '获取可用env文件', return_value=envPath):
+            loaded = devRuntime.loadProjectEnv()
+
+        self.assertEqual(loaded, {'DATABASE_URL': 'file:./dev.db'})
+        self.assertEqual(devRuntime.os.environ.get('DATABASE_URL'), 'file:./dev.db')
+
     def testCreateDevServicesReturnsThreeManagedProcesses(self) -> None:
         """应暴露三进程开发编排定义。"""
         devRuntime = loadPackageModule('tools.scripts.dev_runtime')
@@ -419,7 +446,7 @@ class DevRuntimeTests(unittest.TestCase):
         self.assertEqual(set(services.keys()), {'backend_tsc', 'backend_app', 'web'})
         self.assertEqual(
             services['backend_app']['command'],
-            ['node', '--watch', 'dist/main.js'],
+            ['node', '--watch', 'dist/src/main.js'],
         )
         self.assertEqual(services['backend_app']['port'], 23330)
         self.assertEqual(
@@ -448,7 +475,7 @@ class DevRuntimeTests(unittest.TestCase):
         buildSteps = devRuntime.createBuildSteps()
         self.assertEqual(
             [step[0] for step in buildSteps],
-            ['构建 shared', '构建 plugin-sdk', '生成 Prisma Client', '构建 server'],
+            ['构建 shared', '构建 plugin-sdk', '生成 Prisma Client', '同步开发数据库', '构建 server'],
         )
 
     def testBackendWaitTimeoutExtendsOnNonWindows(self) -> None:

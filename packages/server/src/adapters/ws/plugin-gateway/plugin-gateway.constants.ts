@@ -1,0 +1,31 @@
+export const WS_TYPE = {
+  AUTH: 'auth',
+  PLUGIN: 'plugin',
+  COMMAND: 'command',
+  HEARTBEAT: 'heartbeat',
+  ERROR: 'error',
+} as const;
+
+export const WS_ACTION = {
+  AUTHENTICATE: 'authenticate',
+  AUTH_OK: 'auth_ok',
+  AUTH_FAIL: 'auth_fail',
+  REGISTER: 'register',
+  REGISTER_OK: 'register_ok',
+  UNREGISTER: 'unregister',
+  STATUS: 'status',
+  EXECUTE: 'execute',
+  EXECUTE_RESULT: 'execute_result',
+  EXECUTE_ERROR: 'execute_error',
+  HOOK_INVOKE: 'hook_invoke',
+  HOOK_RESULT: 'hook_result',
+  HOOK_ERROR: 'hook_error',
+  ROUTE_INVOKE: 'route_invoke',
+  ROUTE_RESULT: 'route_result',
+  ROUTE_ERROR: 'route_error',
+  HOST_CALL: 'host_call',
+  HOST_RESULT: 'host_result',
+  HOST_ERROR: 'host_error',
+  PING: 'ping',
+  PONG: 'pong',
+} as const;

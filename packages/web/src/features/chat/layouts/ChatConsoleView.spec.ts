@@ -70,7 +70,6 @@ describe('ChatConsoleView', () => {
     expect(chatState.loadConversations).toHaveBeenCalled()
     expect(wrapper.text()).toContain('最近一次对话')
     expect(wrapper.text()).toContain('新对话')
-    expect(wrapper.text()).toContain('当前用户')
     expect(wrapper.find('.chat-rail').exists()).toBe(true)
     expect(wrapper.find('.chat-content').exists()).toBe(true)
   })

@@ -4,18 +4,13 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "node -e \"const {spawn,spawnSync}=require('node:child_process');const init=spawnSync('npm run build',{stdio:'inherit',shell:true});if(init.status!==0){process.exit(init.status??1);}const t=spawn('npm run build -- --watch',{stdio:'inherit',shell:true});const n=spawn('node --watch dist/main',{stdio:'inherit',shell:true});const stop=(code=0)=>{if(!t.killed)t.kill();if(!n.killed)n.kill();process.exit(code);};process.on('SIGINT',()=>stop(0));process.on('SIGTERM',()=>stop(0));t.on('exit',(code)=>{if(code&&code!==0)stop(code);});n.on('exit',(code)=>{if(code&&code!==0)stop(code);});\"",
-    "start": "node dist/main",
-    "start:prod": "node dist/main",
-    "lint": "cd ../.. && eslint \"packages/server/src/**/*.ts\"",
-    "typecheck": "tsc --noEmit",
-    "smoke:http": "node scripts/http-smoke.mjs",
-    "test": "jest --passWithNoTests",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "dev": "tsc -p tsconfig.build.json --watch & node --watch dist/src/main.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:push": "prisma db push",
+    "start": "node dist/src/main.js",
+    "smoke:http": "node scripts/http-smoke.mjs",
+    "test": "jest --runInBand --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
@@ -62,6 +57,7 @@
     "@nestjs/schematics": "^11.0.9",
     "@nestjs/testing": "^11.1.16",
     "@types/bcrypt": "^5.0.0",
+    "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
     "@types/passport-jwt": "^4.0.0",

@@ -1,0 +1,229 @@
+{
+  "scopes": {
+    "server": {
+      "boundaryMapFile": "tools/refactor/domain-boundary-map.json",
+      "boundaryMapScope": "server",
+      "moduleFiles": [
+        {
+          "file": "packages/server/src/app.module.ts",
+          "allowedImports": [
+            "ConfigModule",
+            "JwtModule",
+            "PluginGatewayWsModule",
+            "PluginModule",
+            "RuntimeKernelModule",
+            "RuntimeHostModule"
+          ],
+          "allowedExports": []
+        },
+        {
+          "file": "packages/server/src/adapters/ws/plugin-gateway/plugin-gateway.module.ts",
+          "allowedImports": [
+            "ConfigModule",
+            "JwtModule",
+            "RuntimeGatewayModule",
+            "RuntimeHostModule"
+          ],
+          "allowedExports": []
+        },
+        {
+          "file": "packages/server/src/runtime/host/runtime-host.module.ts",
+          "allowedImports": [
+            "PluginModule",
+            "RuntimeGatewayModule",
+            "RuntimeKernelModule"
+          ],
+          "allowedExports": [
+            "AiManagementService",
+            "AiModelExecutionService",
+            "AiProviderSettingsService",
+            "AiVisionService",
+            "AutomationService",
+            "McpService",
+            "RuntimeHostConversationMessageService",
+            "RuntimeHostConversationRecordService",
+            "RuntimeHostKnowledgeService",
+            "RuntimeHostPluginDispatchService",
+            "RuntimeHostPluginRuntimeService",
+            "RuntimeHostSubagentRunnerService",
+            "RuntimeHostService",
+            "RuntimeHostUserContextService",
+            "SkillRegistryService",
+            "SkillSessionService",
+            "ToolRegistryService",
+            "UserService"
+          ]
+        },
+        {
+          "file": "packages/server/src/runtime/kernel/runtime-kernel.module.ts",
+          "allowedImports": [
+            "PluginModule",
+            "RuntimeGatewayModule"
+          ],
+          "allowedExports": [
+            "RuntimePluginGovernanceService"
+          ]
+        },
+        {
+          "file": "packages/server/src/plugin/plugin.module.ts",
+          "allowedImports": [
+            "ConfigModule",
+            "JwtModule"
+          ],
+          "allowedExports": [
+            "BuiltinPluginRegistryService",
+            "PluginBootstrapService",
+            "PluginGovernanceService",
+            "PluginPersistenceService"
+          ]
+        }
+      ],
+      "scanRoots": [
+        "packages/server/src"
+      ],
+      "extensions": [
+        ".ts"
+      ],
+      "excludeSuffixes": [
+        ".spec.ts",
+        ".e2e-spec.ts",
+        ".spec-fixture.ts"
+      ]
+    },
+    "server-plugin-runtime": {
+      "boundaryMapFile": "tools/refactor/domain-boundary-map.json",
+      "boundaryMapScope": "server",
+      "moduleFiles": [
+        {
+          "file": "packages/server/src/adapters/ws/plugin-gateway/plugin-gateway.module.ts",
+          "allowedImports": [
+            "ConfigModule",
+            "JwtModule",
+            "RuntimeGatewayModule",
+            "RuntimeHostModule"
+          ],
+          "allowedExports": []
+        },
+        {
+          "file": "packages/server/src/runtime/host/runtime-host.module.ts",
+          "allowedImports": [
+            "PluginModule",
+            "RuntimeGatewayModule",
+            "RuntimeKernelModule"
+          ],
+          "allowedExports": [
+            "AiManagementService",
+            "AiModelExecutionService",
+            "AiProviderSettingsService",
+            "AiVisionService",
+            "AutomationService",
+            "McpService",
+            "RuntimeHostConversationMessageService",
+            "RuntimeHostConversationRecordService",
+            "RuntimeHostKnowledgeService",
+            "RuntimeHostPluginDispatchService",
+            "RuntimeHostPluginRuntimeService",
+            "RuntimeHostSubagentRunnerService",
+            "RuntimeHostService",
+            "RuntimeHostUserContextService",
+            "SkillRegistryService",
+            "SkillSessionService",
+            "ToolRegistryService",
+            "UserService"
+          ]
+        },
+        {
+          "file": "packages/server/src/runtime/kernel/runtime-kernel.module.ts",
+          "allowedImports": [
+            "PluginModule",
+            "RuntimeGatewayModule"
+          ],
+          "allowedExports": [
+            "RuntimePluginGovernanceService"
+          ]
+        },
+        {
+          "file": "packages/server/src/plugin/plugin.module.ts",
+          "allowedImports": [
+            "ConfigModule",
+            "JwtModule"
+          ],
+          "allowedExports": [
+            "BuiltinPluginRegistryService",
+            "PluginBootstrapService",
+            "PluginGovernanceService",
+            "PluginPersistenceService"
+          ]
+        }
+      ],
+      "scanRoots": [
+        "packages/server/src/plugin",
+        "packages/server/src/runtime/host",
+        "packages/server/src/runtime/gateway",
+        "packages/server/src/runtime/kernel",
+        "packages/server/src/adapters/http/plugin",
+        "packages/server/src/adapters/ws/plugin-gateway"
+      ],
+      "extensions": [
+        ".ts"
+      ],
+      "excludeSuffixes": [
+        ".spec.ts",
+        ".e2e-spec.ts",
+        ".spec-fixture.ts"
+      ]
+    },
+    "server-execution-domains": {
+      "boundaryMapFile": "tools/refactor/domain-boundary-map.json",
+      "boundaryMapScope": "server-execution-domains",
+      "moduleFiles": [
+        {
+          "file": "packages/server/src/runtime/host/runtime-host.module.ts",
+          "allowedImports": [
+            "PluginModule",
+            "RuntimeGatewayModule",
+            "RuntimeKernelModule"
+          ],
+          "allowedExports": [
+            "AiManagementService",
+            "AiModelExecutionService",
+            "AiProviderSettingsService",
+            "AiVisionService",
+            "AutomationService",
+            "McpService",
+            "RuntimeHostConversationMessageService",
+            "RuntimeHostConversationRecordService",
+            "RuntimeHostKnowledgeService",
+            "RuntimeHostPluginDispatchService",
+            "RuntimeHostPluginRuntimeService",
+            "RuntimeHostSubagentRunnerService",
+            "RuntimeHostService",
+            "RuntimeHostUserContextService",
+            "SkillRegistryService",
+            "SkillSessionService",
+            "ToolRegistryService",
+            "UserService"
+          ]
+        }
+      ],
+      "scanRoots": [
+        "packages/server/src/execution/automation",
+        "packages/server/src/execution/mcp",
+        "packages/server/src/execution/skill",
+        "packages/server/src/execution/tool",
+        "packages/server/src/adapters/http/automation",
+        "packages/server/src/adapters/http/mcp",
+        "packages/server/src/adapters/http/skill",
+        "packages/server/src/adapters/http/tool"
+      ],
+      "extensions": [
+        ".ts"
+      ],
+      "excludeSuffixes": [
+        ".spec.ts",
+        ".e2e-spec.ts",
+        ".spec-fixture.ts"
+      ]
+    }
+  }
+}

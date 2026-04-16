@@ -1,0 +1,139 @@
+{
+  "scopes": {
+    "server-cutover": {
+      "forbiddenPaths": [
+        "packages/server_neo",
+        "packages/server/server_neo",
+        "packages/server/src/automation",
+        "packages/server/src/mcp",
+        "packages/server/src/model-runtime",
+        "packages/server/src/skill",
+        "packages/server/src/tool",
+        "packages/server/test/model-runtime",
+        "packages/server/test/mcp",
+        "packages/server/test/skill",
+        "packages/server/test/tool",
+        "packages/server/test/plugin/manifest",
+        "packages/server/test/core/bootstrap",
+        "packages/server/test/adapters/ws/plugin-gateway/plugin-gateway-connection-lifecycle.service.spec.ts",
+        "packages/server/src/conversation/conversation.module.ts",
+        "packages/server/src/tool/tool.module.ts",
+        "packages/server/src/skill/skill.module.ts",
+        "packages/server/src/ai/provider-catalog.ts",
+        "packages/server/src/ai/ai-provider.service.ts",
+        "packages/server/src/ai/ai-provider.helpers.ts",
+        "packages/server/src/plugin/plugin-runtime.service.ts"
+      ],
+      "forbiddenTextMatches": [
+        {
+          "file": "docs/后端模型调用接口说明.md",
+          "needles": [
+            "ChatMessageService",
+            "ChatTaskService",
+            "ChatController",
+            "ChatModelInvocationService",
+            "ChatMessageTransformService",
+            "AiProviderService",
+            "ImageToTextService",
+            "../chat/chat-model-invocation.service",
+            "packages/server/src/ai/provider-catalog.ts",
+            "packages/server/src/ai/ai-provider.service.ts",
+            "packages/server/src/ai/ai-provider.helpers.ts"
+          ]
+        },
+        {
+          "file": "docs/扩展内核契约说明.md",
+          "needles": [
+            "packages/server/src/plugin/plugin-runtime.service.ts",
+            "packages/server/src/mcp/mcp.service.ts",
+            "packages/server/src/tool/mcp-tool.provider.ts",
+            "packages/server/src/skill/skill-session.service.ts",
+            "packages/server/src/skill/skill-execution.service.ts",
+            "packages/server/src/tool/skill-tool.provider.ts",
+            "SkillExecutionService",
+            "PluginService.recordPluginEvent",
+            "PluginService.listPluginEvents"
+          ]
+        },
+        {
+          "file": "docs/扩展内核维护说明.md",
+          "needles": [
+            "`PluginHostService`",
+            "`PluginRuntimeService`",
+            "plugin-runtime-input.helpers.ts",
+            "plugin-runtime-clone.helpers.ts",
+            "plugin-runtime-validation.helpers.ts",
+            "plugin-runtime-hook-*.helpers.ts",
+            "plugin-runtime-dispatch.helpers.ts",
+            "plugin-runtime-session.helpers.ts",
+            "plugin-runtime-record.helpers.ts",
+            "plugin-runtime-subagent.helpers.ts",
+            "plugin-runtime-manifest.helpers.ts",
+            "plugin-runtime-timeout.helpers.ts"
+          ]
+        },
+        {
+          "file": "docs/插件开发指南.md",
+          "needles": [
+            "PluginRuntimeService -> transport"
+          ]
+        }
+      ]
+    },
+    "shared-runtime-helpers": {
+      "forbiddenPaths": [
+        "packages/shared/src/plugin-gateway-auth.ts",
+        "packages/shared/src/plugin-gateway-context.ts",
+        "packages/shared/src/plugin-gateway-host.ts",
+        "packages/shared/src/plugin-gateway-inbound.ts",
+        "packages/shared/src/plugin-gateway-payload.helpers.ts",
+        "packages/shared/src/plugin-gateway-remote-transport.ts",
+        "packages/shared/src/plugin-gateway-router.ts",
+        "packages/shared/src/plugin-gateway-transport.ts",
+        "packages/shared/src/plugin-host-ai-view.ts",
+        "packages/shared/src/plugin-host-view.ts",
+        "packages/shared/src/plugin-event-view.ts",
+        "packages/shared/src/plugin-runtime-clone.helpers.ts",
+        "packages/shared/src/plugin-runtime-hook-chain.ts",
+        "packages/shared/src/plugin-runtime-hook-dispatch.ts",
+        "packages/shared/src/plugin-runtime-hook-mutation.helpers.ts",
+        "packages/shared/src/plugin-runtime-hook-result.ts",
+        "packages/shared/src/plugin-runtime-hook-family.ts",
+        "packages/shared/src/plugin-runtime-manifest.helpers.ts",
+        "packages/shared/src/plugin-runtime-request.ts",
+        "packages/shared/src/plugin-runtime-session.helpers.ts",
+        "packages/shared/src/plugin-runtime-subagent.ts",
+        "packages/shared/src/plugin-runtime-validation.helpers.ts",
+        "packages/shared/src/plugin-tool.helpers.ts",
+        "packages/shared/src/plugin-subagent-task.ts"
+      ],
+      "forbiddenExportSubstrings": [
+        "./plugin-gateway-auth",
+        "./plugin-gateway-context",
+        "./plugin-gateway-host",
+        "./plugin-gateway-inbound",
+        "./plugin-gateway-payload.helpers",
+        "./plugin-gateway-remote-transport",
+        "./plugin-gateway-router",
+        "./plugin-gateway-transport",
+        "./plugin-host-ai-view",
+        "./plugin-host-view",
+        "./plugin-event-view",
+        "./plugin-runtime-clone.helpers",
+        "./plugin-runtime-hook-chain",
+        "./plugin-runtime-hook-dispatch",
+        "./plugin-runtime-hook-mutation.helpers",
+        "./plugin-runtime-hook-result",
+        "./plugin-runtime-hook-family",
+        "./plugin-runtime-manifest.helpers",
+        "./plugin-runtime-request",
+        "./plugin-runtime-session.helpers",
+        "./plugin-runtime-subagent",
+        "./plugin-runtime-validation.helpers",
+        "./plugin-tool.helpers",
+        "./plugin-subagent-task"
+      ],
+      "indexFile": "packages/shared/src/index.ts"
+    }
+  }
+}

@@ -1,6 +1,5 @@
 import type { PluginCapability } from '@garlic-claw/shared';
-import { DeviceType } from '@garlic-claw/shared';
-import { PluginClient } from '@garlic-claw/plugin-sdk/client';
+import { DEVICE_TYPE, PluginClient } from '@garlic-claw/plugin-sdk/client';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -71,7 +70,7 @@ const client = new PluginClient({
   serverUrl: SERVER_URL,
   token: TOKEN,
   pluginName: `pc-${os.hostname()}`,
-  deviceType: DeviceType.PC,
+  deviceType: DEVICE_TYPE.PC,
   manifest: {
     name: '电脑助手',
     version: '1.0.0',

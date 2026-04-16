@@ -83,8 +83,8 @@ const modelConfig: AiModelConfig = {
 
 const visionConfig: VisionFallbackConfig = {
   enabled: true,
-  providerId: 'nvidia',
-  modelId: 'qwen/qwen3.5-122b-a10b',
+  providerId: 'gemini',
+  modelId: 'gemini-1.5-pro',
   prompt: '请描述图片',
   maxDescriptionLength: 0,
 }
@@ -107,6 +107,7 @@ const pluginInfo: PluginInfo = {
   deviceType: 'pc',
   status: 'online',
   connected: true,
+  defaultEnabled: true,
   manifest: {
     id: 'plugin-pc',
     name: 'plugin-pc',

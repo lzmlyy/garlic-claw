@@ -2,6 +2,12 @@
 
 Garlic Claw 是一个带设备控制、自动化和多提供商聊天能力的 AI 助手项目。
 
+本 README 面向使用者和本地操作者，优先回答：
+
+- 这是什么项目
+- 怎么启动 / 停止 / 配置
+- 主要入口和后续该看哪份文档
+
 当前仓库已经收敛到一套真实运行路径：
 
 - 后端：NestJS 11 + Prisma + AI SDK v6
@@ -11,37 +17,42 @@ Garlic Claw 是一个带设备控制、自动化和多提供商聊天能力的 A
     - `@garlic-claw/plugin-sdk/client`
     - `@garlic-claw/plugin-sdk/host`
     - `@garlic-claw/plugin-sdk/authoring`
-  - 根入口仍保留兼容导出，但新代码优先使用子路径入口
+  - 新代码直接使用这三个子路径入口，不再示例根入口
+
+```ts
+import { PluginClient } from '@garlic-claw/plugin-sdk/client';
+import { createPluginHostFacade } from '@garlic-claw/plugin-sdk/host';
+import { createPluginAuthorTransportExecutor } from '@garlic-claw/plugin-sdk/authoring';
+```
 - AI provider：
   - core 协议族：
     - `openai` -> `@ai-sdk/openai`
     - `anthropic` -> `@ai-sdk/anthropic`
     - `gemini` -> `@ai-sdk/google`
-  - 供应商 preset：
-    - `groq`
-    - `xai`
-    - `mistral`
-    - `cohere`
-    - `cerebras`
-    - `deepinfra`
-    - `togetherai`
-    - `perplexity`
-    - `gateway`
-    - `vercel`
-    - `openrouter`
-    - 这些 preset 运行时会收敛到三种协议族，而不是继续各自绑定独立 SDK
   - 协议接入只保留三种协议族：`openai` / `anthropic` / `gemini`
 
-## 文档
+## 文档导航
 
-- 插件作者文档：[`docs/插件开发指南.md`](docs/插件开发指南.md)
-- 扩展内核契约：[`docs/扩展内核契约说明.md`](docs/扩展内核契约说明.md)
-- 扩展内核维护文档：[`docs/扩展内核维护说明.md`](docs/扩展内核维护说明.md)
+使用者入口：
+
+- 当前页 `README.md`
+
+开发者入口：
+
+- 文档索引：[`docs/README.md`](docs/README.md)
+- 插件开发指南：[`docs/插件开发指南.md`](docs/插件开发指南.md)
 - 后端模型调用说明：[`docs/后端模型调用接口说明.md`](docs/后端模型调用接口说明.md)
+
+维护者入口：
+
+- 扩展内核契约：[`docs/扩展内核契约说明.md`](docs/扩展内核契约说明.md)
+- 扩展内核维护说明：[`docs/扩展内核维护说明.md`](docs/扩展内核维护说明.md)
 
 ## 项目结构
 
 ```text
+start.bat         Windows 启动包装入口
+start.sh          Linux / WSL 启动包装入口
 packages/
   server/       NestJS 后端，HTTP 端口 23330，插件 WS 端口 23331
   web/          Vue 3 前端，开发端口 23333
@@ -51,9 +62,8 @@ packages/
 config/
   ai-settings.example.json   AI provider / model / vision fallback 示例配置
 tools/
+  start_launcher.py          ASCII 启动 shim，统一转到中文主脚本
   一键启停脚本.py            开发/生产/脚本测试统一主入口
-  start-dev.bat              兼容旧入口
-  stop-dev.bat               兼容旧入口
   scripts/
     dev_runtime.py           开发态编排
     docker_runtime.py        Docker / 生产模式编排
@@ -83,22 +93,42 @@ cp .env.example .env
 不再通过环境变量配置 AI provider。
 如果 MCP 或自定义 provider 需要从环境变量读取密钥，再按需自行追加到 `.env`。
 
-### 2. AI 配置：统一放在 `config/ai-settings.json`
+### 2. AI 配置：示例模板在 `config/`，运行时路径由环境变量决定
 
-复制 AI 配置模板：
+默认情况下，server 会读取：
+
+```text
+packages/server/tmp/ai-settings.server.json
+```
+
+如果设置了 `GARLIC_CLAW_AI_SETTINGS_PATH`，则会改读该路径。
+
+项目里保留的模板文件在：
+
+```text
+config/ai-settings.example.json
+```
+
+如果你想把 provider 配置固定到仓库根目录，可以先复制模板：
 
 ```bash
 cp config/ai-settings.example.json config/ai-settings.json
 ```
 
-这个文件负责：
+然后在环境中显式设置：
+
+```bash
+GARLIC_CLAW_AI_SETTINGS_PATH=config/ai-settings.json
+```
+
+AI 配置文件负责：
 
 - provider 列表
 - provider 接入模式：`catalog`（目录模板）/ `protocol`（协议接入）
 - catalog 项或协议接入协议族
 - provider 的 `apiKey` / `baseUrl`
 - 默认模型
-- provider 预设模型列表
+- provider 模型列表
 - `visionFallback` 配置
 - `hostModelRouting` 配置
 
@@ -131,17 +161,59 @@ cd ../..
 
 启动前后端：
 
+Windows：
+
+```powershell
+.\start.bat restart
+```
+
+Linux / WSL：
+
 ```bash
-python tools/一键启停脚本.py
+bash ./start.sh restart
+```
+
+直接调用 Python 主入口也可以：
+
+```bash
+python tools/一键启停脚本.py restart
 ```
 
 关闭前后端：
+
+Windows：
+
+```powershell
+.\start.bat stop
+```
+
+Linux / WSL：
+
+```bash
+bash ./start.sh stop
+```
+
+直接调用 Python 主入口：
 
 ```bash
 python tools/一键启停脚本.py --stop
 ```
 
 查看状态：
+
+Windows：
+
+```powershell
+.\start.bat status
+```
+
+Linux / WSL：
+
+```bash
+bash ./start.sh status
+```
+
+直接调用 Python 主入口：
 
 ```bash
 python tools/一键启停脚本.py --status
@@ -165,6 +237,13 @@ python tools/一键启停脚本.py --test
 python tools/一键启停脚本.py test
 ```
 
+说明：
+
+- `start.bat` 会先设置 UTF-8，再转到 `tools/start_launcher.py`
+- `start.sh` 也会统一转到 `tools/start_launcher.py`
+- `tools/start_launcher.py` 再加载真正的中文主脚本 `tools/一键启停脚本.py`
+- 如果从 PowerShell 调 WSL 跑测试或长输出，优先把 stdout/stderr 写入 UTF-8 文件后再读，避免乱码和截断
+
 默认地址：
 
 - 前端：`http://127.0.0.1:23333`
@@ -187,26 +266,11 @@ BOOTSTRAP_ADMIN_PASSWORD=admin123
 
 ### Catalog Provider
 
-catalog provider 现在分成两层：
+catalog provider 现在只保留三种核心目录模板：
 
-- core 协议族
-  - `openai` -> `@ai-sdk/openai`
-  - `anthropic` -> `@ai-sdk/anthropic`
-  - `gemini` -> `@ai-sdk/google`
-- 供应商 preset
-  - `groq`
-  - `xai`
-  - `mistral`
-  - `cohere`
-  - `cerebras`
-  - `deepinfra`
-  - `togetherai`
-  - `perplexity`
-  - `gateway`
-  - `vercel`
-  - `openrouter`
-
-其中 preset 主要提供默认 `baseUrl`、默认模型和协议族归属；运行时会统一收敛到 `openai / anthropic / gemini` 三种协议族 SDK，而不是继续为每家 preset 维持独立 SDK 依赖。
+- `openai` -> `@ai-sdk/openai`
+- `anthropic` -> `@ai-sdk/anthropic`
+- `gemini` -> `@ai-sdk/google`
 
 ### 协议接入
 
@@ -233,17 +297,25 @@ catalog provider 现在分成两层：
 3. 未命中时，如果启用了 `visionFallback`，则调用转述模型生成描述
 4. 转述失败时，后端直接把原始错误返回给前端
 
-## 类型检查与构建
+## 开发者补充验证
 
-项目使用 SWC 开发编译，提交前必须显式跑 lint 和类型检查。
+下面这些命令主要给开发者和维护者使用；普通使用者不需要每次手动跑全套检查。
+
+项目使用 SWC 开发编译，提交前仍需显式跑 lint 和类型检查。
 
 ```bash
 npm run lint
-npm run typecheck
-
-cd packages/server && npm test -- --runInBand
-cd packages/server && npm run build
+npm run typecheck:server
+npm run test:server
+npm run build:server
+npm run smoke:server
 cd packages/web && npm run build
+```
+
+如果要补做与当前运行链更接近的验证，至少再跑：
+
+```bash
+node packages/server/scripts/http-smoke.mjs --proxy-origin http://127.0.0.1:23333
 ```
 
 如果只想检查单个包：
@@ -251,7 +323,8 @@ cd packages/web && npm run build
 ```bash
 npm run typecheck -w packages/server
 npm run typecheck -w packages/web
-npm run lint -w packages/server
+npm run build -w packages/server
+npm run test -w packages/server -- --runInBand
 ```
 
 ## 主要能力
@@ -263,11 +336,6 @@ npm run lint -w packages/server
 - 记忆查询与删除
 - 插件列表 / 在线状态 / 删除
 - 自动化创建、开关、执行、日志
-
-## 文档
-
-- [插件开发指南](docs/插件开发指南.md)
-- [后端模型调用接口说明](docs/后端模型调用接口说明.md)
 
 Swagger 适合查完整接口定义：
 
