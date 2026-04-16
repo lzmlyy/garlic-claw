@@ -1,0 +1,36 @@
+{
+  "scopes": {
+    "plugin-runtime": {
+      "moduleFiles": [
+        {
+          "file": "packages/server/src/plugin/plugin.module.ts",
+          "allowedImports": [
+            "JwtModule",
+            "AuthModule",
+            "KbModule",
+            "PersonaModule"
+          ],
+          "allowedExports": [
+            "PluginAdminService",
+            "PluginChatRuntimeFacade",
+            "PluginRuntimeService",
+            "PluginService"
+          ]
+        }
+      ],
+      "boundaryMapFile": "tools/refactor/domain-boundary-map.json",
+      "boundaryMapScope": "plugin-runtime",
+      "scanRoots": [
+        "packages/server/src/plugin-runtime"
+      ],
+      "extensions": [
+        ".ts"
+      ],
+      "excludeSuffixes": [
+        ".spec.ts",
+        ".e2e-spec.ts",
+        ".spec-fixture.ts"
+      ]
+    }
+  }
+}

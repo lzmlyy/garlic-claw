@@ -1,46 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  normalizeAdminIdentifier,
-  readBootstrapAdminConfig,
-} from './bootstrap-admin-config';
 
-/**
- * 可参与环境变量管理员判定的用户最小形状。
- */
-export interface AdminIdentityCandidate {
-  /** 用户名。 */
+export type BootstrapAdminRole = 'super_admin' | 'admin';
+
+export interface BootstrapAdminConfig {
   username: string;
-  /** 邮箱。 */
+  email: string;
+  password: string;
+  role: BootstrapAdminRole;
+}
+
+export interface AdminIdentityCandidate {
+  username: string;
   email?: string | null;
-  /** 数据库中的原始角色。 */
   role: string;
 }
 
-/**
- * 基于环境变量的管理员身份覆盖服务。
- *
- * 输入:
- * - 用户名、邮箱和数据库角色
- * - `.env` 中的管理员用户名/邮箱列表
- *
- * 输出:
- * - 运行时最终角色
- *
- * 预期行为:
- * - 命中超级管理员配置时返回 `super_admin`
- * - 命中管理员配置时返回 `admin`
- * - 未命中时回退数据库角色
- */
 @Injectable()
 export class AdminIdentityService {
   constructor(private readonly configService: ConfigService) {}
 
-  /**
-   * 解析用户的最终运行时角色。
-   * @param candidate 当前用户的最小身份信息
-   * @returns 最终角色
-   */
+  readBootstrapAdminConfig(): BootstrapAdminConfig | null {
+    const username = this.readTrimmedConfig('BOOTSTRAP_ADMIN_USERNAME');
+    const password = this.readTrimmedConfig('BOOTSTRAP_ADMIN_PASSWORD');
+    if (!username || !password) {
+      return null;
+    }
+
+    return {
+      username,
+      email: this.readTrimmedConfig('BOOTSTRAP_ADMIN_EMAIL') ?? this.createBootstrapAdminEmail(username),
+      password,
+      role: this.readBootstrapAdminRole(this.readTrimmedConfig('BOOTSTRAP_ADMIN_ROLE')),
+    };
+  }
+
   resolveRole(candidate: AdminIdentityCandidate): string {
     if (
       this.matchesAny(
@@ -56,7 +50,7 @@ export class AdminIdentityService {
       return 'admin';
     }
 
-    const bootstrapAdmin = readBootstrapAdminConfig(this.configService);
+    const bootstrapAdmin = this.readBootstrapAdminConfig();
     if (bootstrapAdmin && this.matchesBootstrapAdmin(candidate, bootstrapAdmin)) {
       return bootstrapAdmin.role;
     }
@@ -64,13 +58,6 @@ export class AdminIdentityService {
     return candidate.role;
   }
 
-  /**
-   * 判断用户是否命中某一组用户名或邮箱配置。
-   * @param candidate 当前用户
-   * @param usernamesEnv 用户名环境变量名
-   * @param emailsEnv 邮箱环境变量名
-   * @returns 是否命中
-   */
   private matchesAny(
     candidate: AdminIdentityCandidate,
     usernamesEnv: string,
@@ -92,11 +79,6 @@ export class AdminIdentityService {
     return emails.has(email);
   }
 
-  /**
-   * 读取并标准化逗号分隔的环境变量列表。
-   * @param key 环境变量名
-   * @returns 标准化后的标识符集合
-   */
   private readIdentifiers(key: string): Set<string> {
     const raw = this.configService.get<string>(key) ?? '';
     return new Set(
@@ -107,19 +89,13 @@ export class AdminIdentityService {
     );
   }
 
-  /**
-   * 判断当前用户是否命中 dedicated bootstrap 管理员账号。
-   * @param candidate 当前用户
-   * @param bootstrapAdmin bootstrap 管理员配置
-   * @returns 是否命中
-   */
   private matchesBootstrapAdmin(
     candidate: AdminIdentityCandidate,
     bootstrapAdmin: { username: string; email: string },
   ): boolean {
     if (
-      normalizeAdminIdentifier(candidate.username) ===
-      normalizeAdminIdentifier(bootstrapAdmin.username)
+      normalizeAdminIdentifier(candidate.username)
+      === normalizeAdminIdentifier(bootstrapAdmin.username)
     ) {
       return true;
     }
@@ -129,4 +105,25 @@ export class AdminIdentityService {
       : null;
     return email === normalizeAdminIdentifier(bootstrapAdmin.email);
   }
+
+  private createBootstrapAdminEmail(username: string): string {
+    const localPart = normalizeAdminIdentifier(username)
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    return `${localPart || 'admin'}@bootstrap.local`;
+  }
+
+  private readBootstrapAdminRole(raw: string | null): BootstrapAdminRole {
+    return raw === 'admin' ? 'admin' : 'super_admin';
+  }
+
+  private readTrimmedConfig(key: string): string | null {
+    const value = this.configService.get<string>(key)?.trim();
+    return value ? value : null;
+  }
+}
+
+function normalizeAdminIdentifier(value: string): string {
+  return value.trim().toLowerCase();
 }

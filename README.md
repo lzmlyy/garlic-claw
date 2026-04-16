@@ -11,7 +11,13 @@ Garlic Claw 是一个带设备控制、自动化和多提供商聊天能力的 A
     - `@garlic-claw/plugin-sdk/client`
     - `@garlic-claw/plugin-sdk/host`
     - `@garlic-claw/plugin-sdk/authoring`
-  - 根入口仍保留兼容导出，但新代码优先使用子路径入口
+  - 新代码直接使用这三个子路径入口，不再示例根入口
+
+```ts
+import { PluginClient } from '@garlic-claw/plugin-sdk/client';
+import { createPluginHostFacade } from '@garlic-claw/plugin-sdk/host';
+import { createPluginAuthorTransportExecutor } from '@garlic-claw/plugin-sdk/authoring';
+```
 - AI provider：
   - core 协议族：
     - `openai` -> `@ai-sdk/openai`
@@ -239,10 +245,10 @@ catalog provider 现在分成两层：
 
 ```bash
 npm run lint
-npm run typecheck
-
-cd packages/server && npm test -- --runInBand
-cd packages/server && npm run build
+npm run typecheck:server
+npm run test:server
+npm run build:server
+npm run smoke:server
 cd packages/web && npm run build
 ```
 
@@ -251,7 +257,8 @@ cd packages/web && npm run build
 ```bash
 npm run typecheck -w packages/server
 npm run typecheck -w packages/web
-npm run lint -w packages/server
+npm run build -w packages/server
+npm run test -w packages/server -- --runInBand
 ```
 
 ## 主要能力

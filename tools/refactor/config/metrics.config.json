@@ -1,0 +1,55 @@
+{
+  "packages": [
+    {
+      "name": "packages/server/src",
+      "root": "packages/server/src",
+      "extensions": [".ts"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "topFileCount": 5
+    },
+    {
+      "name": "packages/shared",
+      "root": "packages/shared/src",
+      "extensions": [".ts"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "topFileCount": 5
+    },
+    {
+      "name": "packages/plugin-sdk",
+      "root": "packages/plugin-sdk/src",
+      "extensions": [".ts"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "topFileCount": 5
+    },
+    {
+      "name": "packages/web",
+      "root": "packages/web/src",
+      "extensions": [".ts", ".vue"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "topFileCount": 5
+    }
+  ],
+  "breakdowns": [
+    {
+      "name": "serverModules",
+      "root": "packages/server/src",
+      "extensions": [".ts"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"]
+    },
+    {
+      "name": "webFeatures",
+      "root": "packages/web/src/features",
+      "extensions": [".ts", ".vue"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"]
+    }
+  ],
+  "sharedImportRoots": [
+    "packages/server/src",
+    "packages/web/src",
+    "packages/plugin-sdk/src",
+    "packages/plugins/plugin-pc/src"
+  ],
+  "globalTopFileCount": 12,
+  "importExtensions": [".ts", ".vue", ".js", ".mjs", ".cjs"],
+  "importExcludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"]
+}

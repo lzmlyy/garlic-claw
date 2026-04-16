@@ -107,6 +107,7 @@ const pluginInfo: PluginInfo = {
   deviceType: 'pc',
   status: 'online',
   connected: true,
+  defaultEnabled: true,
   manifest: {
     id: 'plugin-pc',
     name: 'plugin-pc',

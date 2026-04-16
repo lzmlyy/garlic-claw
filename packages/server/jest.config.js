@@ -2,10 +2,10 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  rootDir: 'src',
+  rootDir: '.',
+  roots: ['<rootDir>/src', '<rootDir>/test'],
   testRegex: '.*\\.spec\\.ts$',
   moduleFileExtensions: ['js', 'json', 'ts'],
-  setupFilesAfterEnv: ['<rootDir>/test-setup.ts'],
-  coverageDirectory: '../coverage',
-  collectCoverageFrom: ['**/*.service.ts', '**/*.controller.ts'],
+  coverageDirectory: 'coverage',
+  collectCoverageFrom: ['src/**/*.service.ts', 'src/**/*.controller.ts', 'src/**/*.config.ts'],
 };

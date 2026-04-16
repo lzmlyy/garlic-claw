@@ -1,7 +1,6 @@
-export enum Role {
-  SUPER_ADMIN = 'super_admin',
-  ADMIN = 'admin',
-  USER = 'user',
-  AI = 'ai',
-  DEVICE = 'device',
-}
+export type Role =
+  | 'super_admin'
+  | 'admin'
+  | 'user'
+  | 'ai'
+  | 'device';

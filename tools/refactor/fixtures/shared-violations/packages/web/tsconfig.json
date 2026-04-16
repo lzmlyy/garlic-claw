@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@garlic-claw/shared": ["../shared/src/index.ts"],
+      "@garlic-claw/shared/*": ["../shared/src/*"]
+    }
+  }
+}

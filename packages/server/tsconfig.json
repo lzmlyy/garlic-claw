@@ -2,37 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "noEmit": true,
-    "ignoreDeprecations": "5.0",
-    "declaration": false,
-    "declarationMap": false,
-    "sourceMap": false,
-    "baseUrl": ".",
-    "paths": {
-      "ai": ["src/types/ai-sdk-stubs"],
-      "@ai-sdk/openai": ["src/types/ai-sdk-stubs"],
-      "@ai-sdk/anthropic": ["src/types/ai-sdk-stubs"],
-      "@ai-sdk/google": ["src/types/ai-sdk-stubs"],
-      "yaml": ["../../node_modules/yaml/dist/index.d.ts"]
-    }
+    "ignoreDeprecations": "5.0"
   },
   "files": ["src/main.ts"],
-  "exclude": [
-    "src/**/*.spec.ts",
-    "src/ai/constants/**/*",
-    "src/ai/discovery/**/*",
-    "src/ai/factory/**/*",
-    "src/ai/loaders/**/*",
-    "src/ai/provider-initializer.ts",
-    "src/ai/llm.service.ts",
-    "src/ai/providers/*.provider.ts",
-    "src/ai/providers/index.ts",
-    "src/ai/registry/provider.state.ts",
-    "src/ai/transform/**/*",
-    "src/ai/utils/**/*",
-    "src/ai/config/config.loader.ts",
-    "src/ai/config/config.validator.ts",
-    "src/ai/config/env.provider-config.ts"
-  ]
+  "exclude": ["src/**/*.spec.ts"]
 }

@@ -15,6 +15,7 @@
   "dependencies": {
     "@garlic-claw/shared": "*",
     "@iconify-icons/solar": "^1.2.3",
+    "@iconify/types": "^2.0.0",
     "@iconify/vue": "^5.0.0",
     "@tanstack/vue-virtual": "^3.13.23",
     "marked": "^15.0.0",

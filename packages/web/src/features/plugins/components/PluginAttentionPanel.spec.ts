@@ -10,6 +10,7 @@ function createPlugin(input: Partial<PluginInfo> & Pick<PluginInfo, 'id' | 'name
     deviceType: input.deviceType ?? 'builtin',
     status: input.status ?? 'online',
     connected: input.connected ?? true,
+    defaultEnabled: input.defaultEnabled ?? true,
     runtimeKind: input.runtimeKind ?? 'builtin',
     supportedActions: input.supportedActions ?? ['health-check'],
     crons: input.crons ?? [],

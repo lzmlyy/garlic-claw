@@ -1,22 +1,19 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  API_KEY_SCOPES,
   type ApiKeyScope,
   type ApiKeySummary,
   type CreateApiKeyRequest,
   type CreateApiKeyResponse,
 } from '@garlic-claw/shared';
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { uuidv7 } from '@garlic-claw/shared';
-import { API_KEY_TOKEN_PATTERN, API_KEY_TOKEN_PREFIX } from './api-key.constants';
-import type { AuthenticatedUser } from './auth-user';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { getPrismaClient } from '../infrastructure/prisma/prisma-client';
+import { API_KEY_SCOPES } from './api-key.constants';
 import { AdminIdentityService } from './admin-identity.service';
-import { PrismaService } from '../prisma/prisma.service';
+
+const API_KEY_TOKEN_PREFIX = 'gca';
+const API_KEY_TOKEN_PATTERN =
+  /^gca_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_([A-Za-z0-9_-]+)$/i;
 
 type ApiKeySummaryRecord = {
   id: string;
@@ -30,23 +27,25 @@ type ApiKeySummaryRecord = {
   updatedAt: Date;
 };
 
+type ApiKeyAuthRecord = ApiKeySummaryRecord & {
+  secretHash: string;
+  user: {
+    email: string;
+    id: string;
+    role: string;
+    username: string;
+  };
+};
+
 @Injectable()
 export class ApiKeyService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly adminIdentity: AdminIdentityService,
-  ) {}
+  constructor(private readonly adminIdentity: AdminIdentityService) {}
 
   async listKeys(userId: string): Promise<ApiKeySummary[]> {
-    const rows = await this.prisma.apiKey.findMany({
-      where: {
-        userId,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+    const rows = await getPrismaClient().apiKey.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
     });
-
     return rows.map((row: ApiKeySummaryRecord) => this.serializeSummary(row));
   }
 
@@ -56,10 +55,10 @@ export class ApiKeyService {
   ): Promise<CreateApiKeyResponse> {
     const scopes = normalizeScopes(input.scopes);
     const expiresAt = normalizeExpiry(input.expiresAt);
-    const id = uuidv7();
+    const id = randomUUID();
     const secret = randomBytes(32).toString('base64url');
     const token = `${API_KEY_TOKEN_PREFIX}_${id}_${secret}`;
-    const key = await this.prisma.apiKey.create({
+    const key = await getPrismaClient().apiKey.create({
       data: {
         id,
         userId,
@@ -78,19 +77,15 @@ export class ApiKeyService {
   }
 
   async revokeKey(userId: string, keyId: string): Promise<ApiKeySummary> {
-    const existing = await this.prisma.apiKey.findUnique({
-      where: {
-        id: keyId,
-      },
+    const existing = await getPrismaClient().apiKey.findUnique({
+      where: { id: keyId },
     });
     if (!existing || existing.userId !== userId) {
       throw new NotFoundException('API key not found');
     }
 
-    const revoked = await this.prisma.apiKey.update({
-      where: {
-        id: keyId,
-      },
+    const revoked = await getPrismaClient().apiKey.update({
+      where: { id: keyId },
       data: {
         revokedAt: existing.revokedAt ?? new Date(),
       },
@@ -99,52 +94,36 @@ export class ApiKeyService {
     return this.serializeSummary(revoked);
   }
 
-  async authenticateToken(token: string): Promise<AuthenticatedUser> {
+  async authenticateToken(token: string) {
     const parsed = parseApiKeyToken(token);
     if (!parsed) {
       throw new UnauthorizedException('Invalid API key');
     }
 
-    const row = await this.prisma.apiKey.findUnique({
-      where: {
-        id: parsed.id,
-      },
+    const row: ApiKeyAuthRecord | null = await getPrismaClient().apiKey.findUnique({
+      where: { id: parsed.id },
       include: {
         user: {
           select: {
-            id: true,
-            username: true,
             email: true,
+            id: true,
             role: true,
+            username: true,
           },
         },
       },
     });
-    if (!row) {
-      throw new UnauthorizedException('Invalid API key');
-    }
-    if (row.revokedAt) {
-      throw new UnauthorizedException('API key has been revoked');
-    }
-    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
-      throw new UnauthorizedException('API key has expired');
-    }
-
-    if (!verifySecret(parsed.secret, row.secretHash)) {
+    if (!row || row.revokedAt || (row.expiresAt && row.expiresAt.getTime() <= Date.now()) || !verifySecret(parsed.secret, row.secretHash)) {
       throw new UnauthorizedException('Invalid API key');
     }
 
-    await this.prisma.apiKey.update({
-      where: {
-        id: row.id,
-      },
-      data: {
-        lastUsedAt: new Date(),
-      },
+    await getPrismaClient().apiKey.update({
+      where: { id: row.id },
+      data: { lastUsedAt: new Date() },
     });
 
     return {
-      authType: 'api_key',
+      authType: 'api_key' as const,
       id: row.user.id,
       username: row.user.username,
       email: row.user.email,
@@ -155,17 +134,7 @@ export class ApiKeyService {
     };
   }
 
-  private serializeSummary(row: {
-    id: string;
-    name: string;
-    keyPrefix: string;
-    scopesJson: string;
-    lastUsedAt: Date | null;
-    expiresAt: Date | null;
-    revokedAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): ApiKeySummary {
+  private serializeSummary(row: ApiKeySummaryRecord): ApiKeySummary {
     return {
       id: row.id,
       name: row.name,
@@ -209,14 +178,12 @@ function normalizeExpiry(expiresAt?: string): Date | undefined {
 
 function parseApiKeyToken(token: string): { id: string; secret: string } | null {
   const match = API_KEY_TOKEN_PATTERN.exec(token.trim());
-  if (!match) {
-    return null;
-  }
-
-  return {
-    id: match[1],
-    secret: match[2],
-  };
+  return match
+    ? {
+        id: match[1],
+        secret: match[2],
+      }
+    : null;
 }
 
 function parseScopes(scopesJson: string): ApiKeyScope[] {
@@ -224,7 +191,6 @@ function parseScopes(scopesJson: string): ApiKeyScope[] {
   if (!Array.isArray(parsed)) {
     throw new UnauthorizedException('Invalid API key scopes');
   }
-
   return parsed as ApiKeyScope[];
 }
 
@@ -233,11 +199,7 @@ function hashSecret(secret: string): string {
 }
 
 function verifySecret(secret: string, storedHash: string): boolean {
-  const received = Buffer.from(hashSecret(secret), 'utf8');
+  const actual = Buffer.from(hashSecret(secret), 'utf8');
   const expected = Buffer.from(storedHash, 'utf8');
-  if (received.length !== expected.length) {
-    return false;
-  }
-
-  return timingSafeEqual(received, expected);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

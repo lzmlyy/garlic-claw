@@ -8,19 +8,23 @@
     "packages/plugins/*"
   ],
   "scripts": {
-    "dev:server": "npm run dev -w packages/server",
+    "dev:server": "npm run build:server-runtime-deps && npm run dev -w packages/server",
     "dev:web": "npm run dev -w packages/web",
-    "build:server": "npm run build -w packages/server",
+    "build:server-runtime-deps": "npm run build:shared && npm run build -w packages/plugin-sdk && npm run prisma:generate -w packages/server",
+    "build:server": "npm run build:server-runtime-deps && npm run build -w packages/server",
+    "typecheck:server": "npm run typecheck -w packages/server",
+    "test:server": "npm run build:server-runtime-deps && npm run test -w packages/server -- --runInBand",
+    "smoke:server": "npm run build:server-runtime-deps && npm run smoke:http -w packages/server",
     "build:web": "npm run build -w packages/web",
     "build:shared": "npm run build -w packages/shared",
     "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/plugins/*/src/**/*.ts\"",
-    "typecheck:shared": "npm run typecheck -w packages/shared",
-    "typecheck:plugin-sdk": "npm run typecheck -w packages/plugin-sdk",
-    "typecheck:server": "npm run typecheck -w packages/server",
-    "typecheck:web": "npm run typecheck -w packages/web",
-    "typecheck:plugin-pc": "npm run typecheck -w packages/plugins/plugin-pc",
-    "typecheck": "npm run typecheck:shared && npm run typecheck:plugin-sdk && npm run typecheck:server && npm run typecheck:web && npm run typecheck:plugin-pc",
-    "check": "npm run lint && npm run typecheck"
+    "repo:refactor-metrics": "node ./tools/refactor/cli.js refactor-metrics",
+    "repo:exports-guard": "node ./tools/refactor/cli.js exports-guard",
+    "repo:forbidden-imports": "node ./tools/refactor/cli.js forbidden-imports",
+    "repo:consumer-check": "node ./tools/refactor/cli.js consumer-check",
+    "repo:module-allowlists": "node ./tools/refactor/cli.js module-allowlists",
+    "repo:ws-contract": "node ./tools/refactor/cli.js ws-contract",
+    "repo:zero-legacy-refs": "node ./tools/refactor/cli.js zero-legacy-refs"
   },
   "engines": {
     "node": ">=22.0.0"

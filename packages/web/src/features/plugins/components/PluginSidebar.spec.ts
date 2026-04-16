@@ -14,6 +14,7 @@ function createPlugin(
     deviceType: input.deviceType ?? 'builtin',
     status: input.status ?? 'online',
     connected: input.connected ?? true,
+    defaultEnabled: input.defaultEnabled ?? true,
     runtimeKind: input.runtimeKind ?? 'remote',
     manifest: input.manifest ?? {
       id: input.name,
@@ -438,11 +439,11 @@ describe('PluginSidebar', () => {
     expect(titles).toEqual(['PC Host', 'Provider Router'])
     expect(wrapper.text()).not.toContain('Tool Audit')
 
-    await wrapper.get('[data-test="plugin-sidebar-toggle-system"]').trigger('click')
+    await wrapper.get('[data-test="plugin-sidebar-toggle-system"] input').setValue(true)
 
     titles = wrapper.findAll('.plugin-item strong').map((node) => node.text())
     expect(titles).toContain('Tool Audit')
-    expect(wrapper.text()).toContain('已显示系统内建插件')
+    expect(wrapper.text()).toContain('已显示 1 个系统内建插件')
   })
 
   it('restores and persists the show-system-builtins preference', async () => {
@@ -503,10 +504,10 @@ describe('PluginSidebar', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('已显示系统内建插件')
+    expect(wrapper.text()).toContain('已显示 1 个系统内建插件')
     expect(wrapper.text()).toContain('Tool Audit')
 
-    await wrapper.get('[data-test="plugin-sidebar-toggle-system"]').trigger('click')
+    await wrapper.get('[data-test="plugin-sidebar-toggle-system"] input').setValue(false)
 
     expect(localStorage.getItem('garlic-claw:plugin-sidebar:show-system-builtins')).toBe('false')
   })

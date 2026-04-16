@@ -296,17 +296,18 @@ async function parseResponseData<T>(
   await ensureSuccessfulResponse(response);
 
   const payload = await readResponsePayload(response);
-  if (options.skipEnvelope) {
+  if (options.skipEnvelope || response.status === 204) {
     return payload as T;
   }
 
-  const envelope = requireApiEnvelope(payload, response.status);
-
-  if (envelope.code !== 0) {
-    throw createEnvelopeError(envelope, response.status);
+  if (isApiEnvelope(payload)) {
+    if (payload.code !== 0) {
+      throw createEnvelopeError(payload, response.status);
+    }
+    return payload.data as T;
   }
 
-  return envelope.data as T;
+  return payload as T;
 }
 
 async function ensureSuccessfulResponse(response: Response) {
@@ -319,12 +320,7 @@ async function ensureSuccessfulResponse(response: Response) {
     throw createEnvelopeError(payload, response.status);
   }
 
-  throw ensureErrorCode(toAppError({
-    status: response.status,
-    body: typeof payload === "string" ? payload : safeStringify(payload),
-    code: "HTTP_ERROR",
-    details: payload,
-  }), "HTTP_ERROR");
+  throw createRawHttpError(payload, response.status);
 }
 
 async function readResponsePayload(response: Response): Promise<unknown> {
@@ -390,22 +386,6 @@ function isApiEnvelope(payload: unknown): payload is ApiEnvelope {
     typeof (payload as ApiEnvelope).message === "string" &&
     "data" in payload
   );
-}
-
-function requireApiEnvelope(
-  payload: unknown,
-  status?: number,
-): ApiEnvelope {
-  if (isApiEnvelope(payload)) {
-    return payload;
-  }
-
-  throw new AppError("business", "Invalid API response envelope", {
-    status,
-    code: "INVALID_ENVELOPE",
-    details: payload,
-    retryable: false,
-  });
 }
 
 function handleUnauthorizedResponse(
@@ -571,6 +551,45 @@ function safeStringify(payload: unknown) {
   }
 }
 
+function createRawHttpError(payload: unknown, status: number): AppError {
+  return ensureErrorCode(
+    toAppError({
+      status,
+      body: typeof payload === "string" ? payload : safeStringify(payload),
+      message: extractRawErrorMessage(payload),
+      code: "HTTP_ERROR",
+      details: payload,
+    }),
+    "HTTP_ERROR",
+  );
+}
+
+function extractRawErrorMessage(payload: unknown): string | undefined {
+  if (typeof payload === "string") {
+    return payload;
+  }
+
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const message = payload.message;
+  if (typeof message === "string") {
+    return message;
+  }
+
+  if (Array.isArray(message)) {
+    const segments = message.filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    );
+    if (segments.length > 0) {
+      return segments.join("; ");
+    }
+  }
+
+  return undefined;
+}
+
 function ensureErrorCode(error: AppError, fallbackCode: string): AppError {
   if (error.code) {
     return error;
@@ -641,4 +660,8 @@ function isRetryableStatus(status?: number) {
   }
 
   return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

@@ -1,15 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const hostModule = require('../dist/host/index.js');
 const {
   buildPluginMessageSendParams,
   buildPluginRegisterCronParams,
-  createPluginHostFacade,
-  toHostJsonValue,
   toScopedStateParams,
-} = require('../dist/host/index.js');
+} = require('../dist/host/facade-payload.helpers.js');
+const { createPluginHostFacade, toHostJsonValue } = hostModule;
 
-test('host subpath exposes host facade builders and helpers', async () => {
+test('host subpath only exposes stable facade surface', async () => {
   const calls = [];
   const host = createPluginHostFacade({
     call(method, params) {
@@ -21,6 +21,10 @@ test('host subpath exposes host facade builders and helpers', async () => {
       return Promise.resolve({ ok: true });
     },
   });
+
+  assert.equal('buildPluginMessageSendParams' in hostModule, false);
+  assert.equal('buildPluginRegisterCronParams' in hostModule, false);
+  assert.equal('toScopedStateParams' in hostModule, false);
 
   await host.sendMessage({
     content: 'hello',

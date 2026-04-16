@@ -181,7 +181,7 @@ def createDevServices() -> dict[str, dict[str, Any]]:
         "backend_app": {
             "name": "后端应用",
             "cwd": SERVER_DIR,
-            "command": ["node", "--watch", "dist/main.js"],
+            "command": ["node", "--watch", "dist/src/main.js"],
             "stdoutPath": str(SERVER_APP_STDOUT),
             "stderrPath": str(SERVER_APP_STDERR),
             "stdoutLabel": "",

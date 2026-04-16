@@ -1,0 +1,57 @@
+{
+  "plugin-runtime": {
+    "owners": {
+      "chat-hook-adapter": [
+        "packages/server/src/plugin-runtime/plugin-chat-runtime.facade.ts"
+      ],
+      "dispatch": [
+        "packages/server/src/plugin-runtime/plugin-runtime-automation.facade.ts",
+        "packages/server/src/plugin-runtime/plugin-runtime-host.facade.ts",
+        "packages/server/src/plugin-runtime/plugin-runtime-subagent.facade.ts",
+        "packages/server/src/plugin-runtime/plugin-cron-scheduler.service.ts",
+        "packages/server/src/plugin-runtime/plugin-subagent-task.service.ts"
+      ]
+    },
+    "moduleRefAllowlist": [
+      {
+        "file": "packages/server/src/plugin-runtime/plugin-chat-runtime.facade.ts",
+        "tokens": [
+          "AiProviderService",
+          "SkillSessionService",
+          "ToolRegistryService"
+        ]
+      },
+      {
+        "file": "packages/server/src/plugin-runtime/plugin-cron-scheduler.service.ts",
+        "tokens": [
+          "PluginRuntimeService"
+        ]
+      },
+      {
+        "file": "packages/server/src/plugin-runtime/plugin-runtime-automation.facade.ts",
+        "tokens": [
+          "AutomationService"
+        ]
+      },
+      {
+        "file": "packages/server/src/plugin-runtime/plugin-runtime-host.facade.ts",
+        "tokens": [
+          "ChatMessageService",
+          "PluginSubagentTaskService"
+        ]
+      },
+      {
+        "file": "packages/server/src/plugin-runtime/plugin-runtime-subagent.facade.ts",
+        "tokens": [
+          "ToolRegistryService"
+        ]
+      },
+      {
+        "file": "packages/server/src/plugin-runtime/plugin-subagent-task.service.ts",
+        "tokens": [
+          "PluginRuntimeService"
+        ]
+      }
+    ]
+  }
+}

@@ -419,7 +419,7 @@ class DevRuntimeTests(unittest.TestCase):
         self.assertEqual(set(services.keys()), {'backend_tsc', 'backend_app', 'web'})
         self.assertEqual(
             services['backend_app']['command'],
-            ['node', '--watch', 'dist/main.js'],
+            ['node', '--watch', 'dist/src/main.js'],
         )
         self.assertEqual(services['backend_app']['port'], 23330)
         self.assertEqual(

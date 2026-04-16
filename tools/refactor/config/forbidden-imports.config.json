@@ -1,0 +1,212 @@
+{
+  "scopes": {
+    "shared-source-paths": {
+      "scanRoots": [
+        "packages/server/src",
+        "packages/web/src",
+        "packages/plugin-sdk/src",
+        "packages/plugins/plugin-pc/src"
+      ],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".mjs", ".cjs"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "specifierRules": [
+        {
+          "prefix": "@garlic-claw/shared/",
+          "reason": "shared subpath imports are not allowed in stage 0A"
+        },
+        {
+          "contains": "shared/src",
+          "reason": "shared source-path imports bypass package exports"
+        }
+      ],
+      "tsconfigFiles": [
+        "packages/web/tsconfig.json"
+      ],
+      "aliasKeys": [
+        "@garlic-claw/shared",
+        "@garlic-claw/shared/*"
+      ],
+      "forbiddenTargetContains": [
+        "shared/src"
+      ]
+    },
+    "server": {
+      "scanRoots": [
+        "packages/server/src"
+      ],
+      "extensions": [
+        ".ts"
+      ],
+      "excludeSuffixes": [
+        ".spec.ts",
+        ".e2e-spec.ts",
+        ".spec-fixture.ts"
+      ],
+      "specifierRules": [
+        {
+          "prefix": "@garlic-claw/server-neo",
+          "reason": "server must not import the removed server-neo package"
+        },
+        {
+          "contains": "server_neo/src/",
+          "reason": "server must not import removed server_neo source files"
+        },
+        {
+          "contains": "/helpers",
+          "reason": "server must not grow generic helpers"
+        },
+        {
+          "contains": ".helpers",
+          "reason": "server must not grow helper-style helper shells"
+        }
+      ]
+    },
+    "plugin-sdk-root-bare-imports": {
+      "scanRoots": [
+        "packages/server/src",
+        "packages/web/src",
+        "packages/plugins/plugin-pc/src"
+      ],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".mjs", ".cjs"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "specifierRules": [
+        {
+          "equals": "@garlic-claw/plugin-sdk",
+          "reason": "plugin-sdk bare root imports are not allowed in stage 2A"
+        }
+      ]
+    },
+    "chat-ai-owner-freeze": {
+      "scanRoots": [
+        "packages/server/src/conversation",
+        "packages/server/src/ai",
+        "packages/server/src/ai-management",
+        "packages/server/src/vision"
+      ],
+      "extensions": [".ts"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "specifierRules": [
+        {
+          "prefix": "../ai-management/ai-management-model-config",
+          "filePrefixes": [
+            "packages/server/src/conversation/"
+          ],
+          "reason": "conversation owner must not reach ai management model config internals"
+        },
+        {
+          "prefix": "../ai-management/ai-management-settings.store",
+          "filePrefixes": [
+            "packages/server/src/conversation/"
+          ],
+          "reason": "conversation owner must not reach ai settings store internals"
+        },
+        {
+          "prefix": "../ai-management/ai-provider-catalog",
+          "filePrefixes": [
+            "packages/server/src/conversation/"
+          ],
+          "reason": "conversation owner must not reach ai provider catalog internals"
+        },
+        {
+          "prefix": "../ai-management/ai-management.types",
+          "filePrefixes": [
+            "packages/server/src/conversation/"
+          ],
+          "reason": "conversation owner must not reach ai management internal types"
+        },
+        {
+          "prefix": "../conversation/",
+          "filePrefixes": [
+            "packages/server/src/ai/",
+            "packages/server/src/ai-management/",
+            "packages/server/src/vision/"
+          ],
+          "reason": "ai owner must not depend on conversation owner"
+        },
+        {
+          "prefix": "../runtime/",
+          "filePrefixes": [
+            "packages/server/src/ai/",
+            "packages/server/src/ai-management/",
+            "packages/server/src/vision/"
+          ],
+          "reason": "ai owner must not depend on runtime owner"
+        },
+        {
+          "prefix": "../execution/",
+          "filePrefixes": [
+            "packages/server/src/ai/",
+            "packages/server/src/ai-management/",
+            "packages/server/src/vision/"
+          ],
+          "reason": "ai owner must not depend on execution owner"
+        }
+      ]
+    },
+    "chat-kernel": {
+      "scanRoots": [
+        "packages/server/src/conversation"
+      ],
+      "extensions": [
+        ".ts"
+      ],
+      "excludeSuffixes": [
+        ".spec.ts",
+        ".e2e-spec.ts",
+        ".spec-fixture.ts"
+      ],
+      "specifierRules": [
+        {
+          "prefix": "../ai-management/ai-management-model-config",
+          "filePrefixes": [
+            "packages/server/src/conversation/"
+          ],
+          "reason": "conversation owner must not reach ai management model config internals"
+        },
+        {
+          "prefix": "../ai-management/ai-management-settings.store",
+          "filePrefixes": [
+            "packages/server/src/conversation/"
+          ],
+          "reason": "conversation owner must not reach ai settings store internals"
+        },
+        {
+          "prefix": "../ai-management/ai-provider-catalog",
+          "filePrefixes": [
+            "packages/server/src/conversation/"
+          ],
+          "reason": "conversation owner must not reach ai provider catalog internals"
+        }
+      ]
+    },
+    "ai-kernel": {
+      "scanRoots": [
+        "packages/server/src/ai",
+        "packages/server/src/ai-management",
+        "packages/server/src/vision"
+      ],
+      "extensions": [
+        ".ts"
+      ],
+      "excludeSuffixes": [
+        ".spec.ts",
+        ".e2e-spec.ts",
+        ".spec-fixture.ts"
+      ],
+      "specifierRules": [
+        {
+          "prefix": "../conversation/",
+          "reason": "ai kernel must not depend on conversation owner"
+        },
+        {
+          "prefix": "../runtime/",
+          "reason": "ai kernel must not depend on runtime owner"
+        },
+        {
+          "prefix": "../execution/",
+          "reason": "ai kernel must not depend on execution owner"
+        }
+      ]
+    }
+  }
+}

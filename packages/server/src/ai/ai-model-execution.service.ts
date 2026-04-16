@@ -1,357 +1,218 @@
-/**
- * AI 模型统一执行服务
- *
- * 输入:
- * - provider/model 选择或已解析模型配置
- * - 已转换好的 AI SDK 消息
- * - 可选的系统提示词、工具、停止条件与请求覆盖项
- *
- * 输出:
- * - 已解析模型配置
- * - 可直接执行的语言模型实例
- * - 规范化后的 SDK 消息
- * - 最终生成结果
- *
- * 预期行为:
- * - 把模型解析、请求参数归一、provider-specific 消息规范化收口到 ai 层
- * - 让 chat / diagnostics / vision 这类后端服务复用同一套执行边界
- */
-
-import { Injectable } from '@nestjs/common';
 import type {
-  AiModelRouteTarget,
-  AiUtilityModelRole,
+  JsonObject,
+  JsonValue,
+  PluginLlmMessage,
 } from '@garlic-claw/shared';
-import {
-  runGenerateText,
-  runStreamText,
-  type AiSdkLanguageModel,
-  type AiSdkMessage,
-  type AiSdkStopCondition,
-  type AiSdkStreamTextResult,
-  type AiSdkToolSet,
-} from './sdk-adapter';
-import { AiProviderService } from './ai-provider.service';
-import { ConfigManagerService } from './config/config-manager.service';
-import type { ModelConfig } from './types/provider.types';
-import {
-  resolveAiModelExecutionRequestOptions,
-  type AiModelExecutionRequestOptionsInput,
-} from './ai-model-request-options';
-import { normalizeAiModelExecutionMessages } from './ai-model-message-normalizer';
+import { Injectable } from '@nestjs/common';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateText, streamText, type LanguageModel, type ModelMessage, type Tool } from 'ai';
+import { createRequire } from 'node:module';
+import { AiProviderSettingsService } from '../ai-management/ai-provider-settings.service';
+import type { StoredAiProviderConfig } from '../ai-management/ai-management.types';
 
-/**
- * 统一准备执行时的输入。
- */
-export interface PrepareAiModelExecutionInput {
-  /** provider ID，可选。 */
-  providerId?: string;
-  /** model ID，可选。 */
-  modelId?: string;
-  /** utility model role，可选。 */
-  utilityRole?: AiUtilityModelRole;
-  /** 已转换好的 SDK 消息。 */
-  sdkMessages: AiSdkMessage[];
-}
-
-/**
- * 使用已解析模型配置准备执行时的输入。
- */
-export interface PrepareResolvedAiModelExecutionInput {
-  /** 已解析模型配置。 */
-  modelConfig: ModelConfig;
-  /** 已转换好的 SDK 消息。 */
-  sdkMessages: AiSdkMessage[];
-}
-
-/**
- * 统一准备好的执行载荷。
- */
-export interface PreparedAiModelExecution {
-  /** 已解析模型配置。 */
-  modelConfig: ModelConfig;
-  /** 已创建的语言模型。 */
-  model: AiSdkLanguageModel;
-  /** 已规范化的 SDK 消息。 */
-  sdkMessages: AiSdkMessage[];
-  /** 原始 SDK 消息，用于重新选择 fallback 模型时再次归一化。 */
-  sourceSdkMessages: AiSdkMessage[];
-}
-
-/**
- * 已准备执行载荷时的流式输入。
- */
-export interface StreamPreparedAiModelExecutionInput
-  extends AiModelExecutionRequestOptionsInput {
-  /** 已准备好的执行载荷。 */
-  prepared: PreparedAiModelExecution;
-  /** 是否启用聊天 fallback model 链。 */
+export interface AiModelExecutionRequest {
   allowFallbackChatModels?: boolean;
-  /** 可选系统提示词。 */
+  headers?: Record<string, string>;
+  maxOutputTokens?: number;
+  messages: PluginLlmMessage[];
+  modelId?: string;
+  providerId?: string;
+  providerOptions?: JsonObject;
   system?: string;
-  /** 可选工具集合。 */
-  tools?: AiSdkToolSet;
-  /** 可选停止条件。 */
-  stopWhen?: AiSdkStopCondition;
-  /** 可选中止信号。 */
-  abortSignal?: AbortSignal;
+  variant?: string;
 }
+
+export interface AiModelExecutionResult {
+  finishReason?: string | null;
+  modelId: string;
+  providerId: string;
+  text: string;
+  usage?: JsonValue;
+}
+
+interface AiExecutionTarget {
+  modelId: string;
+  provider: StoredAiProviderConfig;
+}
+
+export interface AiModelExecutionStreamResult {
+  finishReason?: Promise<unknown> | unknown;
+  fullStream: AsyncIterable<unknown>;
+  modelId: string;
+  providerId: string;
+}
+
+const localRequire = createRequire(__filename);
 
 @Injectable()
 export class AiModelExecutionService {
   constructor(
-    private readonly aiProvider: AiProviderService,
-    private readonly configManager: ConfigManagerService,
+    private readonly aiProviderSettingsService: AiProviderSettingsService = new AiProviderSettingsService(),
   ) {}
 
-  /**
-   * 统一解析模型配置。
-   * @param providerId provider ID，可选
-   * @param modelId model ID，可选
-   * @returns 已解析模型配置
-   */
-  resolveModelConfig(
-    providerId?: string,
-    modelId?: string,
-    utilityRole?: AiUtilityModelRole,
-  ): ModelConfig {
-    if (utilityRole) {
-      const target = this.resolveUtilityRoleTarget(utilityRole);
-      if (target) {
-        return this.aiProvider.getModelConfig(target.providerId, target.modelId);
+  async generateText(input: AiModelExecutionRequest): Promise<AiModelExecutionResult> {
+    const targets = this.buildExecutionTargets(input);
+    let lastError: unknown;
+
+    for (const target of targets) {
+      try {
+        const result = await generateText(this.buildExecutionInput(input, target) as Parameters<typeof generateText>[0]);
+
+        return {
+          finishReason: typeof result.finishReason === 'string'
+            ? result.finishReason
+            : null,
+          modelId: target.modelId,
+          providerId: target.provider.id,
+          text: typeof result.text === 'string' ? result.text : '',
+          usage: result.usage as unknown as JsonValue,
+        };
+      } catch (error) {
+        lastError = error;
       }
     }
 
-    return this.aiProvider.getModelConfig(providerId, modelId);
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('AI text generation failed');
   }
 
-  /**
-   * 解析 provider/model 后统一准备执行载荷。
-   * @param input 准备输入
-   * @returns 统一准备好的执行载荷
-   */
-  prepare(
-    input: PrepareAiModelExecutionInput,
-  ): PreparedAiModelExecution {
-    const modelConfig = this.resolveModelConfig(
-      input.providerId,
-      input.modelId,
-      input.utilityRole,
-    );
+  streamText(input: AiModelExecutionRequest & {
+    abortSignal?: AbortSignal;
+    stopWhen?: Parameters<typeof streamText>[0]['stopWhen'];
+    tools?: Record<string, Tool>;
+  }): AiModelExecutionStreamResult {
+    const targets = this.buildExecutionTargets(input);
+    let lastError: unknown;
 
-    return this.prepareResolved({
-      modelConfig,
-      sdkMessages: input.sdkMessages,
-    });
+    for (const target of targets) {
+      try {
+        const result = streamText({
+          ...this.buildExecutionInput(input, target),
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+          ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
+          ...(input.tools ? { tools: input.tools } : {}),
+        } as Parameters<typeof streamText>[0]);
+
+        return {
+          finishReason: result.finishReason,
+          fullStream: result.fullStream,
+          modelId: target.modelId,
+          providerId: target.provider.id,
+        };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('AI text streaming failed');
   }
 
-  /**
-   * 使用已解析模型配置统一准备执行载荷。
-   * @param input 准备输入
-   * @returns 统一准备好的执行载荷
-   */
-  prepareResolved(
-    input: PrepareResolvedAiModelExecutionInput,
-  ): PreparedAiModelExecution {
+  private buildExecutionTargets(input: AiModelExecutionRequest): AiExecutionTarget[] {
+    const primary = this.resolveExecutionTarget(input.providerId, input.modelId);
+    if (!input.allowFallbackChatModels) {return [primary];}
+    return [primary, ...this.aiProviderSettingsService.getHostModelRoutingConfig().fallbackChatModels
+      .filter((target) => target.providerId !== primary.provider.id || target.modelId !== primary.modelId)
+      .map((target) => this.resolveExecutionTarget(target.providerId, target.modelId))];
+  }
+
+  private resolveExecutionTarget(
+    providerId: string | undefined,
+    modelId: string | undefined,
+  ): AiExecutionTarget {
+    const resolvedProviderId = providerId
+      ?? this.aiProviderSettingsService.listProviders()[0]?.id;
+    if (!resolvedProviderId) {throw new Error('No provider configured');}
+
+    const provider = this.aiProviderSettingsService.getProvider(resolvedProviderId);
+    const resolvedModelId = modelId
+      ?? provider.defaultModel
+      ?? provider.models[0];
+    if (!resolvedModelId) {throw new Error(`Provider "${provider.id}" does not have any configured model`);}
+    if (!provider.apiKey) {throw new Error(`Provider "${provider.id}" is missing apiKey`);}
+    if (!provider.baseUrl) {throw new Error(`Provider "${provider.id}" is missing baseUrl`);}
+    return { modelId: resolvedModelId, provider };
+  }
+
+  private buildExecutionInput(input: AiModelExecutionRequest, target: AiExecutionTarget) {
+    const providerOptions = buildProviderOptions(input);
     return {
-      modelConfig: input.modelConfig,
-      model: this.aiProvider.getModel(
-        input.modelConfig.providerId as string,
-        input.modelConfig.id as string,
-      ),
-      sourceSdkMessages: input.sdkMessages,
-      sdkMessages: normalizeAiModelExecutionMessages({
-        modelConfig: input.modelConfig,
-        sdkMessages: input.sdkMessages,
-      }),
+      ...(input.headers ? { headers: input.headers } : {}),
+      ...(input.maxOutputTokens !== undefined ? { maxOutputTokens: input.maxOutputTokens } : {}),
+      messages: buildExecutionMessages(input.messages),
+      model: this.createLanguageModel(target),
+      ...(providerOptions ? { providerOptions } : {}),
+      ...(input.system ? { system: input.system } : {}),
     };
   }
 
-  /**
-   * 一次性执行非流式文本生成。
-   * @param input 执行输入与请求覆盖项
-   * @returns 统一准备载荷与最终生成结果
-   */
-  async generateText(
-    input: PrepareAiModelExecutionInput & AiModelExecutionRequestOptionsInput & {
-      allowFallbackChatModels?: boolean;
-      system?: string;
-    },
-  ): Promise<
-    PreparedAiModelExecution & {
-      result: Awaited<ReturnType<typeof runGenerateText>>;
+  private createLanguageModel(target: AiExecutionTarget): LanguageModel {
+    if (target.provider.driver === 'anthropic') {
+      return createAnthropic({
+        apiKey: target.provider.apiKey as string,
+        baseURL: target.provider.baseUrl,
+      })(target.modelId) as unknown as LanguageModel;
     }
-  > {
-    const prepared = this.prepare(input);
-    return this.generatePrepared({
-      prepared,
-      system: input.system,
-      allowFallbackChatModels: input.allowFallbackChatModels,
-      variant: input.variant,
-      providerOptions: input.providerOptions,
-      headers: input.headers,
-      maxOutputTokens: input.maxOutputTokens,
-    });
-  }
 
-  /**
-   * 基于已准备载荷执行非流式文本生成。
-   * @param input 执行输入
-   * @returns 统一准备载荷与最终生成结果
-   */
-  async generatePrepared(
-    input: {
-      prepared: PreparedAiModelExecution;
-      allowFallbackChatModels?: boolean;
-      system?: string;
-    } & AiModelExecutionRequestOptionsInput,
-  ): Promise<
-    PreparedAiModelExecution & {
-      result: Awaited<ReturnType<typeof runGenerateText>>;
+    if (target.provider.driver === 'gemini') {
+      const { createGoogleGenerativeAI } = localRequire('@ai-sdk/google') as {
+        createGoogleGenerativeAI: (options: {
+          apiKey: string;
+          baseURL?: string;
+        }) => (modelId: string) => unknown;
+      };
+
+      return createGoogleGenerativeAI({
+        apiKey: target.provider.apiKey as string,
+        baseURL: target.provider.baseUrl,
+      })(target.modelId) as unknown as LanguageModel;
     }
-  > {
-    const execution = await this.executeWithOptionalChatFallback(
-      input.prepared,
-      input.allowFallbackChatModels === true,
-      async (prepared) => {
-        const requestOptions = resolveAiModelExecutionRequestOptions({
-          modelConfig: prepared.modelConfig,
-          requestOptions: input,
+
+    return createOpenAI({
+      apiKey: target.provider.apiKey as string,
+      baseURL: target.provider.baseUrl,
+      name: target.provider.id,
+    }).chat(target.modelId) as unknown as LanguageModel;
+  }
+}
+
+function buildExecutionMessages(messages: PluginLlmMessage[]): ModelMessage[] {
+  return messages.map((message) => ({
+    content: buildExecutionMessageContent(message.content),
+    role: message.role,
+  })) as unknown as ModelMessage[];
+}
+
+function buildExecutionMessageContent(
+  content: PluginLlmMessage['content'],
+): string | Array<{ image?: ArrayBuffer | string; mimeType?: string; text?: string; type: 'image' | 'text' }> {
+  if (typeof content === 'string') {return content;}
+  return content.map((part) =>
+    part.type === 'text'
+      ? {
+          text: part.text,
+          type: 'text' as const,
+        }
+      : {
+          image: toAiSdkImageInput(part.image),
+          ...(part.mimeType ? { mimeType: part.mimeType } : {}),
+          type: 'image' as const,
         });
+}
 
-        return runGenerateText({
-          model: prepared.model,
-          system: input.system,
-          messages: prepared.sdkMessages,
-          providerOptions: requestOptions.providerOptions,
-          headers: requestOptions.headers,
-          maxOutputTokens: requestOptions.maxOutputTokens,
-        });
-      },
-    );
+function buildProviderOptions(
+  input: AiModelExecutionRequest,
+): JsonObject | undefined {
+  return input.variant ? { ...(input.providerOptions ?? {}), variant: input.variant } : input.providerOptions;
+}
 
-    return execution;
-  }
-
-  /**
-   * 基于已准备载荷执行流式文本生成。
-   * @param input 流式执行输入
-   * @returns 统一准备载荷与流式结果
-   */
-  streamPrepared(
-    input: StreamPreparedAiModelExecutionInput,
-  ): PreparedAiModelExecution & {
-    result: AiSdkStreamTextResult;
-  } {
-    return this.executeStreamingWithOptionalChatFallback(
-      input.prepared,
-      input.allowFallbackChatModels === true,
-      (prepared) => {
-        const requestOptions = resolveAiModelExecutionRequestOptions({
-          modelConfig: prepared.modelConfig,
-          requestOptions: input,
-        });
-
-        return runStreamText({
-          model: prepared.model,
-          system: input.system,
-          messages: prepared.sdkMessages,
-          tools: input.tools,
-          stopWhen: input.stopWhen,
-          abortSignal: input.abortSignal,
-          providerOptions: requestOptions.providerOptions,
-          headers: requestOptions.headers,
-          maxOutputTokens: requestOptions.maxOutputTokens,
-        });
-      },
-    );
-  }
-
-  private async executeWithOptionalChatFallback<T>(
-    prepared: PreparedAiModelExecution,
-    allowFallbackChatModels: boolean,
-    execute: (prepared: PreparedAiModelExecution) => Promise<T>,
-  ): Promise<PreparedAiModelExecution & { result: T }> {
-    const candidates = this.buildExecutionCandidates(
-      prepared,
-      allowFallbackChatModels,
-    );
-    let lastError: unknown = null;
-
-    for (const candidate of candidates) {
-      try {
-        return {
-          ...candidate,
-          result: await execute(candidate),
-        };
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError;
-  }
-
-  private executeStreamingWithOptionalChatFallback(
-    prepared: PreparedAiModelExecution,
-    allowFallbackChatModels: boolean,
-    execute: (prepared: PreparedAiModelExecution) => AiSdkStreamTextResult,
-  ): PreparedAiModelExecution & { result: AiSdkStreamTextResult } {
-    const candidates = this.buildExecutionCandidates(
-      prepared,
-      allowFallbackChatModels,
-    );
-    let lastError: unknown = null;
-
-    for (const candidate of candidates) {
-      try {
-        return {
-          ...candidate,
-          result: execute(candidate),
-        };
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError;
-  }
-
-  private buildExecutionCandidates(
-    prepared: PreparedAiModelExecution,
-    allowFallbackChatModels: boolean,
-  ): PreparedAiModelExecution[] {
-    if (!allowFallbackChatModels) {
-      return [prepared];
-    }
-
-    const fallbackTargets = this.configManager
-      .getHostModelRoutingConfig()
-      .fallbackChatModels.filter(
-        (target) =>
-          target.providerId !== prepared.modelConfig.providerId
-          || target.modelId !== prepared.modelConfig.id,
-      );
-
-    return [
-      prepared,
-      ...fallbackTargets.map((target) =>
-        this.prepareResolved({
-          modelConfig: this.aiProvider.getModelConfig(
-            target.providerId,
-            target.modelId,
-          ),
-          sdkMessages: prepared.sourceSdkMessages,
-        }),
-      ),
-    ];
-  }
-
-  private resolveUtilityRoleTarget(
-    utilityRole: AiUtilityModelRole,
-  ): AiModelRouteTarget | null {
-    return this.configManager.getHostModelRoutingConfig().utilityModelRoles[
-      utilityRole
-    ] ?? null;
-  }
+function toAiSdkImageInput(image: string): string | ArrayBuffer {
+  if (!image.startsWith('data:')) {return image;}
+  const matched = /^data:([^;]+);base64,(.+)$/u.exec(image);
+  if (!matched) {throw new Error('Unsupported image data URL');}
+  const binary = Buffer.from(matched[2], 'base64');
+  return binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength);
 }

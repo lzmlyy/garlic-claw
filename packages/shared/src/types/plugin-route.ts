@@ -9,14 +9,6 @@ export type PluginRouteMethod =
   | 'PATCH'
   | 'DELETE';
 
-export const PLUGIN_ROUTE_METHOD_VALUES = [
-  'GET',
-  'POST',
-  'PUT',
-  'PATCH',
-  'DELETE',
-] as const satisfies PluginRouteMethod[];
-
 /** 插件声明的 Web Route。 */
 export interface PluginRouteDescriptor {
   path: string;

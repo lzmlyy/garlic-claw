@@ -77,6 +77,7 @@ describe('PluginScopeEditor', () => {
           deviceType: 'builtin',
           status: 'online',
           connected: true,
+          defaultEnabled: true,
           manifest: {
             id: 'builtin.memory-context',
             name: 'builtin.memory-context',
@@ -117,6 +118,7 @@ describe('PluginScopeEditor', () => {
           deviceType: 'builtin',
           status: 'online',
           connected: true,
+          defaultEnabled: true,
           manifest: {
             id: 'builtin.core-tools',
             name: 'builtin.core-tools',

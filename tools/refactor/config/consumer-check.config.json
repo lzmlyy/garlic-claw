@@ -1,0 +1,82 @@
+{
+  "scopes": {
+    "shared-public-surface": {
+      "packageName": "@garlic-claw/shared",
+      "allowedSpecifiers": [
+        "@garlic-claw/shared"
+      ],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".mjs", ".cjs"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "consumers": [
+        {
+          "name": "server",
+          "root": "packages/server/src"
+        },
+        {
+          "name": "web",
+          "root": "packages/web/src"
+        },
+        {
+          "name": "plugin-sdk-authoring",
+          "root": "packages/plugin-sdk/src"
+        },
+        {
+          "name": "plugin-pc",
+          "root": "packages/plugins/plugin-pc/src"
+        }
+      ]
+    },
+    "plugin-sdk-internal": {
+      "packageName": "@garlic-claw/plugin-sdk",
+      "allowedSpecifiers": [
+        "@garlic-claw/plugin-sdk/authoring",
+        "@garlic-claw/plugin-sdk/host",
+        "@garlic-claw/plugin-sdk/client"
+      ],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".mjs", ".cjs"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "consumers": [
+        {
+          "name": "server",
+          "root": "packages/server/src"
+        }
+      ]
+    },
+    "plugin-sdk-external": {
+      "packageName": "@garlic-claw/plugin-sdk",
+      "allowedSpecifiers": [
+        "@garlic-claw/plugin-sdk/authoring",
+        "@garlic-claw/plugin-sdk/host",
+        "@garlic-claw/plugin-sdk/client"
+      ],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".mjs", ".cjs"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "consumers": [
+        {
+          "name": "plugin-pc",
+          "root": "packages/plugins/plugin-pc/src"
+        }
+      ]
+    },
+    "plugin-sdk-all": {
+      "packageName": "@garlic-claw/plugin-sdk",
+      "allowedSpecifiers": [
+        "@garlic-claw/plugin-sdk/authoring",
+        "@garlic-claw/plugin-sdk/host",
+        "@garlic-claw/plugin-sdk/client"
+      ],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".mjs", ".cjs"],
+      "excludeSuffixes": [".spec.ts", ".e2e-spec.ts", ".spec-fixture.ts"],
+      "consumers": [
+        {
+          "name": "server",
+          "root": "packages/server/src"
+        },
+        {
+          "name": "plugin-pc",
+          "root": "packages/plugins/plugin-pc/src"
+        }
+      ]
+    }
+  }
+}
