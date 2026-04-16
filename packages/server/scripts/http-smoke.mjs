@@ -39,12 +39,14 @@ process.env.NO_PROXY = [
 const visitedHttpRoutes = [];
 
 async function main() {
+  const cli = parseCliArgs(process.argv.slice(2));
   const serverRoutes = collectServerHttpRoutes(PROJECT_ROOT);
   const webRoutes = collectWebHttpRoutes(PROJECT_ROOT);
   const tempDir = await fsPromises.mkdtemp(path.join(SERVER_DIR, 'tmp', 'http-smoke-'));
-  const databasePath = path.join(tempDir, 'smoke.sqlite');
-  const databaseUrl = buildRelativeSqliteUrl(databasePath);
-  const port = await getFreePort();
+  const databasePath = cli.proxyOrigin ? null : path.join(tempDir, 'smoke.sqlite');
+  const databaseUrl = databasePath ? buildRelativeSqliteUrl(databasePath) : null;
+  const port = cli.proxyOrigin ? null : await getFreePort();
+  const wsPort = cli.proxyOrigin ? null : await getFreePort();
   const skillRoot = path.join(SERVER_DIR, 'skills', SKILL_DIR_NAME);
   const fakeOpenAi = await startFakeOpenAiServer();
   const smokeSkillId = 'project/.smoke-http-flow';
@@ -81,8 +83,15 @@ async function main() {
     toolId: null,
     toolSourceId: null,
     userTokens: null,
+    userAlias: `smoke-user-${Date.now().toString(36)}`,
+    userUpdatedEmail: null,
+    proxyHostModelRoutingBackup: undefined,
+    proxyOpenAiProviderBackup: undefined,
+    proxyOpenAiProviderManaged: false,
+    proxyVisionFallbackBackup: undefined,
   };
   let backend = null;
+  let apiBase = '';
 
   try {
     await runStep('contracts.web-alignment', async () => {
@@ -92,38 +101,47 @@ async function main() {
     await prepareMcpFailScript(mcpScriptPath);
     await prepareRemoteRoutePluginScript(remotePluginScriptPath);
 
-    console.log('-> build server');
-    await runTypescriptBuild();
+    if (cli.proxyOrigin) {
+      console.log(`-> use frontend proxy ${cli.proxyOrigin}`);
+      apiBase = `${normalizeOrigin(cli.proxyOrigin)}${API_PREFIX}`;
+      await prepareProxyOpenAiProvider(apiBase, state, fakeOpenAi.url);
+    } else {
+      console.log('-> build server');
+      await runTypescriptBuild();
 
-    console.log('-> prisma db push');
-    await runCommand(process.execPath, [
-      resolvePrismaCliEntry(),
-      'db',
-      'push',
-      '--skip-generate',
-      '--schema',
-      'prisma/schema.prisma',
-    ], {
-      cwd: SERVER_DIR,
-      env: {
-        ...process.env,
-        DATABASE_URL: databaseUrl,
-      },
-      label: 'prisma db push',
-    });
+      console.log('-> prisma db push');
+      await runCommand(process.execPath, [
+        resolvePrismaCliEntry(),
+        'db',
+        'push',
+        '--skip-generate',
+        '--schema',
+        'prisma/schema.prisma',
+      ], {
+        cwd: SERVER_DIR,
+        env: {
+          ...process.env,
+          DATABASE_URL: databaseUrl,
+        },
+        label: 'prisma db push',
+      });
 
-    console.log('-> start backend');
-    backend = await startBackend(port, databaseUrl, serverFiles);
+      console.log('-> start backend');
+      backend = await startBackend(port, wsPort, databaseUrl, serverFiles);
+      apiBase = `http://127.0.0.1:${port}${API_PREFIX}`;
+    }
 
-    const apiBase = `http://127.0.0.1:${port}${API_PREFIX}`;
     await runStep('health.get', async () => {
       await verifyHealth(apiBase, backend);
     });
-    state.bootstrapTokens = await waitForBootstrapAdminLogin(apiBase);
-    state.adminTokens = state.bootstrapTokens;
+    state.adminTokens = cli.proxyOrigin
+      ? await loginDevelopmentAdmin(apiBase)
+      : await waitForBootstrapAdminLogin(apiBase);
+    state.bootstrapTokens = state.adminTokens;
 
     await runHttpFlow(apiBase, state, {
       fakeOpenAiUrl: fakeOpenAi.url,
+      flowSuffix: state.userAlias,
       mcpCommand: process.execPath,
       mcpScriptPath,
       remotePluginScriptPath,
@@ -143,6 +161,9 @@ async function main() {
     throw error;
   } finally {
     await Promise.allSettled([
+      cli.proxyOrigin && state.proxyOpenAiProviderManaged
+        ? restoreProxyOpenAiProvider(apiBase, state)
+        : Promise.resolve(),
       state.remotePluginHandle?.stop?.() ?? Promise.resolve(),
       backend?.stop?.() ?? Promise.resolve(),
       fakeOpenAi.close(),
@@ -153,6 +174,8 @@ async function main() {
 }
 
 async function runHttpFlow(apiBase, state, input) {
+  const userEmail = `${state.userAlias}@example.com`;
+  state.userUpdatedEmail = `${state.userAlias}-updated@example.com`;
   const adminHeaders = () => createBearerHeaders(readTokens(state.adminTokens).accessToken);
   const userHeaders = () => createBearerHeaders(readTokens(state.userTokens).accessToken);
   const userApiKeyHeaders = () => ({
@@ -172,9 +195,9 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('auth.register', async () => {
     state.userTokens = await postJson(apiBase, '/auth/register', {
       body: {
-        email: 'smoke-user@example.com',
+        email: userEmail,
         password: USER_PASSWORD,
-        username: 'smoke-user',
+        username: state.userAlias,
       },
     });
   });
@@ -183,7 +206,7 @@ async function runHttpFlow(apiBase, state, input) {
     state.userTokens = await postJson(apiBase, '/auth/login', {
       body: {
         password: USER_PASSWORD,
-        username: 'smoke-user',
+        username: state.userAlias,
       },
     });
   });
@@ -216,11 +239,11 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('users.update', async () => {
     const updated = await patchJson(apiBase, `/users/${state.createdUserId}`, {
       body: {
-        email: 'smoke-user-updated@example.com',
+        email: state.userUpdatedEmail,
       },
       headers: adminHeaders(),
     });
-    ensure(updated.email === 'smoke-user-updated@example.com', 'Expected users update to persist email');
+    ensure(updated.email === state.userUpdatedEmail, 'Expected users update to persist email');
   });
 
   await runStep('users.update-role', async () => {
@@ -1104,6 +1127,40 @@ async function runHttpFlow(apiBase, state, input) {
   });
 }
 
+async function prepareProxyOpenAiProvider(apiBase, state, fakeOpenAiUrl) {
+  state.proxyVisionFallbackBackup = await readVisionFallbackConfig(apiBase);
+  state.proxyHostModelRoutingBackup = await readHostModelRoutingConfig(apiBase);
+  state.proxyOpenAiProviderBackup = await readOptionalProviderConfig(apiBase, 'openai');
+  await writeProviderConfig(apiBase, 'openai', {
+    apiKey: 'smoke-openai-key',
+    baseUrl: fakeOpenAiUrl,
+    defaultModel: state.modelId,
+    driver: 'openai',
+    mode: 'protocol',
+    models: [state.modelId, 'smoke-vision'],
+    name: state.proxyOpenAiProviderBackup?.name ?? 'OpenAI',
+  });
+  state.proxyOpenAiProviderManaged = true;
+}
+
+async function restoreProxyOpenAiProvider(apiBase, state) {
+  if (state.proxyVisionFallbackBackup) {
+    await writeVisionFallbackConfig(apiBase, state.proxyVisionFallbackBackup);
+  }
+
+  if (state.proxyHostModelRoutingBackup) {
+    await writeHostModelRoutingConfig(apiBase, state.proxyHostModelRoutingBackup);
+  }
+
+  if (state.proxyOpenAiProviderBackup) {
+    const { id: _id, ...provider } = state.proxyOpenAiProviderBackup;
+    await writeProviderConfig(apiBase, 'openai', provider);
+    return;
+  }
+
+  await deleteOptionalProviderConfig(apiBase, 'openai');
+}
+
 async function prepareProjectSkill(skillRoot) {
   await fsPromises.mkdir(skillRoot, { recursive: true });
   await fsPromises.writeFile(path.join(skillRoot, 'SKILL.md'), [
@@ -1230,7 +1287,19 @@ async function verifyHealth(apiBase, backend) {
   ensure(response.service === 'server', 'Expected service name to be server');
 }
 
-async function startBackend(port, databaseUrl, files) {
+async function loginDevelopmentAdmin(apiBase) {
+  const payload = await postJson(apiBase, '/auth/dev-login', {
+    body: {
+      role: 'super_admin',
+      username: 'smoke-proxy-admin',
+    },
+  });
+  ensure(typeof payload.accessToken === 'string', 'Expected dev-login access token');
+  ensure(typeof payload.refreshToken === 'string', 'Expected dev-login refresh token');
+  return payload;
+}
+
+async function startBackend(port, wsPort, databaseUrl, files) {
   const logs = [];
   const child = spawn(process.execPath, ['dist/src/main.js'], {
     cwd: SERVER_DIR,
@@ -1250,6 +1319,7 @@ async function startBackend(port, databaseUrl, files) {
       JWT_SECRET: 'smoke-jwt-secret',
       NODE_ENV: 'test',
       PORT: String(port),
+      WS_PORT: String(wsPort),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -1278,7 +1348,7 @@ async function waitForJson(url, backend) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < DEFAULT_TIMEOUT_MS) {
-    if (backend.child.exitCode !== null) {
+    if (backend && backend.child.exitCode !== null) {
       throw new Error(`server exited before becoming ready: ${backend.child.exitCode}`);
     }
 
@@ -1295,6 +1365,144 @@ async function waitForJson(url, backend) {
   }
 
   throw new Error(`Timed out waiting for ${url}`);
+}
+
+async function readOptionalProviderConfig(apiBase, providerId) {
+  const response = await fetch(`${apiBase}/ai/providers/${providerId}`, {
+    method: 'GET',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  const body = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(`GET /ai/providers/${providerId} failed: ${response.status} (${formatPayload(body)})`);
+  }
+
+  return body;
+}
+
+async function writeProviderConfig(apiBase, providerId, body) {
+  const response = await fetch(`${apiBase}/ai/providers/${providerId}`, {
+    body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+    },
+    method: 'PUT',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  const payload = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(`PUT /ai/providers/${providerId} failed: ${response.status} (${formatPayload(payload)})`);
+  }
+
+  return payload;
+}
+
+async function deleteOptionalProviderConfig(apiBase, providerId) {
+  const response = await fetch(`${apiBase}/ai/providers/${providerId}`, {
+    method: 'DELETE',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (response.status === 404) {
+    return { success: true };
+  }
+
+  const body = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(`DELETE /ai/providers/${providerId} failed: ${response.status} (${formatPayload(body)})`);
+  }
+
+  return body;
+}
+
+async function readVisionFallbackConfig(apiBase) {
+  const response = await fetch(`${apiBase}/ai/vision-fallback`, {
+    method: 'GET',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  const body = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(`GET /ai/vision-fallback failed: ${response.status} (${formatPayload(body)})`);
+  }
+
+  return body;
+}
+
+async function writeVisionFallbackConfig(apiBase, body) {
+  const response = await fetch(`${apiBase}/ai/vision-fallback`, {
+    body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+    },
+    method: 'PUT',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  const payload = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(`PUT /ai/vision-fallback failed: ${response.status} (${formatPayload(payload)})`);
+  }
+
+  return payload;
+}
+
+async function readHostModelRoutingConfig(apiBase) {
+  const response = await fetch(`${apiBase}/ai/host-model-routing`, {
+    method: 'GET',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  const body = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(`GET /ai/host-model-routing failed: ${response.status} (${formatPayload(body)})`);
+  }
+
+  return body;
+}
+
+async function writeHostModelRoutingConfig(apiBase, body) {
+  const response = await fetch(`${apiBase}/ai/host-model-routing`, {
+    body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+    },
+    method: 'PUT',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  const payload = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(`PUT /ai/host-model-routing failed: ${response.status} (${formatPayload(payload)})`);
+  }
+
+  return payload;
+}
+
+function parseCliArgs(args) {
+  const config = {
+    proxyOrigin: null,
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--proxy-origin') {
+      config.proxyOrigin = args[index + 1] ?? null;
+      index += 1;
+    }
+  }
+
+  return config;
+}
+
+function normalizeOrigin(origin) {
+  return origin.replace(/\/+$/, '');
 }
 
 async function waitForBootstrapAdminLogin(apiBase) {

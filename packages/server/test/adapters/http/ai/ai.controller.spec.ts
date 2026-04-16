@@ -40,13 +40,13 @@ describe('AiController', () => {
   it('forwards provider upsert requests to the management service', () => {
     const dto = {
       mode: 'catalog',
-      driver: 'groq',
-      name: 'Groq',
-      models: ['llama-3.3-70b'],
+      driver: 'openai',
+      name: 'OpenAI',
+      models: ['gpt-4o-mini'],
     };
 
-    controller.upsertProvider('groq', dto);
-    expect(aiManagementService.upsertProvider).toHaveBeenCalledWith('groq', dto);
+    controller.upsertProvider('openai-main', dto);
+    expect(aiManagementService.upsertProvider).toHaveBeenCalledWith('openai-main', dto);
   });
 
   it('forwards model capability updates to the management service', () => {
@@ -54,8 +54,8 @@ describe('AiController', () => {
       reasoning: true,
       input: { image: true },
     };
-    controller.updateModelCapabilities('groq', 'llama-3.3-70b', dto);
-    expect(aiManagementService.updateModelCapabilities).toHaveBeenCalledWith('groq', 'llama-3.3-70b', dto);
+    controller.updateModelCapabilities('openai-main', 'gpt-4o-mini', dto);
+    expect(aiManagementService.updateModelCapabilities).toHaveBeenCalledWith('openai-main', 'gpt-4o-mini', dto);
   });
 
   it('forwards vision fallback and host model routing updates', () => {

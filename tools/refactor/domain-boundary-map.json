@@ -50,13 +50,16 @@
         "packages/server/src/vision/ai-vision.service.ts"
       ],
       "automation-runtime": [
+        "packages/server/src/execution/automation/automation-execution.service.ts",
         "packages/server/src/execution/automation/automation.service.ts"
       ],
       "conversation-runtime": [
+        "packages/server/src/conversation/conversation-message-planning.service.ts",
         "packages/server/src/conversation/conversation-message-lifecycle.service.ts",
         "packages/server/src/conversation/conversation-task.service.ts"
       ],
       "mcp-runtime": [
+        "packages/server/src/execution/mcp/mcp-config-store.service.ts",
         "packages/server/src/execution/mcp/mcp.service.ts"
       ],
       "plugin-kernel": [
@@ -66,6 +69,7 @@
         "packages/server/src/plugin/builtin/tools/builtin-subagent-delegate.plugin.ts",
         "packages/server/src/plugin/governance/plugin-governance.service.ts",
         "packages/server/src/plugin/plugin.constants.ts",
+        "packages/server/src/plugin/persistence/plugin-read-model.ts",
         "packages/server/src/plugin/persistence/plugin-persistence.service.ts",
         "packages/server/src/plugin/plugin.module.ts"
       ],
@@ -82,6 +86,7 @@
         "packages/server/src/runtime/host/runtime-host-plugin-dispatch.service.ts",
         "packages/server/src/runtime/host/runtime-host-plugin-runtime.service.ts",
         "packages/server/src/runtime/host/runtime-host-subagent-runner.service.ts",
+        "packages/server/src/runtime/host/runtime-host-subagent-task-store.service.ts",
         "packages/server/src/runtime/host/runtime-host-user-context.service.ts",
         "packages/server/src/runtime/host/runtime-host-values.ts",
         "packages/server/src/runtime/host/runtime-host.module.ts",
@@ -92,6 +97,7 @@
       ],
       "skill-runtime": [
         "packages/server/src/execution/skill/skill-registry.service.ts",
+        "packages/server/src/execution/skill/skill-package-tools.ts",
         "packages/server/src/execution/skill/skill-session.service.ts"
       ],
       "tool-runtime": [
@@ -113,13 +119,16 @@
         "packages/server/src/adapters/http/tool/tool.controller.ts"
       ],
       "automation-runtime": [
+        "packages/server/src/execution/automation/automation-execution.service.ts",
         "packages/server/src/execution/automation/automation.service.ts"
       ],
       "mcp-runtime": [
+        "packages/server/src/execution/mcp/mcp-config-store.service.ts",
         "packages/server/src/execution/mcp/mcp.service.ts"
       ],
       "skill-runtime": [
         "packages/server/src/execution/skill/skill-registry.service.ts",
+        "packages/server/src/execution/skill/skill-package-tools.ts",
         "packages/server/src/execution/skill/skill-session.service.ts"
       ],
       "tool-runtime": [

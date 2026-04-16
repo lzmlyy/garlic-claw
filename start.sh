@@ -11,10 +11,10 @@ else
 fi
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT_DIR="$ROOT_DIR/tools"
+SCRIPT_PATH="$ROOT_DIR/tools/start_launcher.py"
 
 if [ "$#" -eq 0 ]; then
-    "$PYTHON_CMD" "$SCRIPT_DIR/一键启停脚本.py"
+    "$PYTHON_CMD" "$SCRIPT_PATH"
 else
-    "$PYTHON_CMD" "$SCRIPT_DIR/一键启停脚本.py" "$@"
+    "$PYTHON_CMD" "$SCRIPT_PATH" "$@"
 fi

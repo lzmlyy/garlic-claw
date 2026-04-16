@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch & node --watch dist/src/main.js",
     "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
     "start": "node dist/src/main.js",
     "smoke:http": "node scripts/http-smoke.mjs",
     "test": "jest --runInBand --passWithNoTests",

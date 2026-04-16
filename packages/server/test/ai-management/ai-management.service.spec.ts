@@ -43,56 +43,50 @@ describe('AiManagementService', () => {
     jest.restoreAllMocks();
   });
 
-  it('classifies provider catalog entries into core protocols and presets', () => {
+  it('keeps only the three core protocol catalog entries', () => {
     const service = new AiManagementService(new AiProviderSettingsService());
 
     const catalog = service.listProviderCatalog();
 
-    expect(catalog.filter((item) => item.kind === 'core')).toEqual([
+    expect(catalog).toEqual([
       expect.objectContaining({ id: 'openai', kind: 'core', protocol: 'openai' }),
       expect.objectContaining({ id: 'anthropic', kind: 'core', protocol: 'anthropic' }),
       expect.objectContaining({ id: 'gemini', kind: 'core', protocol: 'gemini' }),
     ]);
-    expect(catalog.filter((item) => item.kind === 'preset')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'groq', kind: 'preset', protocol: 'openai' }),
-        expect.objectContaining({ id: 'openrouter', kind: 'preset', protocol: 'openai' }),
-      ]),
-    );
   });
 
   it('stores providers, hydrates models and updates capabilities', () => {
     const service = new AiManagementService(new AiProviderSettingsService());
 
-    const provider = service.upsertProvider('groq', {
-      apiKey: 'groq-key',
-      driver: 'groq',
+    const provider = service.upsertProvider('openai-main', {
+      apiKey: 'openai-key',
+      driver: 'openai',
       mode: 'catalog',
-      models: ['llama-3.3-70b', 'llama-3.1-8b'],
-      name: 'Groq',
+      models: ['gpt-4o-mini', 'gpt-4.1-mini'],
+      name: 'OpenAI',
     });
 
     expect(provider).toMatchObject({
-      defaultModel: 'llama-3.3-70b-versatile',
-      driver: 'groq',
-      id: 'groq',
+      defaultModel: 'gpt-4o-mini',
+      driver: 'openai',
+      id: 'openai-main',
       mode: 'catalog',
-      models: ['llama-3.3-70b', 'llama-3.1-8b'],
-      name: 'Groq',
+      models: ['gpt-4o-mini', 'gpt-4.1-mini'],
+      name: 'OpenAI',
     });
     expect(service.listProviders()).toEqual([
       expect.objectContaining({
         available: true,
-        id: 'groq',
+        id: 'openai-main',
         modelCount: 2,
       }),
     ]);
-    expect(service.listModels('groq')).toEqual([
-      expect.objectContaining({ id: 'llama-3.3-70b', providerId: 'groq' }),
-      expect.objectContaining({ id: 'llama-3.1-8b', providerId: 'groq' }),
+    expect(service.listModels('openai-main')).toEqual([
+      expect.objectContaining({ id: 'gpt-4o-mini', providerId: 'openai-main' }),
+      expect.objectContaining({ id: 'gpt-4.1-mini', providerId: 'openai-main' }),
     ]);
     expect(
-      service.updateModelCapabilities('groq', 'llama-3.3-70b', {
+      service.updateModelCapabilities('openai-main', 'gpt-4o-mini', {
         input: { image: true },
         reasoning: true,
       }),
@@ -122,44 +116,44 @@ describe('AiManagementService', () => {
 
   it('surfaces provider discovery failures as bad gateway errors', async () => {
     const service = new AiManagementService(new AiProviderSettingsService());
-    service.upsertProvider('groq', {
-      apiKey: 'groq-key',
-      baseUrl: 'https://api.groq.com/openai/v1',
-      driver: 'groq',
+    service.upsertProvider('openai-main', {
+      apiKey: 'openai-key',
+      baseUrl: 'https://api.openai.com/v1',
+      driver: 'openai',
       mode: 'catalog',
-      models: ['llama-3.3-70b'],
-      name: 'Groq',
+      models: ['gpt-4o-mini'],
+      name: 'OpenAI',
     });
     const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 503,
     } as Response);
 
-    await expect(service.discoverModels('groq')).rejects.toThrow(BadGatewayException);
+    await expect(service.discoverModels('openai-main')).rejects.toThrow(BadGatewayException);
 
     fetchSpy.mockRestore();
   });
 
   it('uses explicit, default or first model when testing provider connections', async () => {
     const service = new AiManagementService(new AiProviderSettingsService());
-    service.upsertProvider('openrouter', {
-      apiKey: 'router-key',
-      driver: 'openrouter',
+    service.upsertProvider('anthropic-main', {
+      apiKey: 'anthropic-key',
+      driver: 'anthropic',
       mode: 'catalog',
-      models: ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet'],
-      name: 'OpenRouter',
+      models: ['claude-3-5-sonnet-20241022', 'claude-3-7-sonnet-20250219'],
+      name: 'Anthropic',
     });
 
-    await expect(service.testConnection('openrouter', 'anthropic/claude-3.5-sonnet')).resolves.toEqual({
+    await expect(service.testConnection('anthropic-main', 'claude-3-7-sonnet-20250219')).resolves.toEqual({
       ok: true,
-      providerId: 'openrouter',
-      modelId: 'anthropic/claude-3.5-sonnet',
+      providerId: 'anthropic-main',
+      modelId: 'claude-3-7-sonnet-20250219',
       text: 'OK',
     });
-    await expect(service.testConnection('openrouter')).resolves.toEqual({
+    await expect(service.testConnection('anthropic-main')).resolves.toEqual({
       ok: true,
-      providerId: 'openrouter',
-      modelId: 'openai/gpt-4o',
+      providerId: 'anthropic-main',
+      modelId: 'claude-3-5-sonnet-20241022',
       text: 'OK',
     });
   });

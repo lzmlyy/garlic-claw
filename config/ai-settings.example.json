@@ -15,15 +15,27 @@
       ]
     },
     {
-      "id": "team-gemini",
-      "name": "Team Gemini Compatible",
-      "mode": "protocol",
-      "driver": "gemini",
-      "apiKey": "YOUR_COMPATIBLE_API_KEY",
-      "baseUrl": "https://your-protocol-endpoint.example.com/v1beta",
-      "defaultModel": "gemini-2.0-flash",
+      "id": "anthropic",
+      "name": "Anthropic",
+      "mode": "catalog",
+      "driver": "anthropic",
+      "apiKey": "YOUR_ANTHROPIC_API_KEY",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "defaultModel": "claude-3-5-sonnet-20241022",
       "models": [
-        "gemini-2.0-flash"
+        "claude-3-5-sonnet-20241022"
+      ]
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "mode": "catalog",
+      "driver": "gemini",
+      "apiKey": "YOUR_GEMINI_API_KEY",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "defaultModel": "gemini-1.5-pro",
+      "models": [
+        "gemini-1.5-pro"
       ]
     }
   ],
@@ -46,8 +58,8 @@
         "modelId": "gpt-4o-mini"
       },
       "pluginGenerateText": {
-        "providerId": "team-gemini",
-        "modelId": "gemini-2.0-flash"
+        "providerId": "gemini",
+        "modelId": "gemini-1.5-pro"
       }
     }
   }

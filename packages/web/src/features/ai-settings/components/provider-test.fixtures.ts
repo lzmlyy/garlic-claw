@@ -26,16 +26,3 @@ export const coreProviderCatalogFixture: AiProviderCatalogItem[] = [
     defaultModel: 'gemini-1.5-pro',
   },
 ]
-
-export function createCatalogPresetFixture(
-  overrides: Partial<AiProviderCatalogItem> & Pick<AiProviderCatalogItem, 'id' | 'name'>,
-): AiProviderCatalogItem {
-  return {
-    id: overrides.id,
-    kind: overrides.kind ?? 'preset',
-    protocol: overrides.protocol ?? 'openai',
-    name: overrides.name,
-    defaultBaseUrl: overrides.defaultBaseUrl ?? 'https://example.com/v1',
-    defaultModel: overrides.defaultModel ?? 'example-model',
-  }
-}

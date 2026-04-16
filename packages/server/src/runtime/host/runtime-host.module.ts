@@ -55,7 +55,7 @@ import { RuntimeHostUserContextService } from './runtime-host-user-context.servi
     ToolRegistryService,
     UserService,
   ],
-  exports: [AiModelExecutionService, AiManagementService, AiProviderSettingsService, AiVisionService, AutomationExecutionService, AutomationService, McpConfigStoreService, McpService, RuntimeHostConversationMessageService, RuntimeHostConversationRecordService, RuntimeHostKnowledgeService, RuntimeHostPluginDispatchService, RuntimeHostPluginRuntimeService, RuntimeHostSubagentRunnerService, RuntimeHostSubagentTaskStoreService, RuntimeHostService, RuntimeHostUserContextService, SkillRegistryService, SkillSessionService, ToolRegistryService, UserService],
+  exports: [AiModelExecutionService, AiManagementService, AiProviderSettingsService, AiVisionService, AutomationService, McpService, RuntimeHostConversationMessageService, RuntimeHostConversationRecordService, RuntimeHostKnowledgeService, RuntimeHostPluginDispatchService, RuntimeHostPluginRuntimeService, RuntimeHostSubagentRunnerService, RuntimeHostService, RuntimeHostUserContextService, SkillRegistryService, SkillSessionService, ToolRegistryService, UserService],
 })
 export class RuntimeHostModule implements OnModuleInit {
   constructor(private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService) {}

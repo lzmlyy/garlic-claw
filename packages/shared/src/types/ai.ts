@@ -14,23 +14,12 @@ export type ProviderProtocolDriver = 'openai' | 'anthropic' | 'gemini';
 export type AiProviderCatalogDriver =
   | 'openai'
   | 'anthropic'
-  | 'gemini'
-  | 'groq'
-  | 'xai'
-  | 'mistral'
-  | 'cohere'
-  | 'cerebras'
-  | 'deepinfra'
-  | 'togetherai'
-  | 'perplexity'
-  | 'gateway'
-  | 'vercel'
-  | 'openrouter';
+  | 'gemini';
 
 /**
  * AI provider 目录项分类。
  */
-export type AiProviderCatalogKind = 'core' | 'preset';
+export type AiProviderCatalogKind = 'core';
 
 /**
  * 模态能力。

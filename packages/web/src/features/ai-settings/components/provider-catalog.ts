@@ -81,9 +81,7 @@ export function getProtocolLabel(
 }
 
 export function getCatalogDriverOptionLabel(item: AiProviderCatalogItem): string {
-  return item.kind === 'core'
-    ? `${item.name} · 核心协议族`
-    : `${item.name} · 目录模板 · ${getProtocolLabel(item.protocol)} 协议`
+  return `${item.name} · 核心协议族`
 }
 
 export function getCatalogDriverOptions(
@@ -109,7 +107,7 @@ export function getProviderModeLabel(
     return providerModeLabels.catalog
   }
 
-  return catalogProvider.kind === 'core' ? '核心协议族' : providerModeLabels.catalog
+  return '核心协议族'
 }
 
 export function getProviderDriverLabel(
@@ -144,9 +142,5 @@ export function getProviderDriverHint(
     return '目录模板模式会使用内置 catalog 的默认地址和默认模型。'
   }
 
-  if (catalogProvider.kind === 'core') {
-    return `这是内建的 ${getProtocolLabel(catalogProvider.protocol)} 核心协议族。`
-  }
-
-  return `${catalogProvider.name} 是供应商目录模板，运行时会按 ${getProtocolLabel(catalogProvider.protocol)} 协议族接入。`
+  return `这是内建的 ${getProtocolLabel(catalogProvider.protocol)} 核心协议族。`
 }
