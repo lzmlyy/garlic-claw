@@ -58,8 +58,6 @@ config/
   ai-settings.example.json   AI provider / model / vision fallback 示例配置
 tools/
   一键启停脚本.py            开发/生产/脚本测试统一主入口
-  start-dev.bat              兼容旧入口
-  stop-dev.bat               兼容旧入口
   scripts/
     dev_runtime.py           开发态编排
     docker_runtime.py        Docker / 生产模式编排
