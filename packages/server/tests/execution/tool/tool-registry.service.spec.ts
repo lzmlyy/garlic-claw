@@ -522,16 +522,6 @@ function createFixture() {
     models: ['gpt-5.4'],
     name: 'OpenAI',
   });
-  const userService = {
-    findById: jest.fn(async (userId: string) => ({
-      createdAt: '2026-03-28T00:00:00.000Z',
-      email: `${userId}@example.com`,
-      id: userId,
-      role: 'user',
-      updatedAt: '2026-03-28T00:00:00.000Z',
-      username: userId,
-    })),
-  } as never;
   const builtinPluginRegistryService = new BuiltinPluginRegistryService();
   const runtimeHostPluginDispatchService = new RuntimeHostPluginDispatchService(
     builtinPluginRegistryService,
@@ -550,7 +540,6 @@ function createFixture() {
     new RuntimeHostPluginRuntimeService(),
     runtimeHostSubagentRunnerService,
     new RuntimeHostUserContextService(),
-    userService,
   );
   runtimeHostService.onModuleInit();
   const runtimePluginGovernanceService = new RuntimePluginGovernanceService(

@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { PluginCallContext } from '@garlic-claw/shared';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { SINGLE_USER_ID } from '../../../src/auth/single-user-auth';
 import { RuntimeHostConversationMessageService } from '../../../src/runtime/host/runtime-host-conversation-message.service';
 import { RuntimeHostConversationRecordService } from '../../../src/runtime/host/runtime-host-conversation-record.service';
 
@@ -29,7 +30,7 @@ describe('RuntimeHostConversationMessageService', () => {
     process.env[envKey] = storagePath;
     const recordService = new RuntimeHostConversationRecordService();
     const service = new RuntimeHostConversationMessageService(recordService);
-    const conversationId = (recordService.createConversation({ title: 'Conversation One', userId: 'user-1' }) as { id: string }).id;
+    const conversationId = (recordService.createConversation({ title: 'Conversation One', userId: SINGLE_USER_ID }) as { id: string }).id;
 
     const first = service.createMessage(conversationId, { content: 'hello', role: 'user', status: 'completed' });
     const second = service.createMessage(conversationId, {
@@ -45,7 +46,7 @@ describe('RuntimeHostConversationMessageService', () => {
         activeProviderId: 'openai',
         conversationId,
         source: 'chat-hook',
-        userId: 'user-1',
+        userId: SINGLE_USER_ID,
       } satisfies PluginCallContext,
       { content: 'Plugin reply' },
     );
@@ -64,7 +65,7 @@ describe('RuntimeHostConversationMessageService', () => {
     });
 
     const revisionBeforeUpdate = service.readConversationRevision(conversationId);
-    await expect(service.updateMessage(conversationId, String((sent as { id: string }).id), { content: 'Updated reply' }, 'user-1')).resolves.toMatchObject({
+    await expect(service.updateMessage(conversationId, String((sent as { id: string }).id), { content: 'Updated reply' }, SINGLE_USER_ID)).resolves.toMatchObject({
       content: 'Updated reply',
       id: (sent as { id: string }).id,
       role: 'assistant',
@@ -73,13 +74,13 @@ describe('RuntimeHostConversationMessageService', () => {
     expect(service.readConversationRevision(conversationId)).not.toBe(revisionBeforeUpdate);
 
     const reloaded = new RuntimeHostConversationMessageService(new RuntimeHostConversationRecordService());
-    await expect(reloaded.updateMessage(conversationId, String((sent as { id: string }).id), { content: 'Reloaded reply' }, 'user-1')).resolves.toMatchObject({
+    await expect(reloaded.updateMessage(conversationId, String((sent as { id: string }).id), { content: 'Reloaded reply' }, SINGLE_USER_ID)).resolves.toMatchObject({
       content: 'Reloaded reply',
       id: (sent as { id: string }).id,
       role: 'assistant',
       status: 'completed',
     });
-    await expect(service.deleteMessage(conversationId, String((sent as { id: string }).id), 'user-1')).resolves.toEqual({ success: true });
+    await expect(service.deleteMessage(conversationId, String((sent as { id: string }).id), SINGLE_USER_ID)).resolves.toEqual({ success: true });
   });
 
   it('throws when writing to a missing conversation instead of auto-creating it', async () => {

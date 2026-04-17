@@ -465,6 +465,62 @@ class DevRuntimeTests(unittest.TestCase):
         self.assertEqual(services['web']['port'], 23333)
         self.assertEqual(devRuntime.DEFAULT_PORTS, [23330, 23331, 23333])
 
+    def testCompilerReadyProbeDetectsWatchMarker(self) -> None:
+        """后端编译器首轮完成应以 watch 日志进入监听态为准。"""
+        devRuntime = loadPackageModule('tools.scripts.dev_runtime')
+        logPath = SCRIPTS_DIR / 'tmp-server-tsc.log'
+        logPath.write_text(
+            '\n'.join(
+                [
+                    '23:18:50 - Starting compilation in watch mode...',
+                    '23:19:04 - Found 0 errors. Watching for file changes.',
+                ]
+            ),
+            encoding='utf-8',
+        )
+        self.addCleanup(lambda: logPath.unlink(missing_ok=True))
+
+        self.assertTrue(devRuntime.编译日志已进入监听态(logPath))
+
+    def testStartWaitsForCompilerReadyBeforeLaunchingBackendApp(self) -> None:
+        """开发态应在首轮 watch 编译完成后再启动后端应用。"""
+        devRuntime = loadPackageModule('tools.scripts.dev_runtime')
+        startedNames: list[str] = []
+
+        def fakeStartManagedProcess(service: dict[str, object]) -> mock.Mock:
+            startedNames.append(str(service['name']))
+            return mock.Mock(pid=100 + len(startedNames))
+
+        with (
+            mock.patch.object(devRuntime, '读取受管状态', return_value={}),
+            mock.patch.object(devRuntime, '确保端口空闲', return_value=True),
+            mock.patch.object(devRuntime.runtime, 'ensureRuntimeDirs'),
+            mock.patch.object(devRuntime.runtime, 'ensureGitHooksEnabled'),
+            mock.patch.object(devRuntime, '执行启动前预检', return_value=True),
+            mock.patch.object(devRuntime.docker_runtime, '确保env文件'),
+            mock.patch.object(devRuntime, 'loadProjectEnv'),
+            mock.patch.object(devRuntime, '确保npm依赖已安装', return_value=True),
+            mock.patch.object(devRuntime, '执行构建步骤', return_value=True),
+            mock.patch.object(devRuntime, '等待后端编译器首轮完成', return_value=True) as waitCompiler,
+            mock.patch.object(devRuntime.runtime, 'startManagedProcess', side_effect=fakeStartManagedProcess),
+            mock.patch.object(devRuntime, '保存受管状态'),
+            mock.patch.object(devRuntime.runtime, 'waitForPort', return_value=True),
+            mock.patch.object(devRuntime.docker_runtime, 'http健康检查', return_value=True),
+            mock.patch.object(devRuntime.runtime, 'startSingleLineStatus'),
+            mock.patch.object(devRuntime.runtime, 'finishSingleLineStatus'),
+        ):
+            result = devRuntime.启动开发服务(allowAutoStop=True, tailLogs=False)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            startedNames,
+            ['后端编译器', '前端开发服务器', '后端应用'],
+        )
+        waitCompiler.assert_called_once_with(
+            devRuntime.SERVER_TSC_STDOUT,
+            devRuntime.getPortWaitTimeoutSeconds('backend_app'),
+        )
+
     def testCreateBuildStepsMatchesLegacyStartWorkflow(self) -> None:
         """构建步骤应补齐 plugin-sdk 与 Prisma Client，再执行 server 构建。"""
         devRuntime = loadPackageModule('tools.scripts.dev_runtime')

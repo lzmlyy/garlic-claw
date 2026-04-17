@@ -1,60 +1,46 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'node:crypto';
-import { AdminIdentityService } from './admin-identity.service';
 import { getPrismaClient } from '../infrastructure/prisma/prisma-client';
+import { SINGLE_USER_EMAIL, SINGLE_USER_ID, SINGLE_USER_USERNAME } from './single-user-auth';
 
 @Injectable()
 export class BootstrapAdminService {
   private readonly logger = new Logger(BootstrapAdminService.name);
   private startupPromise: Promise<void> | null = null;
 
-  constructor(private readonly adminIdentityService: AdminIdentityService) {}
-
   runStartupWarmup(): Promise<void> {
     if (!this.startupPromise) {
       this.startupPromise = this.runStartupTask(
-        'Bootstrap 管理员补建',
-        () => this.ensureBootstrapAdminOnStartup(),
+        '单用户 owner 补建',
+        () => this.ensureSingleUserOnStartup(),
       ).then(() => undefined);
     }
 
     return this.startupPromise;
   }
 
-  async ensureBootstrapAdminOnStartup(): Promise<void> {
-    const bootstrapAdmin = this.adminIdentityService.readBootstrapAdminConfig();
-    if (!bootstrapAdmin) {
-      return;
-    }
-
-    const existingUser = await getPrismaClient().user.findFirst({
-      where: {
-        OR: [
-          { username: bootstrapAdmin.username },
-          { email: bootstrapAdmin.email },
-        ],
-      },
-      select: { id: true },
+  async ensureSingleUserOnStartup(): Promise<void> {
+    const prisma = getPrismaClient();
+    await prisma.user.deleteMany({
+      where: { id: { not: SINGLE_USER_ID } },
     });
-    if (existingUser) {
-      return;
-    }
-
-    const passwordHash = await bcrypt.hash(bootstrapAdmin.password, 12);
-    await getPrismaClient().user.create({
-      data: {
-        id: randomUUID(),
-        username: bootstrapAdmin.username,
-        email: bootstrapAdmin.email,
-        passwordHash,
-        role: 'user',
+    await prisma.user.upsert({
+      create: {
+        id: SINGLE_USER_ID,
+        username: SINGLE_USER_USERNAME,
+        email: SINGLE_USER_EMAIL,
+        passwordHash: 'single-secret-auth',
+        role: 'local',
       },
+      update: {
+        email: SINGLE_USER_EMAIL,
+        passwordHash: 'single-secret-auth',
+        role: 'local',
+        username: SINGLE_USER_USERNAME,
+      },
+      where: { id: SINGLE_USER_ID },
     });
 
-    this.logger.log(
-      `已根据环境变量自动创建 bootstrap 管理员账号: ${bootstrapAdmin.username}`,
-    );
+    this.logger.log(`已校准单用户 owner: ${SINGLE_USER_USERNAME}`);
   }
 
   private async runStartupTask(label: string, task: () => Promise<void>): Promise<void> {

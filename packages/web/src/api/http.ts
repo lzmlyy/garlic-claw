@@ -20,7 +20,6 @@ export interface HttpRequestOptions extends Omit<RequestInit, "body"> {
   body?: RequestBody;
   timeout?: number;
   skipAuth?: boolean;
-  skipRefreshRetry?: boolean;
   skipUnauthorizedRedirect?: boolean;
   skipEnvelope?: boolean;
 }
@@ -53,8 +52,6 @@ export type HttpRequestErrorListener = (
 
 const requestInterceptors = new Set<HttpRequestInterceptor>();
 const requestErrorListeners = new Set<HttpRequestErrorListener>();
-
-let refreshPromise: Promise<boolean> | null = null;
 
 export function getApiBase(): string {
   return API_BASE;
@@ -186,21 +183,7 @@ async function executeRequest(
   options: HttpRequestOptions,
 ): Promise<Response> {
   const response = await send(path, options);
-
-  if (response.status !== 401 || options.skipRefreshRetry) {
-    return handleUnauthorizedResponse(response, options);
-  }
-
-  const refreshed = await tryRefreshTokens();
-  if (!refreshed) {
-    throw handleUnauthorizedFailure();
-  }
-
-  const retriedResponse = await send(path, {
-    ...options,
-    skipRefreshRetry: true,
-  });
-  return handleUnauthorizedResponse(retriedResponse, options);
+  return handleUnauthorizedResponse(response, options);
 }
 
 async function send(
@@ -392,6 +375,10 @@ function handleUnauthorizedResponse(
   response: Response,
   options: HttpRequestOptions,
 ) {
+  if (response.status === 401) {
+    clearStoredTokens();
+  }
+
   if (response.status !== 401 || options.skipUnauthorizedRedirect) {
     return response;
   }
@@ -400,10 +387,7 @@ function handleUnauthorizedResponse(
 }
 
 function handleUnauthorizedFailure() {
-  if (typeof localStorage !== "undefined") {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-  }
+  clearStoredTokens();
 
   if (typeof window !== "undefined") {
     window.location.href = "/login";
@@ -415,44 +399,12 @@ function handleUnauthorizedFailure() {
   });
 }
 
-async function tryRefreshTokens() {
-  const refreshToken =
-    typeof localStorage !== "undefined"
-      ? localStorage.getItem("refreshToken")
-      : null;
-
-  if (!refreshToken) {
-    return false;
+function clearStoredTokens() {
+  if (typeof localStorage === "undefined") {
+    return;
   }
 
-  if (refreshPromise) {
-    return refreshPromise;
-  }
-
-  refreshPromise = (async () => {
-    try {
-      const tokens = await request<{
-        accessToken: string;
-        refreshToken: string;
-      }>("/auth/refresh", {
-        method: "POST",
-        body: { refreshToken },
-        skipAuth: true,
-        skipRefreshRetry: true,
-        skipUnauthorizedRedirect: true,
-      });
-
-      localStorage.setItem("accessToken", tokens.accessToken);
-      localStorage.setItem("refreshToken", tokens.refreshToken);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      refreshPromise = null;
-    }
-  })();
-
-  return refreshPromise;
+  localStorage.removeItem("accessToken");
 }
 
 function injectAccessToken(headers: Headers) {

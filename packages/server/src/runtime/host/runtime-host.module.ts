@@ -2,7 +2,6 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { AiModelExecutionService } from '../../ai/ai-model-execution.service';
 import { AiManagementService } from '../../ai-management/ai-management.service';
 import { AiProviderSettingsService } from '../../ai-management/ai-provider-settings.service';
-import { AdminIdentityService } from '../../auth/admin-identity.service';
 import { AutomationExecutionService } from '../../execution/automation/automation-execution.service';
 import { AutomationService } from '../../execution/automation/automation.service';
 import { McpConfigStoreService } from '../../execution/mcp/mcp-config-store.service';
@@ -11,7 +10,6 @@ import { SKILL_DISCOVERY_OPTIONS, SkillRegistryService } from '../../execution/s
 import { SkillSessionService } from '../../execution/skill/skill-session.service';
 import { ToolRegistryService } from '../../execution/tool/tool-registry.service';
 import { PluginModule } from '../../plugin/plugin.module';
-import { UserService } from '../../user/user.service';
 import { RuntimeGatewayModule } from '../gateway/runtime-gateway.module';
 import { RuntimeKernelModule } from '../kernel/runtime-kernel.module';
 import { AiVisionService } from '../../vision/ai-vision.service';
@@ -28,7 +26,6 @@ import { RuntimeHostUserContextService } from './runtime-host-user-context.servi
 @Module({
   imports: [PluginModule, RuntimeGatewayModule, RuntimeKernelModule],
   providers: [
-    AdminIdentityService,
     AiModelExecutionService,
     AiManagementService,
     AiProviderSettingsService,
@@ -53,9 +50,8 @@ import { RuntimeHostUserContextService } from './runtime-host-user-context.servi
     SkillRegistryService,
     SkillSessionService,
     ToolRegistryService,
-    UserService,
   ],
-  exports: [AiModelExecutionService, AiManagementService, AiProviderSettingsService, AiVisionService, AutomationService, McpService, RuntimeHostConversationMessageService, RuntimeHostConversationRecordService, RuntimeHostKnowledgeService, RuntimeHostPluginDispatchService, RuntimeHostPluginRuntimeService, RuntimeHostSubagentRunnerService, RuntimeHostService, RuntimeHostUserContextService, SkillRegistryService, SkillSessionService, ToolRegistryService, UserService],
+  exports: [AiModelExecutionService, AiManagementService, AiProviderSettingsService, AiVisionService, AutomationService, McpService, RuntimeHostConversationMessageService, RuntimeHostConversationRecordService, RuntimeHostKnowledgeService, RuntimeHostPluginDispatchService, RuntimeHostPluginRuntimeService, RuntimeHostSubagentRunnerService, RuntimeHostService, RuntimeHostUserContextService, SkillRegistryService, SkillSessionService, ToolRegistryService],
 })
 export class RuntimeHostModule implements OnModuleInit {
   constructor(private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService) {}

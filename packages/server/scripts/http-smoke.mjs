@@ -16,8 +16,7 @@ const PROJECT_ROOT = path.resolve(SERVER_DIR, '..', '..');
 const DEFAULT_TIMEOUT_MS = 20_000;
 const STARTUP_TIMEOUT_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 15_000;
-const DEFAULT_PASSWORD = 'SmokePass123!';
-const USER_PASSWORD = 'SmokeUser123!';
+const LOGIN_SECRET = process.env.GARLIC_CLAW_LOGIN_SECRET || 'smoke-login-secret';
 const API_PREFIX = '/api';
 const SKILL_DIR_NAME = '.smoke-http-flow';
 const {
@@ -64,13 +63,10 @@ async function main() {
   };
   const state = {
     adminTokens: null,
-    apiKey: null,
     automationId: null,
     automationSubagentTaskId: null,
     bootstrapTokens: null,
     conversationId: null,
-    createdUserId: null,
-    devTokens: null,
     firstAssistantMessageId: null,
     firstUserMessageId: null,
     memoryId: null,
@@ -85,7 +81,6 @@ async function main() {
     skillId: smokeSkillId,
     toolId: null,
     toolSourceId: null,
-    userTokens: null,
     userAlias: `smoke-user-${Date.now().toString(36)}`,
     userUpdatedEmail: null,
     proxyHostModelRoutingBackup: undefined,
@@ -177,87 +172,8 @@ async function main() {
 }
 
 async function runHttpFlow(apiBase, state, input) {
-  const userEmail = `${state.userAlias}@example.com`;
-  state.userUpdatedEmail = `${state.userAlias}-updated@example.com`;
   const adminHeaders = () => createBearerHeaders(readTokens(state.adminTokens).accessToken);
-  const userHeaders = () => createBearerHeaders(readTokens(state.userTokens).accessToken);
-  const userApiKeyHeaders = () => ({
-    'x-api-key': readApiKey(state.apiKey).token,
-  });
-
-  await runStep('auth.dev-login', async () => {
-    state.devTokens = await postJson(apiBase, '/auth/dev-login', {
-      body: {
-        role: 'admin',
-        username: 'smoke-dev-admin',
-      },
-    });
-    ensure(typeof state.devTokens.accessToken === 'string', 'Expected dev-login to return accessToken');
-  });
-
-  await runStep('auth.register', async () => {
-    state.userTokens = await postJson(apiBase, '/auth/register', {
-      body: {
-        email: userEmail,
-        password: USER_PASSWORD,
-        username: state.userAlias,
-      },
-    });
-  });
-
-  await runStep('auth.login', async () => {
-    state.userTokens = await postJson(apiBase, '/auth/login', {
-      body: {
-        password: USER_PASSWORD,
-        username: state.userAlias,
-      },
-    });
-  });
-
-  await runStep('auth.refresh', async () => {
-    state.userTokens = await postJson(apiBase, '/auth/refresh', {
-      body: {
-        refreshToken: readTokens(state.userTokens).refreshToken,
-      },
-    });
-  });
-
-  await runStep('users.me', async () => {
-    const me = await getJson(apiBase, '/users/me', { headers: userHeaders() });
-    state.createdUserId = me.id;
-    ensure(typeof state.createdUserId === 'string' && state.createdUserId.length > 0, 'Expected users/me to return user id');
-  });
-
-  await runStep('users.list', async () => {
-    const users = await getJson(apiBase, '/users?page=1&pageSize=20', { headers: adminHeaders() });
-    ensure(Array.isArray(users.data), 'Expected users list to contain data array');
-    ensure(users.data.some((entry) => entry.id === state.createdUserId), 'Expected users list to include smoke user');
-  });
-
-  await runStep('users.get', async () => {
-    const user = await getJson(apiBase, `/users/${state.createdUserId}`, { headers: adminHeaders() });
-    ensure(user.id === state.createdUserId, 'Expected users/:id to return target user');
-  });
-
-  await runStep('users.update', async () => {
-    const updated = await patchJson(apiBase, `/users/${state.createdUserId}`, {
-      body: {
-        email: state.userUpdatedEmail,
-      },
-      headers: adminHeaders(),
-    });
-    ensure(updated.email === state.userUpdatedEmail, 'Expected users update to persist email');
-  });
-
-  await runStep('users.update-role', async () => {
-    const updated = await patchJson(apiBase, `/users/${state.createdUserId}/role`, {
-      body: {
-        role: 'admin',
-      },
-      headers: adminHeaders(),
-    });
-    ensure(updated.role === 'admin', 'Expected user role patch to persist role');
-  });
+  const userHeaders = adminHeaders;
 
   await runStep('ai.provider-catalog', async () => {
     const catalog = await getJson(apiBase, '/ai/provider-catalog');
@@ -475,39 +391,6 @@ async function runHttpFlow(apiBase, state, input) {
       headers: userHeaders(),
     });
     ensure(persona.personaId === state.personaId, 'Expected persona activation to persist');
-  });
-
-  await runStep('auth.api-keys.list.initial', async () => {
-    const keys = await getJson(apiBase, '/auth/api-keys', { headers: userHeaders() });
-    ensure(Array.isArray(keys), 'Expected api key list to be an array');
-  });
-
-  await runStep('auth.api-keys.create', async () => {
-    state.apiKey = await postJson(apiBase, '/auth/api-keys', {
-      body: {
-        name: 'Smoke HTTP Key',
-        scopes: ['conversation.message.write', 'plugin.route.invoke'],
-      },
-      headers: userHeaders(),
-    });
-    ensure(typeof state.apiKey.token === 'string', 'Expected created api key token');
-  });
-
-  await runStep('auth.api-keys.list', async () => {
-    const keys = await getJson(apiBase, '/auth/api-keys', { headers: userHeaders() });
-    ensure(keys.some((entry) => entry.id === state.apiKey.id), 'Expected api key list to include created key');
-  });
-
-  await runStep('open-api.assistant-message', async () => {
-    const message = await postJson(apiBase, `/open-api/conversations/${state.conversationId}/messages/assistant`, {
-      body: {
-        content: 'API key assistant message',
-        model: state.modelId,
-        provider: state.providerId,
-      },
-      headers: userApiKeyHeaders(),
-    });
-    ensure(message.role === 'assistant', 'Expected open-api message to append assistant message');
   });
 
   await runStep('chat.messages.send', async () => {
@@ -1102,13 +985,6 @@ async function runHttpFlow(apiBase, state, input) {
     ensure(!automations.some((entry) => entry.id === state.automationId), 'Expected automation list to exclude deleted automation');
   });
 
-  await runStep('auth.api-keys.revoke', async () => {
-    const key = await postJson(apiBase, `/auth/api-keys/${state.apiKey.id}/revoke`, {
-      headers: userHeaders(),
-    });
-    ensure(typeof key.revokedAt === 'string', 'Expected api key to be revoked');
-  });
-
   await runStep('ai.model.delete', async () => {
     const result = await deleteJson(apiBase, `/ai/providers/${state.providerId}/models/smoke-extra`);
     ensure(result.success === true, 'Expected model delete response');
@@ -1117,11 +993,6 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('chat.conversation.delete', async () => {
     const result = await deleteJson(apiBase, `/chat/conversations/${state.conversationId}`, { headers: userHeaders() });
     ensure(result.message === 'Conversation deleted', 'Expected conversation deletion response');
-  });
-
-  await runStep('users.delete', async () => {
-    const result = await deleteJson(apiBase, `/users/${state.createdUserId}`, { headers: adminHeaders() });
-    ensure(result.message === 'User deleted', 'Expected user deletion response');
   });
 
   await runStep('ai.provider.delete', async () => {
@@ -1291,14 +1162,12 @@ async function verifyHealth(apiBase, backend) {
 }
 
 async function loginDevelopmentAdmin(apiBase) {
-  const payload = await postJson(apiBase, '/auth/dev-login', {
+  const payload = await postJson(apiBase, '/auth/login', {
     body: {
-      role: 'super_admin',
-      username: 'smoke-proxy-admin',
+      secret: LOGIN_SECRET,
     },
   });
-  ensure(typeof payload.accessToken === 'string', 'Expected dev-login access token');
-  ensure(typeof payload.refreshToken === 'string', 'Expected dev-login refresh token');
+  ensure(typeof payload.accessToken === 'string', 'Expected login access token');
   return payload;
 }
 
@@ -1308,17 +1177,13 @@ async function startBackend(port, wsPort, databaseUrl, files) {
     cwd: SERVER_DIR,
     env: {
       ...process.env,
-      BOOTSTRAP_ADMIN_EMAIL: 'smoke-admin@example.com',
-      BOOTSTRAP_ADMIN_PASSWORD: DEFAULT_PASSWORD,
-      BOOTSTRAP_ADMIN_ROLE: 'super_admin',
-      BOOTSTRAP_ADMIN_USERNAME: 'smoke-admin',
       DATABASE_URL: databaseUrl,
       GARLIC_CLAW_AI_SETTINGS_PATH: files.aiSettingsPath,
+      GARLIC_CLAW_LOGIN_SECRET: LOGIN_SECRET,
       GARLIC_CLAW_AUTOMATIONS_PATH: files.automationsPath,
       GARLIC_CLAW_CONVERSATIONS_PATH: files.conversationsPath,
       GARLIC_CLAW_MCP_CONFIG_PATH: files.mcpConfigPath,
       GARLIC_CLAW_SUBAGENT_TASKS_PATH: files.subagentTasksPath,
-      JWT_REFRESH_SECRET: 'smoke-jwt-refresh-secret',
       JWT_SECRET: 'smoke-jwt-secret',
       NODE_ENV: 'test',
       PORT: String(port),
@@ -1513,10 +1378,10 @@ async function waitForBootstrapAdminLogin(apiBase) {
 
   while (Date.now() - startedAt < STARTUP_TIMEOUT_MS) {
     try {
+      recordVisitedRoute('POST', '/auth/login');
       const response = await fetch(`${apiBase}/auth/login`, {
         body: JSON.stringify({
-          password: DEFAULT_PASSWORD,
-          username: 'smoke-admin',
+          secret: LOGIN_SECRET,
         }),
         headers: {
           'content-type': 'application/json',
@@ -1527,7 +1392,6 @@ async function waitForBootstrapAdminLogin(apiBase) {
       if (response.ok) {
         const payload = await response.json();
         ensure(typeof payload.accessToken === 'string', 'Expected bootstrap access token');
-        ensure(typeof payload.refreshToken === 'string', 'Expected bootstrap refresh token');
         return payload;
       }
     } catch {
@@ -1728,12 +1592,7 @@ async function runStep(name, task) {
 }
 
 function readTokens(value) {
-  ensure(value && typeof value.accessToken === 'string' && typeof value.refreshToken === 'string', 'Expected auth tokens');
-  return value;
-}
-
-function readApiKey(value) {
-  ensure(value && typeof value.id === 'string' && typeof value.token === 'string', 'Expected API key payload');
+  ensure(value && typeof value.accessToken === 'string', 'Expected auth tokens');
   return value;
 }
 

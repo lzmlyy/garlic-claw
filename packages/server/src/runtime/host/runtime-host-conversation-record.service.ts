@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ConversationHostServices, JsonObject, JsonValue, PluginCallContext } from '@garlic-claw/shared';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { SINGLE_USER_ID } from '../../auth/single-user-auth';
 import { RuntimeHostPluginDispatchService } from './runtime-host-plugin-dispatch.service';
 import { asJsonValue, cloneJsonValue, readJsonObject, readOptionalBoolean, readPositiveInteger, requireContextField } from './runtime-host-values';
 import { listDispatchableHookPluginIds } from '../kernel/runtime-plugin-hook-governance';
@@ -16,10 +17,14 @@ export class RuntimeHostConversationRecordService {
   private readonly storagePath = resolveConversationStoragePath();
   private readonly conversations: Map<string, RuntimeConversationRecord>;
 
-  constructor(@Optional() private readonly runtimeHostPluginDispatchService?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>) { this.conversations = this.loadConversations(); }
+  constructor(@Optional() private readonly runtimeHostPluginDispatchService?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>) {
+    const loaded = this.loadConversations();
+    this.conversations = loaded.records;
+    if (loaded.migrated) {this.saveConversations();}
+  }
 
   createConversation(input: { title?: string; userId?: string }): JsonValue {
-    const userId = input.userId ?? 'anonymous';
+    const userId = input.userId ?? SINGLE_USER_ID;
     const overview = buildConversationOverview(this.createConversationRecord({ conversationId: randomUUID(), timestamp: new Date().toISOString(), title: input.title?.trim() || 'New Chat', userId }));
     void this.broadcastConversationCreated(overview, userId);
     return overview;
@@ -127,14 +132,17 @@ export class RuntimeHostConversationRecordService {
 
   private saveConversations(): void { fs.mkdirSync(path.dirname(this.storagePath), { recursive: true }); fs.writeFileSync(this.storagePath, JSON.stringify({ conversations: Object.fromEntries([...this.conversations.entries()].map(([id, record]) => [id, cloneJsonValue(record)])) }, null, 2), 'utf-8'); }
 
-  private loadConversations(): Map<string, RuntimeConversationRecord> {
+  private loadConversations(): { migrated: boolean; records: Map<string, RuntimeConversationRecord> } {
     try {
       fs.mkdirSync(path.dirname(this.storagePath), { recursive: true });
-      if (!fs.existsSync(this.storagePath)) {return new Map<string, RuntimeConversationRecord>();}
+      if (!fs.existsSync(this.storagePath)) {return { migrated: false, records: new Map<string, RuntimeConversationRecord>() };}
       const parsed = JSON.parse(fs.readFileSync(this.storagePath, 'utf-8')) as { conversations?: Record<string, RuntimeConversationRecord> };
-      return new Map(Object.entries(parsed.conversations ?? {}).map(([id, record]) => [id, cloneJsonValue(record)]));
+      const entries = Object.entries(parsed.conversations ?? {});
+      const records = new Map(entries.flatMap(([id, record]) =>
+        record.userId === SINGLE_USER_ID ? [[id, cloneJsonValue(record)]] : []));
+      return { migrated: records.size !== entries.length, records };
     } catch {
-      return new Map<string, RuntimeConversationRecord>();
+      return { migrated: false, records: new Map<string, RuntimeConversationRecord>() };
     }
   }
 

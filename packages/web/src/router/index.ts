@@ -11,12 +11,6 @@ const router = createRouter({
       meta: { guest: true },
     },
     {
-      path: '/register',
-      name: 'register',
-      component: () => import('../views/RegisterView.vue'),
-      meta: { guest: true },
-    },
-    {
       path: '/',
       name: 'admin-shell',
       component: () => import('@/features/admin/layouts/AdminConsoleLayout.vue'),
@@ -29,61 +23,46 @@ const router = createRouter({
         },
         {
           path: 'devices',
-          meta: { requiresAdmin: true },
           redirect: { name: 'plugins' },
         },
         {
           path: 'plugins',
           name: 'plugins',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/plugins/views/PluginsView.vue'),
         },
         {
           path: 'personas',
           name: 'persona-settings',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/personas/views/PersonaSettingsView.vue'),
         },
         {
           path: 'tools',
           name: 'tools',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/tools/views/ToolsView.vue'),
         },
         {
           path: 'skills',
           name: 'skills',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/skills/views/SkillsView.vue'),
         },
         {
           path: 'commands',
           name: 'commands',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/commands/views/CommandsView.vue'),
         },
         {
           path: 'subagents',
           name: 'subagent-tasks',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/subagents/views/SubagentTasksView.vue'),
-        },
-        {
-          path: 'api-keys',
-          name: 'api-keys',
-          meta: { requiresAdmin: true },
-          component: () => import('@/features/api-keys/views/ApiKeysView.vue'),
         },
         {
           path: 'automations',
           name: 'automations',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/automations/views/AutomationsView.vue'),
         },
         {
           path: 'ai',
           name: 'ai-settings',
-          meta: { requiresAdmin: true },
           component: () => import('@/features/ai-settings/views/ProviderSettings.vue'),
         },
       ],
@@ -99,9 +78,6 @@ router.beforeEach(async (to) => {
     return { name: 'login' }
   }
   if (to.meta.guest && auth.isLoggedIn) {
-    return { name: 'chat' }
-  }
-  if (to.meta.requiresAdmin && !auth.isAdmin) {
     return { name: 'chat' }
   }
 })

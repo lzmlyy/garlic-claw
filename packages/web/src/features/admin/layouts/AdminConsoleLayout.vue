@@ -8,7 +8,6 @@ import widgetAddBold from '@iconify-icons/solar/widget-add-bold'
 import codeBold from '@iconify-icons/solar/code-bold'
 import keyboardBold from '@iconify-icons/solar/keyboard-bold'
 import cpuBold from '@iconify-icons/solar/cpu-bold'
-import keyBold from '@iconify-icons/solar/key-bold'
 import magicStick3Bold from '@iconify-icons/solar/magic-stick-3-bold'
 import cpuBoltBold from '@iconify-icons/solar/cpu-bolt-bold'
 import widget6Bold from '@iconify-icons/solar/widget-6-bold'
@@ -79,7 +78,6 @@ const navItems: Array<{
     | 'skills'
     | 'commands'
     | 'subagent-tasks'
-    | 'api-keys'
     | 'automations'
     | 'ai-settings'
   label: string
@@ -93,14 +91,11 @@ const navItems: Array<{
   { name: 'skills', label: '技能', icon: magicStick3Bold, section: 'core' },
   { name: 'commands', label: '命令', icon: keyboardBold, section: 'core' },
   { name: 'subagent-tasks', label: '后台代理', icon: cpuBold, section: 'core' },
-  { name: 'api-keys', label: 'API Keys', icon: keyBold, section: 'admin' },
   { name: 'automations', label: '自动化', icon: cpuBoltBold, section: 'admin' },
   { name: 'ai-settings', label: 'AI 设置', icon: codeBold, section: 'admin' },
 ]
 
-const visibleNavItems = computed(() =>
-  navItems.filter((item) => item.name === 'chat' || auth.isAdmin),
-)
+const visibleNavItems = computed(() => navItems)
 
 const isCompact = computed(() => siderMode.value === 'compact')
 const isHidden = computed(() => siderMode.value === 'hidden')
@@ -113,17 +108,6 @@ const currentSiderWidth = computed(() => {
   }
 
   return EXPANDED_SIDER_WIDTH
-})
-
-const roleLabel = computed(() => {
-  if (auth.user?.role === 'super_admin') {
-    return '超级管理员'
-  }
-  if (auth.user?.role === 'admin') {
-    return '管理员'
-  }
-
-  return '普通用户'
 })
 
 const triggerText = computed(() => {
@@ -321,9 +305,9 @@ watch(viewportWidth, applyAutoCollapse, { immediate: true })
 
         <div class="sider-meta">
           <div class="sider-user">
-            <span class="sider-user-label">当前用户</span>
-            <strong>{{ auth.user?.username ?? 'unknown' }}</strong>
-            <small>{{ roleLabel }}</small>
+            <span class="sider-user-label">当前模式</span>
+            <strong>单用户控制台</strong>
+            <small>本机持久登录态</small>
           </div>
 
           <div class="sider-actions">

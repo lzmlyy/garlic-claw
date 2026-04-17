@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ActionConfig, AutomationEventDispatchInfo, AutomationLogInfo, JsonObject, JsonValue, TriggerConfig } from '@garlic-claw/shared';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { SINGLE_USER_ID } from '../../auth/single-user-auth';
 import { asJsonValue, cloneJsonValue, readJsonObject, readRequiredString } from '../../runtime/host/runtime-host-values';
 import { AutomationExecutionService } from './automation-execution.service';
 
@@ -34,6 +35,7 @@ export class AutomationService implements OnModuleDestroy, OnModuleInit {
     const restored = this.loadPersistedState();
     this.automationSequence = restored.sequence;
     for (const [userId, records] of restored.automations.entries()) {this.automations.set(userId, records.map((record) => ({ ...record })));}
+    if (restored.migrated) {this.persist();}
   }
 
   onModuleInit() { for (const automation of [...this.automations.values()].flat()) {if (automation.enabled) {this.syncCronJob(automation.id, automation.trigger, true);}} }
@@ -138,7 +140,25 @@ export class AutomationService implements OnModuleDestroy, OnModuleInit {
     return [...this.automations.values()].flat().find((entry) => entry.id === automationId);
   }
 
-  private loadPersistedState(): { automations: Map<string, RuntimeAutomationRecord[]>; sequence: number } { try { fs.mkdirSync(path.dirname(this.storagePath), { recursive: true }); if (!fs.existsSync(this.storagePath)) {return { automations: new Map<string, RuntimeAutomationRecord[]>(), sequence: 0 };} const parsed = JSON.parse(fs.readFileSync(this.storagePath, 'utf-8')) as Partial<AutomationPersistenceFile>; return { automations: new Map(Object.entries(parsed.automations ?? {}).map(([userId, records]) => [userId, cloneJsonValue(records)])), sequence: typeof parsed.sequence === 'number' ? parsed.sequence : 0 }; } catch { return { automations: new Map<string, RuntimeAutomationRecord[]>(), sequence: 0 }; } }
+  private loadPersistedState(): { automations: Map<string, RuntimeAutomationRecord[]>; migrated: boolean; sequence: number } {
+    try {
+      fs.mkdirSync(path.dirname(this.storagePath), { recursive: true });
+      if (!fs.existsSync(this.storagePath)) {return { automations: new Map<string, RuntimeAutomationRecord[]>(), migrated: false, sequence: 0 };}
+      const parsed = JSON.parse(fs.readFileSync(this.storagePath, 'utf-8')) as Partial<AutomationPersistenceFile>;
+      const entries = Object.entries(parsed.automations ?? {});
+      const currentRecords = cloneJsonValue((parsed.automations ?? {})[SINGLE_USER_ID] ?? []).filter(
+        (record: RuntimeAutomationRecord) => record.userId === SINGLE_USER_ID,
+      );
+      return {
+        automations: new Map(currentRecords.length > 0 ? [[SINGLE_USER_ID, currentRecords]] : []),
+        migrated: entries.length > (currentRecords.length > 0 ? 1 : 0)
+          || currentRecords.length !== ((parsed.automations ?? {})[SINGLE_USER_ID] ?? []).length,
+        sequence: typeof parsed.sequence === 'number' ? parsed.sequence : 0,
+      };
+    } catch {
+      return { automations: new Map<string, RuntimeAutomationRecord[]>(), migrated: false, sequence: 0 };
+    }
+  }
 }
 
 function readAutomationActions(params: JsonObject): ActionConfig[] {

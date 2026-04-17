@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { SINGLE_USER_ID } from '../../src/auth/single-user-auth';
 import { AutomationExecutionService } from '../../src/execution/automation/automation-execution.service';
 import { AutomationService } from '../../src/execution/automation/automation.service';
 
@@ -402,12 +403,12 @@ describe('AutomationService', () => {
   });
 
   it('persists automations and keeps sequence after restart', async () => {
-    service.create('user-1', {
+    service.create(SINGLE_USER_ID, {
       actions: [],
       name: '自动化一',
       trigger: { type: 'manual' },
     });
-    service.create('user-1', {
+    service.create(SINGLE_USER_ID, {
       actions: [],
       name: '自动化二',
       trigger: { type: 'manual' },
@@ -415,12 +416,12 @@ describe('AutomationService', () => {
 
     const reloaded = createService();
 
-    expect(reloaded.listByUser('user-1')).toEqual([
+    expect(reloaded.listByUser(SINGLE_USER_ID)).toEqual([
       expect.objectContaining({ id: 'automation-1', name: '自动化一' }),
       expect.objectContaining({ id: 'automation-2', name: '自动化二' }),
     ]);
 
-    expect(reloaded.create('user-1', {
+    expect(reloaded.create(SINGLE_USER_ID, {
       actions: [],
       name: '自动化三',
       trigger: { type: 'manual' },
@@ -435,7 +436,7 @@ describe('AutomationService', () => {
     };
     service = createService({ runtimeHostPluginDispatchService });
 
-    service.create('user-1', {
+    service.create(SINGLE_USER_ID, {
       actions: [{ type: 'device_command', plugin: 'builtin.memory-tools', capability: 'save_memory', params: { content: '恢复执行' } }],
       name: '定时自动化',
       trigger: { type: 'cron', cron: '10s' },
@@ -456,7 +457,37 @@ describe('AutomationService', () => {
       pluginId: 'builtin.memory-tools',
       toolName: 'save_memory',
       params: { content: '恢复执行' },
-      context: { source: 'automation', userId: 'user-1', automationId: 'automation-1' },
+      context: { source: 'automation', userId: SINGLE_USER_ID, automationId: 'automation-1' },
+    });
+  });
+
+  it('deletes persisted legacy user automations that no longer符合单用户模型', () => {
+    fs.writeFileSync(storagePath, JSON.stringify({
+      automations: {
+        'legacy-user': [
+          {
+            actions: [],
+            createdAt: '2026-04-10T00:00:00.000Z',
+            enabled: true,
+            id: 'automation-1',
+            lastRunAt: null,
+            logs: [],
+            name: '历史自动化',
+            trigger: { type: 'manual' },
+            updatedAt: '2026-04-10T00:00:00.000Z',
+            userId: 'legacy-user',
+          },
+        ],
+      },
+      sequence: 1,
+    }, null, 2), 'utf-8');
+
+    service = createService();
+
+    expect(service.listByUser(SINGLE_USER_ID)).toEqual([]);
+    expect(JSON.parse(fs.readFileSync(storagePath, 'utf-8'))).toEqual({
+      automations: {},
+      sequence: 1,
     });
   });
 });

@@ -239,6 +239,25 @@ def createDevServices() -> dict[str, dict[str, Any]]:
     }
 
 
+def 编译日志已进入监听态(logPath: Path) -> bool:
+    try:
+        return logPath.exists() and "Watching for file changes." in logPath.read_text(
+            encoding="utf-8",
+            errors="ignore",
+        )
+    except OSError:
+        return False
+
+
+def 等待后端编译器首轮完成(logPath: Path, timeoutSeconds: int) -> bool:
+    deadline = time.time() + timeoutSeconds
+    while time.time() < deadline:
+        if 编译日志已进入监听态(logPath):
+            return True
+        time.sleep(1)
+    return False
+
+
 def getPortWaitTimeoutSeconds(serviceName: str) -> int:
     if serviceName == "backend_app" and not runtime.IS_WINDOWS:
         return 180
@@ -474,7 +493,45 @@ def 启动开发服务(allowAutoStop: bool, tailLogs: bool) -> int:
     startedServices: dict[str, dict[str, Any]] = {}
 
     try:
-        for index, (serviceName, service) in enumerate(services.items(), start=1):
+        totalServices = len(services)
+        compilerName = "backend_tsc"
+        compilerService = services[compilerName]
+        print(f"[1/{totalServices}] 正在启动{compilerService['name']}...")
+        compilerProcess = runtime.startRelayManagedProcess(compilerService) if tailLogs else runtime.startManagedProcess(compilerService)
+        startedServices[compilerName] = 记录已启动服务(compilerName, compilerService, compilerProcess)
+
+        webName = "web"
+        webService = services[webName]
+        print(f"[2/{totalServices}] 正在启动{webService['name']}...")
+        webProcess = runtime.startRelayManagedProcess(webService) if tailLogs else runtime.startManagedProcess(webService)
+        startedServices[webName] = 记录已启动服务(webName, webService, webProcess)
+
+        compilerReadyLabel = "等待后端编译器首轮完成"
+        compilerReadyWidth = 获取状态输出宽度([compilerReadyLabel])
+        compilerTimeoutSeconds = getPortWaitTimeoutSeconds("backend_app")
+        runtime.startSingleLineStatus(compilerReadyLabel, width=compilerReadyWidth)
+        if not 等待后端编译器首轮完成(SERVER_TSC_STDOUT, compilerTimeoutSeconds):
+            runtime.finishSingleLineStatus(
+                compilerReadyLabel,
+                width=compilerReadyWidth,
+                result=f"(失败, {compilerTimeoutSeconds}s)",
+                success=False,
+            )
+            print(f"后端编译器未在 {compilerTimeoutSeconds} 秒内完成首轮监听编译。")
+            return 启动失败清理(startedServices)
+        runtime.finishSingleLineStatus(
+            compilerReadyLabel,
+            width=compilerReadyWidth,
+            result="(通过)",
+            success=True,
+        )
+
+        remainingServices = [
+            (serviceName, service)
+            for serviceName, service in services.items()
+            if serviceName not in {compilerName, webName}
+        ]
+        for index, (serviceName, service) in enumerate(remainingServices, start=3):
             print(f"[{index}/{len(services)}] 正在启动{service['name']}...")
             process = runtime.startRelayManagedProcess(service) if tailLogs else runtime.startManagedProcess(service)
             startedServices[serviceName] = 记录已启动服务(serviceName, service, process)

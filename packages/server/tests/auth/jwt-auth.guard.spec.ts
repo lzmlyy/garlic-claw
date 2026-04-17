@@ -9,11 +9,9 @@ describe('JwtAuthGuard', () => {
     const requestAuth = {
       authenticateJwtRequest: jest.fn().mockResolvedValue({
         authType: 'jwt',
-        id: 'user-1',
-        username: 'owner',
-        email: 'owner@example.com',
-        role: 'super_admin',
-        scopes: [],
+        id: '00000000-0000-4000-8000-000000000001',
+        username: 'local-owner',
+        email: 'local-owner@garlic-claw.local',
       }),
     } as never as RequestAuthService;
     const guard = new JwtAuthGuard(requestAuth);
@@ -24,7 +22,7 @@ describe('JwtAuthGuard', () => {
     expect(requestAuth.authenticateJwtRequest).toHaveBeenCalledWith(request);
     expect((request as { user?: unknown }).user).toEqual(
       expect.objectContaining({
-        role: 'super_admin',
+        username: 'local-owner',
       }),
     );
   });

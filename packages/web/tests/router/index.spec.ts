@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const authState = vi.hoisted(() => ({
   isLoggedIn: true,
-  isAdmin: true,
   ensureInitialized: vi.fn(async () => undefined),
 }))
 
@@ -15,7 +14,6 @@ import router from '@/router/index'
 describe('router', () => {
   beforeEach(() => {
     authState.isLoggedIn = true
-    authState.isAdmin = true
     authState.ensureInitialized.mockClear()
   })
 
@@ -25,65 +23,30 @@ describe('router', () => {
     expect(resolved.matched[0]?.name).toBe('admin-shell')
   })
 
-  it('mounts the plugin route inside the dedicated admin shell', () => {
-    const resolved = router.resolve({ name: 'plugins' })
-
-    expect(resolved.matched[0]?.name).toBe('admin-shell')
+  it('keeps plugin and ai routes mounted inside the same shell', () => {
+    expect(router.resolve({ name: 'plugins' }).matched[0]?.name).toBe('admin-shell')
+    expect(router.resolve({ name: 'ai-settings' }).matched[0]?.name).toBe('admin-shell')
   })
 
-  it('registers the persona settings route', () => {
-    expect(router.hasRoute('persona-settings')).toBe(true)
-    expect(router.resolve({ name: 'persona-settings' }).path).toBe('/personas')
+  it('removes the register and api key routes from the web console', () => {
+    expect(router.hasRoute('register')).toBe(false)
+    expect(router.hasRoute('api-keys')).toBe(false)
   })
 
-  it('registers the command governance route', () => {
-    expect(router.hasRoute('commands')).toBe(true)
-    expect(router.resolve({ name: 'commands' }).path).toBe('/commands')
-  })
-
-  it('registers the skills workspace route', () => {
-    expect(router.hasRoute('skills')).toBe(true)
-    expect(router.resolve({ name: 'skills' }).path).toBe('/skills')
-  })
-
-  it('registers the background subagent task route', () => {
-    expect(router.hasRoute('subagent-tasks')).toBe(true)
-    expect(router.resolve({ name: 'subagent-tasks' }).path).toBe('/subagents')
-  })
-
-  it('registers the scoped api key management route', () => {
-    expect(router.hasRoute('api-keys')).toBe(true)
-    expect(router.resolve({ name: 'api-keys' }).path).toBe('/api-keys')
-  })
-
-  it('redirects non-admin users away from admin routes', async () => {
-    authState.isAdmin = false
+  it('redirects unauthenticated users to login', async () => {
+    authState.isLoggedIn = false
 
     const result = await router.push({ name: 'plugins' }).catch(() => undefined)
 
-    expect(router.currentRoute.value.name).toBe('chat')
+    expect(router.currentRoute.value.name).toBe('login')
     expect(result).toBeUndefined()
-    authState.isAdmin = true
   })
 
-  it('allows non-admin users to stay on the chat route', async () => {
-    authState.isAdmin = false
+  it('allows any authenticated user to access admin console routes', async () => {
+    authState.isLoggedIn = true
 
-    await router.push({ name: 'chat' })
+    await router.push({ name: 'plugins' })
 
-    expect(router.currentRoute.value.name).toBe('chat')
-    authState.isAdmin = true
-  })
-
-  it('redirects non-admin users away from api key and ai settings routes', async () => {
-    authState.isAdmin = false
-
-    await router.push({ name: 'api-keys' }).catch(() => undefined)
-    expect(router.currentRoute.value.name).toBe('chat')
-
-    await router.push({ name: 'ai-settings' }).catch(() => undefined)
-    expect(router.currentRoute.value.name).toBe('chat')
-
-    authState.isAdmin = true
+    expect(router.currentRoute.value.name).toBe('plugins')
   })
 })

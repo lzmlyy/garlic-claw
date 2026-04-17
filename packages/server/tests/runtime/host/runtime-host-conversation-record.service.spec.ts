@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { SINGLE_USER_ID } from '../../../src/auth/single-user-auth';
 import { RuntimeHostConversationRecordService } from '../../../src/runtime/host/runtime-host-conversation-record.service';
 
 describe('RuntimeHostConversationRecordService', () => {
@@ -140,5 +141,32 @@ describe('RuntimeHostConversationRecordService', () => {
       context: expect.objectContaining({ source: 'http-route', userId: 'user-1' }),
       hookName: 'conversation:created',
     }));
+  });
+
+  it('deletes persisted legacy user conversations that no longer符合单用户模型', () => {
+    process.env[envKey] = storagePath;
+    fs.writeFileSync(storagePath, JSON.stringify({
+      conversations: {
+        'conversation-legacy': {
+          activeSkillIds: [],
+          createdAt: '2026-04-10T00:00:00.000Z',
+          hostServices: { llmEnabled: true, sessionEnabled: true, ttsEnabled: true },
+          id: 'conversation-legacy',
+          messages: [],
+          revision: 'conversation-legacy:seed:0',
+          revisionVersion: 0,
+          title: 'Legacy Chat',
+          updatedAt: '2026-04-10T00:00:00.000Z',
+          userId: 'legacy-user',
+        },
+      },
+    }, null, 2), 'utf-8');
+
+    const service = new RuntimeHostConversationRecordService();
+
+    expect(service.listConversations(SINGLE_USER_ID)).toEqual([]);
+    expect(JSON.parse(fs.readFileSync(storagePath, 'utf-8'))).toEqual({
+      conversations: {},
+    });
   });
 });

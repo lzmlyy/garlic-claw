@@ -88,11 +88,9 @@ describe('http request', () => {
       request('/auth/login', {
         method: 'POST',
         body: {
-          username: 'owner',
-          password: 'bad-password',
+          secret: 'bad-secret',
         },
         skipAuth: true,
-        skipRefreshRetry: true,
         skipUnauthorizedRedirect: true,
       }),
     ).rejects.toMatchObject({
@@ -101,5 +99,39 @@ describe('http request', () => {
       code: 'HTTP_ERROR',
       message: 'Invalid credentials',
     })
+  })
+
+  it('clears the local login state immediately after a 401', async () => {
+    localStorage.setItem('accessToken', 'expired-token')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            message: 'Unauthorized',
+            error: 'Unauthorized',
+            statusCode: 401,
+          }),
+          {
+            status: 401,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        ),
+      ),
+    )
+
+    await expect(
+      request('/plugins', {
+        skipUnauthorizedRedirect: true,
+      }),
+    ).rejects.toMatchObject({
+      type: 'auth',
+      status: 401,
+    })
+
+    expect(localStorage.getItem('accessToken')).toBeNull()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })

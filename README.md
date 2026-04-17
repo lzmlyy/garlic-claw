@@ -73,7 +73,7 @@ tools/
 
 ## 配置方式
 
-### 1. 环境变量：只负责运行时和管理员
+### 1. 环境变量：只负责运行时、单密钥登录和远程插件
 
 复制根目录环境变量模板：
 
@@ -85,13 +85,23 @@ cp .env.example .env
 
 - 运行端口
 - SQLite 数据库地址
-- JWT 配置
-- 启动期 bootstrap 管理员账号
-- 运行时管理员覆盖
+- 单密钥登录配置
+- JWT 签名密钥
 - 远程插件接入覆盖（可选）
 
 不再通过环境变量配置 AI provider。
 如果 MCP 或自定义 provider 需要从环境变量读取密钥，再按需自行追加到 `.env`。
+
+当前登录相关环境变量是：
+
+- `GARLIC_CLAW_LOGIN_SECRET`
+  - Web 登录页输入的共享密钥
+  - 未配置时，后端登录接口不会正常工作
+- `GARLIC_CLAW_AUTH_TTL`
+  - 浏览器登录态有效期
+  - 默认值为 `30d`
+- `JWT_SECRET`
+  - 后端签发登录态与远程插件 token 的签名密钥
 
 ### 2. AI 配置：示例模板在 `config/`，运行时路径由环境变量决定
 
@@ -251,16 +261,13 @@ python tools/一键启停脚本.py test
 - Swagger：`http://127.0.0.1:23330/api/docs`
 - 插件 WebSocket：`ws://127.0.0.1:23331`
 
-### 启动期管理员账号
+### 登录方式
 
-如果 `.env` 中配置了：
+当前版本只保留单用户共享密钥登录：
 
-```env
-BOOTSTRAP_ADMIN_USERNAME=admin
-BOOTSTRAP_ADMIN_PASSWORD=admin123
-```
-
-服务启动时如果数据库里没有这个账号，会自动创建。
+- 打开登录页
+- 输入 `GARLIC_CLAW_LOGIN_SECRET`
+- 登录成功后，浏览器会在 `GARLIC_CLAW_AUTH_TTL` 期限内保留登录态
 
 ## Provider 系统说明
 

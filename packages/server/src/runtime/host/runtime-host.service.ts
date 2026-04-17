@@ -2,11 +2,11 @@ import { type JsonObject, type JsonValue, type PluginCallContext, type PluginHos
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { AiModelExecutionService } from '../../ai/ai-model-execution.service';
 import { AiManagementService } from '../../ai-management/ai-management.service';
+import { createSingleUserProfile } from '../../auth/single-user-auth';
 import { AutomationService } from '../../execution/automation/automation.service';
 import { PluginBootstrapService } from '../../plugin/bootstrap/plugin-bootstrap.service';
 import { buildPluginSelfSummary, createPluginConfigSnapshot } from '../../plugin/persistence/plugin-read-model';
 import type { RegisteredPluginRecord } from '../../plugin/persistence/plugin-persistence.service';
-import { UserService } from '../../user/user.service';
 import { RuntimeHostConversationMessageService } from './runtime-host-conversation-message.service';
 import { RuntimeHostConversationRecordService } from './runtime-host-conversation-record.service';
 import { PLUGIN_HOST_METHOD_PERMISSION_MAP } from './runtime-host.constants';
@@ -32,7 +32,7 @@ interface RuntimeHostCallInput {
 export class RuntimeHostService implements OnModuleInit {
   private readonly callHandlers: Record<RuntimeHostMethod, RuntimeHostCallHandler>;
 
-  constructor(private readonly pluginBootstrapService: PluginBootstrapService, private readonly automationService: AutomationService, private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly aiModelExecutionService: AiModelExecutionService, private readonly aiManagementService: AiManagementService, private readonly runtimeHostKnowledgeService: RuntimeHostKnowledgeService, private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService, private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService, private readonly runtimeHostUserContextService: RuntimeHostUserContextService, private readonly userService: UserService) {
+  constructor(private readonly pluginBootstrapService: PluginBootstrapService, private readonly automationService: AutomationService, private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly aiModelExecutionService: AiModelExecutionService, private readonly aiManagementService: AiManagementService, private readonly runtimeHostKnowledgeService: RuntimeHostKnowledgeService, private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService, private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService, private readonly runtimeHostUserContextService: RuntimeHostUserContextService) {
     this.callHandlers = this.buildCallHandlers();
   }
 
@@ -123,9 +123,9 @@ export class RuntimeHostService implements OnModuleInit {
       'subagent.task.get': ({ params, pluginId }) => this.runtimeHostSubagentRunnerService.getTask(pluginId, readRequiredString(params, 'taskId')) as unknown as JsonValue,
       'subagent.task.list': ({ pluginId }) => this.runtimeHostSubagentRunnerService.listTasks(pluginId) as unknown as JsonValue,
       'subagent.task.start': ({ context, params, plugin, pluginId }) => this.runtimeHostSubagentRunnerService.startTask(pluginId, plugin.manifest.name, context, params),
-      'user.get': async ({ context }) => {
+      'user.get': ({ context }) => {
         if (!context.userId) {throw new NotFoundException('User not found: unknown');}
-        return asJsonValue(await this.userService.findById(readUserId(context)));
+        return asJsonValue(createSingleUserProfile());
       },
     };
     return handlers;

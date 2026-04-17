@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { AiModelExecutionService } from '../../../src/ai/ai-model-execution.service';
 import { AiManagementService } from '../../../src/ai-management/ai-management.service';
 import { AiProviderSettingsService } from '../../../src/ai-management/ai-provider-settings.service';
+import { createSingleUserProfile } from '../../../src/auth/single-user-auth';
 import { AutomationExecutionService } from '../../../src/execution/automation/automation-execution.service';
 import { AutomationService } from '../../../src/execution/automation/automation.service';
 import { BuiltinPluginRegistryService } from '../../../src/plugin/builtin/builtin-plugin-registry.service';
@@ -75,7 +76,6 @@ describe('RuntimeHostService', () => {
       new RuntimeHostPluginRuntimeService(),
       {} as never,
       new RuntimeHostUserContextService(),
-      { findById: jest.fn() } as never,
     );
 
     (builtinPluginRegistryService as unknown as {
@@ -174,12 +174,7 @@ describe('RuntimeHostService', () => {
       status: 'active',
     });
     await expect(callMemory(service, 'user.get', {}, hookContext({ conversationId: undefined }))).resolves.toEqual({
-      createdAt: expect.any(String),
-      email: 'user-1@example.com',
-      id: 'user-1',
-      role: 'user',
-      updatedAt: expect.any(String),
-      username: 'user-1',
+      ...createSingleUserProfile(),
     });
     await expect(callMemory(service, 'plugin.self.get', {}, pluginContext())).resolves.toMatchObject({
       connected: true,
@@ -688,16 +683,6 @@ function createFixture(input?: {
     models: ['gpt-5.4'],
     name: 'OpenAI',
   });
-  const userService = {
-    findById: jest.fn(async (userId: string) => ({
-      createdAt: '2026-03-28T00:00:00.000Z',
-      email: `${userId}@example.com`,
-      id: userId,
-      role: 'user',
-      updatedAt: '2026-03-28T00:00:00.000Z',
-      username: userId,
-    })),
-  } as never;
   fixtureConversationId = (runtimeHostConversationRecordService.createConversation({
     title: fixtureConversationTitle,
     userId: 'user-1',
@@ -818,7 +803,6 @@ function createFixture(input?: {
         new RuntimeHostPluginRuntimeService(),
         runtimeHostSubagentRunnerService,
         new RuntimeHostUserContextService(),
-        userService,
       );
       service.onModuleInit();
       return service;

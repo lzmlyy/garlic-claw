@@ -4,15 +4,12 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { type AuthenticatedUser } from './http-auth';
-import { ApiKeyService } from './api-key.service';
-import { AdminIdentityService } from './admin-identity.service';
-import { getPrismaClient } from '../infrastructure/prisma/prisma-client';
-
-const API_KEY_TOKEN_PATTERN =
-  /^gca_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_([A-Za-z0-9_-]+)$/i;
+import { SINGLE_USER_EMAIL, SINGLE_USER_ID, SINGLE_USER_USERNAME } from './single-user-auth';
 
 type JwtPayload = {
+  email?: string;
   sub?: string;
+  username?: string;
 };
 
 @Injectable()
@@ -20,8 +17,6 @@ export class RequestAuthService {
   constructor(
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
-    private readonly adminIdentity: AdminIdentityService,
-    private readonly apiKeys: ApiKeyService,
   ) {}
 
   async authenticateJwtRequest(request: Request): Promise<AuthenticatedUser> {
@@ -31,15 +26,6 @@ export class RequestAuthService {
     }
 
     return this.authenticateJwtToken(jwtToken);
-  }
-
-  async authenticateApiKeyRequest(request: Request): Promise<AuthenticatedUser> {
-    const apiKeyToken = extractApiKeyToken(request);
-    if (!apiKeyToken) {
-      throw new UnauthorizedException('Missing API key');
-    }
-
-    return this.apiKeys.authenticateToken(apiKeyToken);
   }
 
   private async authenticateJwtToken(token: string): Promise<AuthenticatedUser> {
@@ -52,78 +38,25 @@ export class RequestAuthService {
       throw new UnauthorizedException('Invalid access token');
     }
 
-    if (!payload.sub?.trim()) {
+    if (payload.sub !== SINGLE_USER_ID) {
       throw new UnauthorizedException('Invalid access token');
-    }
-
-    const user = await getPrismaClient().user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-      },
-    });
-    if (!user) {
-      throw new UnauthorizedException('User not found');
     }
 
     return {
       authType: 'jwt',
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: this.adminIdentity.resolveRole(user),
-      scopes: [],
+      id: SINGLE_USER_ID,
+      username: payload.username?.trim() || SINGLE_USER_USERNAME,
+      email: payload.email?.trim() || SINGLE_USER_EMAIL,
     };
   }
 }
 
-function extractApiKeyToken(request: Request): string | null {
-  const explicitKey = readHeader(request, 'x-api-key');
-  if (explicitKey) {
-    return explicitKey;
-  }
-
-  const authorization = readHeader(request, 'authorization');
-  if (!authorization) {
-    return null;
-  }
-
-  if (authorization.startsWith('ApiKey ')) {
-    return authorization.slice('ApiKey '.length).trim() || null;
-  }
-  if (authorization.startsWith('Bearer ')) {
-    const token = authorization.slice('Bearer '.length).trim();
-    return API_KEY_TOKEN_PATTERN.test(token) ? token : null;
-  }
-
-  return null;
-}
-
 function extractJwtToken(request: Request): string | null {
-  const authorization = readHeader(request, 'authorization');
-  if (!authorization || !authorization.startsWith('Bearer ')) {
+  const value = request.headers.authorization;
+  if (typeof value !== 'string' || !value.startsWith('Bearer ')) {
     return null;
   }
 
-  const token = authorization.slice('Bearer '.length).trim();
-  if (!token || API_KEY_TOKEN_PATTERN.test(token)) {
-    return null;
-  }
-
-  return token;
-}
-
-function readHeader(request: Request, header: string): string | null {
-  const value = request.headers[header];
-  if (typeof value === 'string') {
-    return value.trim() || null;
-  }
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
-    return value[0].trim() || null;
-  }
-
-  return null;
+  const token = value.slice('Bearer '.length).trim();
+  return token || null;
 }

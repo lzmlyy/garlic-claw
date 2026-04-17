@@ -169,8 +169,7 @@ export function readDefaultRemotePluginActions(): PluginActionName[] { return DE
 function cloneConnectionRecord(connection: RuntimeGatewayConnectionRecord): RuntimeGatewayConnectionRecord { return { ...connection, claims: connection.claims ? { ...connection.claims } : null }; }
 
 function validateConnectionClaims(claims: RuntimeGatewayAuthClaims, pluginName: string, deviceType: string): void {
-  const isAdminToken = claims.role === 'admin' || claims.role === 'super_admin';
   const isRemotePluginToken = claims.role === 'remote_plugin' && claims.authKind === 'remote-plugin';
-  if (!isAdminToken && !isRemotePluginToken) {throw new Error('Only admin or remote-plugin token can register a remote plugin');}
+  if (!isRemotePluginToken) {throw new Error('Only remote-plugin token can register a remote plugin');}
   if (isRemotePluginToken && (claims.pluginName !== pluginName || claims.deviceType !== deviceType)) {throw new Error('Remote plugin token does not match plugin identity');}
 }

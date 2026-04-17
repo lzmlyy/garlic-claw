@@ -1,9 +1,7 @@
-import * as bcrypt from 'bcrypt';
-import { AdminIdentityService } from '../../src/auth/admin-identity.service';
 import { BootstrapAdminService } from '../../src/auth/bootstrap-admin.service';
+import { SINGLE_USER_EMAIL, SINGLE_USER_ID, SINGLE_USER_USERNAME } from '../../src/auth/single-user-auth';
 import { getPrismaClient } from '../../src/infrastructure/prisma/prisma-client';
 
-jest.mock('bcrypt');
 jest.mock('../../src/infrastructure/prisma/prisma-client', () => ({
   getPrismaClient: jest.fn(),
 }));
@@ -11,109 +9,71 @@ jest.mock('../../src/infrastructure/prisma/prisma-client', () => ({
 describe('BootstrapAdminService', () => {
   const prisma = {
     user: {
-      findFirst: jest.fn(),
-      create: jest.fn(),
+      deleteMany: jest.fn(),
+      upsert: jest.fn(),
     },
-  };
-
-  const createService = (env: Record<string, string | undefined>) => {
-    const configService = {
-      get: jest.fn((key: string) => env[key]),
-    };
-    return new BootstrapAdminService(
-      new AdminIdentityService(configService as never),
-    );
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     (getPrismaClient as jest.Mock).mockReturnValue(prisma);
-    (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-admin-password');
   });
 
-  it('creates the bootstrap admin when config is complete and the user is missing', async () => {
-    prisma.user.findFirst.mockResolvedValue(null);
-    prisma.user.create.mockResolvedValue({ id: 'bootstrap-user' });
+  it('deletes incompatible legacy users and upserts the single system user', async () => {
+    prisma.user.deleteMany.mockResolvedValue({ count: 2 });
+    prisma.user.upsert.mockResolvedValue({ id: SINGLE_USER_ID });
 
-    await createService({
-      BOOTSTRAP_ADMIN_USERNAME: 'admin',
-      BOOTSTRAP_ADMIN_PASSWORD: 'admin123',
-      BOOTSTRAP_ADMIN_ROLE: 'super_admin',
-    }).ensureBootstrapAdminOnStartup();
+    await new BootstrapAdminService().ensureSingleUserOnStartup();
 
-    expect(prisma.user.findFirst).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          { username: 'admin' },
-          { email: 'admin@bootstrap.local' },
-        ],
+    expect(prisma.user.deleteMany).toHaveBeenCalledWith({
+      where: { id: { not: SINGLE_USER_ID } },
+    });
+    expect(prisma.user.upsert).toHaveBeenCalledWith({
+      create: {
+        id: SINGLE_USER_ID,
+        username: SINGLE_USER_USERNAME,
+        email: SINGLE_USER_EMAIL,
+        passwordHash: 'single-secret-auth',
+        role: 'local',
       },
-      select: { id: true },
-    });
-    expect(bcrypt.hash).toHaveBeenCalledWith('admin123', 12);
-    expect(prisma.user.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        username: 'admin',
-        email: 'admin@bootstrap.local',
-        passwordHash: 'hashed-admin-password',
-        role: 'user',
-      }),
+      update: {
+        email: SINGLE_USER_EMAIL,
+        passwordHash: 'single-secret-auth',
+        role: 'local',
+        username: SINGLE_USER_USERNAME,
+      },
+      where: { id: SINGLE_USER_ID },
     });
   });
 
-  it('skips creation when username or password is missing', async () => {
-    await createService({
-      BOOTSTRAP_ADMIN_USERNAME: 'admin',
-    }).ensureBootstrapAdminOnStartup();
+  it('still upserts the single system user when only current owner remains', async () => {
+    prisma.user.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.user.upsert.mockResolvedValue({ id: SINGLE_USER_ID });
 
-    expect(prisma.user.findFirst).not.toHaveBeenCalled();
-    expect(prisma.user.create).not.toHaveBeenCalled();
-  });
+    await new BootstrapAdminService().ensureSingleUserOnStartup();
 
-  it('skips creation when the bootstrap admin already exists', async () => {
-    prisma.user.findFirst.mockResolvedValue({ id: 'existing-admin' });
-
-    await createService({
-      BOOTSTRAP_ADMIN_USERNAME: 'admin',
-      BOOTSTRAP_ADMIN_PASSWORD: 'admin123',
-    }).ensureBootstrapAdminOnStartup();
-
-    expect(prisma.user.findFirst).toHaveBeenCalled();
-    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.user.deleteMany).toHaveBeenCalled();
+    expect(prisma.user.upsert).toHaveBeenCalled();
   });
 
   it('runs startup warmup only once across repeated calls', async () => {
     let resolveWarmup!: () => void;
-    const service = createService({});
+    const service = new BootstrapAdminService();
     const warmupPromise = new Promise<void>((resolve) => {
       resolveWarmup = resolve;
     });
-    jest.spyOn(service, 'ensureBootstrapAdminOnStartup').mockReturnValue(warmupPromise);
+    jest.spyOn(service, 'ensureSingleUserOnStartup').mockReturnValue(warmupPromise);
 
     const firstRun = service.runStartupWarmup();
     const secondRun = service.runStartupWarmup();
 
     expect(firstRun).toBe(secondRun);
-    expect(service.ensureBootstrapAdminOnStartup).toHaveBeenCalledTimes(1);
+    expect(service.ensureSingleUserOnStartup).toHaveBeenCalledTimes(1);
 
     resolveWarmup();
     await Promise.all([firstRun, secondRun]);
 
     await service.runStartupWarmup();
-    expect(service.ensureBootstrapAdminOnStartup).toHaveBeenCalledTimes(1);
-  });
-
-  it('swallows startup warmup failures so ready state stays up', async () => {
-    const service = createService({});
-    jest.spyOn(service, 'ensureBootstrapAdminOnStartup').mockRejectedValue(new Error('create failed'));
-    const errorSpy = jest
-      .spyOn(service['logger'], 'error')
-      .mockImplementation(() => undefined);
-
-    await expect(service.runStartupWarmup()).resolves.toBeUndefined();
-    expect(service.ensureBootstrapAdminOnStartup).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(
-      'Bootstrap 管理员补建失败: create failed',
-    );
+    expect(service.ensureSingleUserOnStartup).toHaveBeenCalledTimes(1);
   });
 });

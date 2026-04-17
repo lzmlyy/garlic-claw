@@ -20,6 +20,7 @@ const API_ORIGIN = 'http://127.0.0.1:23330/api';
 const REQUEST_TIMEOUT_MS = 20_000;
 const STARTUP_TIMEOUT_MS = 120_000;
 const RETRYABLE_FETCH_ATTEMPTS = 8;
+const LOGIN_SECRET = process.env.GARLIC_CLAW_LOGIN_SECRET || 'smoke-login-secret';
 const SMOKE_PREFIX_ROOT = 'smoke-ui-';
 const PREFIX = `smoke-ui-${Date.now().toString(36)}`;
 const PROVIDER_ID = `${PREFIX}-openai`;
@@ -41,19 +42,13 @@ async function main() {
 
   try {
     await page.goto('/login', { waitUntil: 'networkidle' });
-    await page.getByRole('button', { exact: true, name: '超级管理员' }).click();
+    await page.locator('input[type="password"]').fill(LOGIN_SECRET);
+    await page.getByRole('button', { exact: true, name: '登录' }).click();
     accessToken = await waitFor(async () => {
       const token = await readAccessToken(page);
       return token || null;
     }, '等待登录 token');
     assert.ok(accessToken, '登录后未拿到 accessToken');
-    const currentUser = await waitFor(async () => {
-      const user = await requestJson('/users/me', {
-        headers: createAuthHeaders(accessToken),
-      }).catch(() => null);
-      return user?.role === 'super_admin' ? user : null;
-    }, '等待管理员用户初始化');
-    assert.equal(currentUser.role, 'super_admin', '浏览器 smoke 未拿到超级管理员身份');
     await page.goto('/', { waitUntil: 'networkidle' });
     await page.getByRole('button', { name: '新对话' }).waitFor({ timeout: REQUEST_TIMEOUT_MS });
 
@@ -96,6 +91,10 @@ async function ensureDevServices() {
 
   await runCommand(resolvePythonCommand(), ['tools/start_launcher.py', 'restart'], {
     cwd: PROJECT_ROOT,
+    env: {
+      ...process.env,
+      GARLIC_CLAW_LOGIN_SECRET: LOGIN_SECRET,
+    },
     label: '启动开发环境',
   });
   await waitForHttpReady(`${API_ORIGIN}/health`);
@@ -139,23 +138,42 @@ async function createProviderThroughUi(page, accessToken, fakeOpenAiUrl) {
   await page.locator('a[href="/ai"]').click();
   await page.waitForURL(/\/ai$/, { timeout: REQUEST_TIMEOUT_MS });
   await page.getByRole('heading', { name: 'AI 设置' }).waitFor({ timeout: REQUEST_TIMEOUT_MS });
-  await page.getByRole('button', { exact: true, name: '新增' }).click();
-  const dialog = page.locator('[data-test="provider-dialog-overlay"]');
-  await dialog.waitFor({ state: 'visible' });
-  await dialog.getByLabel('接入方式').selectOption({ label: '协议接入' });
-  await dialog.getByLabel('驱动').selectOption({ label: 'OpenAI 协议接入' });
-  await dialog.getByLabel('Provider ID').fill(PROVIDER_ID);
-  await dialog.getByLabel('名称').fill(PROVIDER_NAME);
-  await dialog.getByLabel('Base URL').fill(fakeOpenAiUrl);
-  await dialog.getByLabel('默认模型').fill(MODEL_ID);
-  await dialog.getByLabel('API Key').fill('smoke-openai-key');
-  await dialog.getByLabel('模型列表').fill(MODEL_ID);
-  const saveResponsePromise = page.waitForResponse((response) =>
-    response.request().method() === 'PUT'
-      && response.url().endsWith(`/api/ai/providers/${PROVIDER_ID}`),
-  );
-  await dialog.getByRole('button', { name: '保存' }).click();
-  await saveResponsePromise.catch(() => null);
+  let saveError = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.getByRole('button', { exact: true, name: '新增' }).click();
+    const dialog = page.locator('[data-test="provider-dialog-overlay"]');
+    await dialog.waitFor({ state: 'visible' });
+    await dialog.locator('select').nth(0).selectOption('protocol');
+    await dialog.locator('select').nth(1).selectOption('openai');
+    await dialog.getByPlaceholder('openai 或 my-company').fill(PROVIDER_ID);
+    await dialog.getByPlaceholder('显示名称').fill(PROVIDER_NAME);
+    await dialog.getByPlaceholder('https://...').fill(fakeOpenAiUrl);
+    await dialog.getByPlaceholder('gpt-4o-mini').fill(MODEL_ID);
+    await dialog.getByPlaceholder('sk-...').fill('smoke-openai-key');
+    await dialog.getByPlaceholder('每行一个模型 ID，或用逗号分隔').fill(MODEL_ID);
+
+    const saveResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT'
+          && response.url().endsWith(`/api/ai/providers/${PROVIDER_ID}`),
+      { timeout: REQUEST_TIMEOUT_MS },
+    );
+    await dialog.getByRole('button', { name: '保存' }).click();
+    const saveResponse = await saveResponsePromise;
+    if (saveResponse.ok()) {
+      saveError = null;
+      break;
+    }
+
+    saveError = `provider 保存请求失败: ${saveResponse.status()} ${await saveResponse.text()}`;
+    if (attempt === 3) {
+      throw new Error(saveError);
+    }
+    await waitForHttpReady(`${API_ORIGIN}/health`);
+    await page.goto('/ai', { waitUntil: 'networkidle' });
+  }
+
   await waitFor(async () => {
     const providers = await requestJson('/ai/providers', {
       headers: createAuthHeaders(accessToken),
@@ -166,10 +184,14 @@ async function createProviderThroughUi(page, accessToken, fakeOpenAiUrl) {
 
 async function runChatFlow(page, accessToken) {
   const beforeIds = new Set((await listConversations(accessToken)).map((item) => item.id));
-
   await page.goto('/', { waitUntil: 'networkidle' });
+  const createConversationResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST'
+      && response.url().endsWith('/api/chat/conversations'),
+  );
   await page.getByRole('button', { name: '新对话' }).click();
-
+  const createResponse = await createConversationResponse;
+  assert.equal(createResponse.ok(), true, '新对话请求失败');
   const conversation = await waitFor(async () => {
     const conversations = await listConversations(accessToken);
     return conversations.find((item) => !beforeIds.has(item.id)) ?? null;
@@ -184,7 +206,14 @@ async function runChatFlow(page, accessToken) {
   const composer = page.getByPlaceholder('输入消息，支持附带图片');
   await composer.fill(`${PREFIX} chat message`);
   await page.locator('.send-button').click();
-  await expectText(page, `本地 smoke 回复: ${PREFIX} chat message`);
+  await waitFor(async () => {
+    const assistantMessages = page.locator('.message.assistant .message-content');
+    if (await assistantMessages.count() === 0) {
+      return null;
+    }
+    const latestText = (await assistantMessages.last().textContent())?.trim() ?? '';
+    return latestText.includes(`${PREFIX} chat message`) ? latestText : null;
+  }, '等待前端展示 AI 回复');
 
   return conversation.id;
 }
@@ -445,6 +474,7 @@ async function runCommand(command, args, options) {
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
+      env: options.env ?? process.env,
       stdio: 'inherit',
     });
     child.once('error', reject);

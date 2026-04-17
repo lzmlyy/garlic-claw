@@ -354,16 +354,6 @@ function createService() {
     models: ['gpt-5.4'],
     name: 'OpenAI',
   });
-  const userService = {
-    findById: jest.fn(async (userId: string) => ({
-      createdAt: '2026-03-28T00:00:00.000Z',
-      email: `${userId}@example.com`,
-      id: userId,
-      role: 'user',
-      updatedAt: '2026-03-28T00:00:00.000Z',
-      username: userId,
-    })),
-  } as never;
   const aiModelExecutionService = new AiModelExecutionService();
   const runtimeHostSubagentRunnerService = new RuntimeHostSubagentRunnerService(
     aiModelExecutionService,
@@ -407,7 +397,6 @@ function createService() {
     new RuntimeHostPluginRuntimeService(),
     runtimeHostSubagentRunnerService,
     new RuntimeHostUserContextService(),
-    userService,
   );
   runtimeHostService.onModuleInit();
   return {
