@@ -55,7 +55,7 @@ export class RuntimeHostUserContextService {
     const persona = this.requirePersona(input.personaId);
     input.conversation.activePersonaId = persona.id;
     input.conversation.updatedAt = new Date().toISOString();
-    return this.serializeActivePersona(persona, 'conversation');
+    return { description: persona.description ?? null, isDefault: persona.isDefault, name: persona.name, personaId: persona.id, prompt: persona.prompt, source: 'conversation' };
   }
 
   deleteMemory(memoryId: string, userId: string): { count: number } {
@@ -80,7 +80,8 @@ export class RuntimeHostUserContextService {
 
   readCurrentPersona(input: { context: PluginCallContext; conversationActivePersonaId?: string }): JsonValue {
     const activePersonaId = input.context.activePersonaId ?? input.conversationActivePersonaId ?? DEFAULT_PERSONA_ID;
-    return this.serializeActivePersona(this.requirePersona(activePersonaId), activePersonaId === DEFAULT_PERSONA_ID ? 'default' : 'conversation');
+    const persona = this.requirePersona(activePersonaId);
+    return { description: persona.description ?? null, isDefault: persona.isDefault, name: persona.name, personaId: persona.id, prompt: persona.prompt, source: activePersonaId === DEFAULT_PERSONA_ID ? 'default' : 'conversation' };
   }
 
   readPersona(personaId: string): JsonValue {
@@ -139,16 +140,5 @@ export class RuntimeHostUserContextService {
     const persona = this.personas.get(personaId);
     if (persona) {return persona;}
     throw new NotFoundException(`Persona not found: ${personaId}`);
-  }
-
-  private serializeActivePersona(persona: RuntimePersonaRecord, source: 'conversation' | 'default') {
-    return {
-      description: persona.description ?? null,
-      isDefault: persona.isDefault,
-      name: persona.name,
-      personaId: persona.id,
-      prompt: persona.prompt,
-      source,
-    };
   }
 }

@@ -1,8 +1,4 @@
-import type {
-  JsonObject,
-  JsonValue,
-  PluginLlmMessage,
-} from '@garlic-claw/shared';
+import type { JsonObject, JsonValue, PluginLlmMessage } from '@garlic-claw/shared';
 import { Injectable } from '@nestjs/common';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -23,46 +19,28 @@ export interface AiModelExecutionRequest {
   variant?: string;
 }
 
-export interface AiModelExecutionResult {
-  finishReason?: string | null;
-  modelId: string;
-  providerId: string;
-  text: string;
-  usage?: JsonValue;
-}
+export interface AiModelExecutionResult { finishReason?: string | null; modelId: string; providerId: string; text: string; usage?: JsonValue; }
 
 interface AiExecutionTarget {
   modelId: string;
   provider: StoredAiProviderConfig;
 }
 
-export interface AiModelExecutionStreamResult {
-  finishReason?: Promise<unknown> | unknown;
-  fullStream: AsyncIterable<unknown>;
-  modelId: string;
-  providerId: string;
-}
+export interface AiModelExecutionStreamResult { finishReason?: Promise<unknown> | unknown; fullStream: AsyncIterable<unknown>; modelId: string; providerId: string; }
 
 const localRequire = createRequire(__filename);
 
 @Injectable()
 export class AiModelExecutionService {
-  constructor(
-    private readonly aiProviderSettingsService: AiProviderSettingsService = new AiProviderSettingsService(),
-  ) {}
+  constructor(private readonly aiProviderSettingsService: AiProviderSettingsService = new AiProviderSettingsService()) {}
 
   async generateText(input: AiModelExecutionRequest): Promise<AiModelExecutionResult> {
-    const targets = this.buildExecutionTargets(input);
     let lastError: unknown;
-
-    for (const target of targets) {
+    for (const target of this.buildExecutionTargets(input)) {
       try {
         const result = await generateText(this.buildExecutionInput(input, target) as Parameters<typeof generateText>[0]);
-
         return {
-          finishReason: typeof result.finishReason === 'string'
-            ? result.finishReason
-            : null,
+          finishReason: typeof result.finishReason === 'string' ? result.finishReason : null,
           modelId: target.modelId,
           providerId: target.provider.id,
           text: typeof result.text === 'string' ? result.text : '',
@@ -72,10 +50,7 @@ export class AiModelExecutionService {
         lastError = error;
       }
     }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new Error('AI text generation failed');
+    throw readExecutionError(lastError, 'AI text generation failed');
   }
 
   streamText(input: AiModelExecutionRequest & {
@@ -83,10 +58,8 @@ export class AiModelExecutionService {
     stopWhen?: Parameters<typeof streamText>[0]['stopWhen'];
     tools?: Record<string, Tool>;
   }): AiModelExecutionStreamResult {
-    const targets = this.buildExecutionTargets(input);
     let lastError: unknown;
-
-    for (const target of targets) {
+    for (const target of this.buildExecutionTargets(input)) {
       try {
         const result = streamText({
           ...this.buildExecutionInput(input, target),
@@ -105,10 +78,7 @@ export class AiModelExecutionService {
         lastError = error;
       }
     }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new Error('AI text streaming failed');
+    throw readExecutionError(lastError, 'AI text streaming failed');
   }
 
   private buildExecutionTargets(input: AiModelExecutionRequest): AiExecutionTarget[] {
@@ -123,14 +93,11 @@ export class AiModelExecutionService {
     providerId: string | undefined,
     modelId: string | undefined,
   ): AiExecutionTarget {
-    const resolvedProviderId = providerId
-      ?? this.aiProviderSettingsService.listProviders()[0]?.id;
+    const resolvedProviderId = providerId ?? this.aiProviderSettingsService.listProviders()[0]?.id;
     if (!resolvedProviderId) {throw new Error('No provider configured');}
 
     const provider = this.aiProviderSettingsService.getProvider(resolvedProviderId);
-    const resolvedModelId = modelId
-      ?? provider.defaultModel
-      ?? provider.models[0];
+    const resolvedModelId = modelId ?? provider.defaultModel ?? provider.models[0];
     if (!resolvedModelId) {throw new Error(`Provider "${provider.id}" does not have any configured model`);}
     if (!provider.apiKey) {throw new Error(`Provider "${provider.id}" is missing apiKey`);}
     if (!provider.baseUrl) {throw new Error(`Provider "${provider.id}" is missing baseUrl`);}
@@ -151,39 +118,20 @@ export class AiModelExecutionService {
 
   private createLanguageModel(target: AiExecutionTarget): LanguageModel {
     if (target.provider.driver === 'anthropic') {
-      return createAnthropic({
-        apiKey: target.provider.apiKey as string,
-        baseURL: target.provider.baseUrl,
-      })(target.modelId) as unknown as LanguageModel;
+      return createAnthropic({ apiKey: target.provider.apiKey as string, baseURL: target.provider.baseUrl })(target.modelId) as unknown as LanguageModel;
     }
-
     if (target.provider.driver === 'gemini') {
       const { createGoogleGenerativeAI } = localRequire('@ai-sdk/google') as {
-        createGoogleGenerativeAI: (options: {
-          apiKey: string;
-          baseURL?: string;
-        }) => (modelId: string) => unknown;
+        createGoogleGenerativeAI: (options: { apiKey: string; baseURL?: string }) => (modelId: string) => unknown;
       };
-
-      return createGoogleGenerativeAI({
-        apiKey: target.provider.apiKey as string,
-        baseURL: target.provider.baseUrl,
-      })(target.modelId) as unknown as LanguageModel;
+      return createGoogleGenerativeAI({ apiKey: target.provider.apiKey as string, baseURL: target.provider.baseUrl })(target.modelId) as unknown as LanguageModel;
     }
-
-    return createOpenAI({
-      apiKey: target.provider.apiKey as string,
-      baseURL: target.provider.baseUrl,
-      name: target.provider.id,
-    }).chat(target.modelId) as unknown as LanguageModel;
+    return createOpenAI({ apiKey: target.provider.apiKey as string, baseURL: target.provider.baseUrl, name: target.provider.id }).chat(target.modelId) as unknown as LanguageModel;
   }
 }
 
 function buildExecutionMessages(messages: PluginLlmMessage[]): ModelMessage[] {
-  return messages.map((message) => ({
-    content: buildExecutionMessageContent(message.content),
-    role: message.role,
-  })) as unknown as ModelMessage[];
+  return messages.map((message) => ({ content: buildExecutionMessageContent(message.content), role: message.role })) as unknown as ModelMessage[];
 }
 
 function buildExecutionMessageContent(
@@ -207,6 +155,10 @@ function buildProviderOptions(
   input: AiModelExecutionRequest,
 ): JsonObject | undefined {
   return input.variant ? { ...(input.providerOptions ?? {}), variant: input.variant } : input.providerOptions;
+}
+
+function readExecutionError(error: unknown, fallback: string): Error {
+  return error instanceof Error ? error : new Error(fallback);
 }
 
 function toAiSdkImageInput(image: string): string | ArrayBuffer {

@@ -1,28 +1,14 @@
 import type { ChatMessagePart, ChatMessageStatus, JsonObject, JsonValue, PluginCallContext } from '@garlic-claw/shared';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import {
-  RuntimeHostConversationRecordService,
-  serializeConversationMessage,
-} from './runtime-host-conversation-record.service';
+import { RuntimeHostConversationRecordService, serializeConversationMessage } from './runtime-host-conversation-record.service';
 import { RuntimeHostPluginDispatchService } from './runtime-host-plugin-dispatch.service';
 import { applyMutatingDispatchableHooks, listDispatchableHookPluginIds } from '../kernel/runtime-plugin-hook-governance';
-import {
-  asJsonValue,
-  cloneJsonValue,
-  readJsonValue,
-  readMessageTarget,
-  readOptionalString,
-  requireContextField,
-} from './runtime-host-values';
+import { asJsonValue, cloneJsonValue, readJsonValue, readMessageTarget, readOptionalString, requireContextField } from './runtime-host-values';
 
 @Injectable()
 export class RuntimeHostConversationMessageService {
-  constructor(
-    private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService,
-    @Optional()
-    private readonly runtimeHostPluginDispatchService?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>,
-  ) {}
+  constructor(private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, @Optional() private readonly runtimeHostPluginDispatchService?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>) {}
 
   private createMessageRecord(input: MessageWriteInput, timestamp: string): JsonObject {
     const message: JsonObject = { content: input.content ?? '', createdAt: timestamp, id: randomUUID(), role: input.role, status: input.status, updatedAt: timestamp };
@@ -39,15 +25,9 @@ export class RuntimeHostConversationMessageService {
     return cloneJsonValue(this.runtimeHostConversationRecordService.replaceMessages(conversationId, [...conversation.messages, message]).messages.at(-1) as JsonObject);
   }
 
-  async createMessageWithHooks(
-    conversationId: string,
-    input: MessageWriteInput,
-    userId?: string,
-    kernelOverride?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>,
-  ): Promise<Record<string, unknown>> {
+  async createMessageWithHooks(conversationId: string, input: MessageWriteInput, userId?: string, kernelOverride?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>): Promise<Record<string, unknown>> {
     const conversation = this.runtimeHostConversationRecordService.requireConversation(conversationId, userId);
-    const created = await this.applyMessageCreatedHooks(conversation, input, kernelOverride);
-    return this.createMessage(conversation.id, created);
+    return this.createMessage(conversation.id, await this.applyMessageCreatedHooks(conversation, input, kernelOverride));
   }
 
   async deleteMessage(conversationId: string, messageId: string, userId?: string): Promise<JsonValue> {
@@ -59,9 +39,7 @@ export class RuntimeHostConversationMessageService {
     return { success: true };
   }
 
-  readConversationRevision(conversationId: string): string | null {
-    return this.runtimeHostConversationRecordService.readConversationRevision(conversationId);
-  }
+  readConversationRevision(conversationId: string): string | null { return this.runtimeHostConversationRecordService.readConversationRevision(conversationId); }
 
   async sendMessage(context: PluginCallContext, params: JsonObject): Promise<JsonValue> {
     const target = readMessageTarget(params.target);
@@ -72,15 +50,7 @@ export class RuntimeHostConversationMessageService {
     if (!content && parts === null) {throw new BadRequestException('message.send requires content or parts');}
 
     const normalized = normalizePluginMessageOutput(content ?? null, Array.isArray(parts) ? parts as unknown as ChatMessagePart[] : null);
-    const created = await this.createMessageWithHooks(conversation.id, {
-      content: normalized.content,
-      model: readOptionalString(params, 'model') ?? context.activeModelId ?? undefined,
-      parts: normalized.parts,
-      provider: readOptionalString(params, 'provider') ?? context.activeProviderId ?? undefined,
-      role: 'assistant',
-      status: 'completed',
-      target: { id: conversation.id, label: conversation.title, type: 'conversation' as const },
-    }, context.userId);
+    const created = await this.createMessageWithHooks(conversation.id, { content: normalized.content, model: readOptionalString(params, 'model') ?? context.activeModelId ?? undefined, parts: normalized.parts, provider: readOptionalString(params, 'provider') ?? context.activeProviderId ?? undefined, role: 'assistant', status: 'completed', target: { id: conversation.id, label: conversation.title, type: 'conversation' as const } }, context.userId);
     return asJsonValue(created);
   }
 
@@ -88,8 +58,7 @@ export class RuntimeHostConversationMessageService {
     const conversation = this.runtimeHostConversationRecordService.requireConversation(conversationId, userId);
     const message = conversation.messages.find((entry) => entry.id === messageId);
     if (!message) {throw new NotFoundException(`Message not found: ${messageId}`);}
-    const patch = await this.applyMessageUpdatedHooks(conversation, message, { ...(typeof dto.content === 'string' ? { content: dto.content } : {}), ...(dto.parts ? { parts: dto.parts } : {}) });
-    return asJsonValue(serializeConversationMessage(this.writeMessage(conversationId, messageId, patch, userId) as JsonObject));
+    return asJsonValue(serializeConversationMessage(this.writeMessage(conversationId, messageId, await this.applyMessageUpdatedHooks(conversation, message, { ...(typeof dto.content === 'string' ? { content: dto.content } : {}), ...(dto.parts ? { parts: dto.parts } : {}) }), userId) as JsonObject));
   }
 
   writeMessage(conversationId: string, messageId: string, patch: MessagePatch, userId?: string): Record<string, unknown> {
@@ -116,11 +85,7 @@ export class RuntimeHostConversationMessageService {
     return next;
   }
 
-  private async applyMessageCreatedHooks(
-    conversation: { activePersonaId?: string; id: string; title: string; userId: string },
-    message: MessageWriteInput,
-    kernelOverride?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>,
-  ): Promise<MessageWriteInput> {
+  private async applyMessageCreatedHooks(conversation: { activePersonaId?: string; id: string; title: string; userId: string }, message: MessageWriteInput, kernelOverride?: Pick<RuntimeHostPluginDispatchService, 'invokeHook' | 'listPlugins'>): Promise<MessageWriteInput> {
     const kernel = kernelOverride ?? this.runtimeHostPluginDispatchService;
     if (!kernel) {return message;}
     return applyMutatingDispatchableHooks({
@@ -142,23 +107,14 @@ export class RuntimeHostConversationMessageService {
     const currentMessage = readStoredHookMessage(message);
     const nextMessage = { ...currentMessage, content: typeof patch.content === 'string' ? patch.content : currentMessage.content, parts: patch.parts ?? currentMessage.parts };
     const kernel = this.runtimeHostPluginDispatchService;
-    const finalMessage = !kernel
-      ? nextMessage
-      : await applyMutatingDispatchableHooks({
-          applyMutation: (candidate, mutation) => applyMessageHookMutation(candidate, mutation, false),
-          hookName: 'message:updated',
-          kernel,
-          mapPayload: (candidate, context) => asJsonValue({
-            context,
-            conversationId: conversation.id,
-            messageId: String(message.id),
-            currentMessage,
-            nextMessage: toHookMessage(candidate),
-          }),
-          payload: nextMessage,
-          readContext: (candidate) => createHookContext(conversation, candidate),
-        });
-    return { content: finalMessage.content, parts: finalMessage.parts, ...(finalMessage.provider !== undefined ? { provider: finalMessage.provider } : {}), ...(finalMessage.model !== undefined ? { model: finalMessage.model } : {}), ...(finalMessage.status !== undefined ? { status: finalMessage.status as ChatMessageStatus } : {}) };
+    return toMessagePatch(!kernel ? nextMessage : await applyMutatingDispatchableHooks({
+      applyMutation: (candidate, mutation) => applyMessageHookMutation(candidate, mutation, false),
+      hookName: 'message:updated',
+      kernel,
+      mapPayload: (candidate, context) => asJsonValue({ context, conversationId: conversation.id, messageId: String(message.id), currentMessage, nextMessage: toHookMessage(candidate) }),
+      payload: nextMessage,
+      readContext: (candidate) => createHookContext(conversation, candidate),
+    }));
   }
 
   private async broadcastMessageDeleted(conversation: { activePersonaId?: string; id: string; userId: string }, message: JsonObject): Promise<void> {
@@ -167,17 +123,7 @@ export class RuntimeHostConversationMessageService {
     const hookMessage = readStoredHookMessage(message);
     const context = createHookContext(conversation, hookMessage);
     for (const pluginId of listDispatchableHookPluginIds({ context, hookName: 'message:deleted', kernel })) {
-      await kernel.invokeHook({
-        context,
-        hookName: 'message:deleted',
-        payload: asJsonValue({
-          context,
-          conversationId: conversation.id,
-          messageId: String(message.id),
-          message: hookMessage,
-        }),
-        pluginId,
-      });
+      await kernel.invokeHook({ context, hookName: 'message:deleted', payload: asJsonValue({ context, conversationId: conversation.id, messageId: String(message.id), message: hookMessage }), pluginId });
     }
   }
 }
@@ -197,11 +143,7 @@ function readStoredHookMessage(message: JsonObject): HookMessage {
   });
 }
 
-function applyMessageHookMutation<T extends { content?: string | null; model?: string | null; parts?: ChatMessagePart[]; provider?: string | null; role: 'assistant' | 'user'; status?: JsonValue }>(
-  message: T,
-  mutation: Record<string, unknown>,
-  allowModelMessages: boolean,
-): T {
+function applyMessageHookMutation<T extends { content?: string | null; model?: string | null; parts?: ChatMessagePart[]; provider?: string | null; role: 'assistant' | 'user'; status?: JsonValue }>(message: T, mutation: Record<string, unknown>, allowModelMessages: boolean): T {
   const next = {
     ...message,
     ...(typeof mutation.content === 'string' ? { content: mutation.content } : {}),
@@ -213,9 +155,7 @@ function applyMessageHookMutation<T extends { content?: string | null; model?: s
   if (!allowModelMessages || !Array.isArray(mutation.modelMessages)) {return next;}
   const modelMessage = mutation.modelMessages.at(-1) as { content?: unknown } | undefined;
   if (!modelMessage) {return next;}
-  if (Array.isArray(modelMessage.content)) {
-    return { ...next, content: readMessageText(modelMessage.content), parts: modelMessage.content as ChatMessagePart[] };
-  }
+  if (Array.isArray(modelMessage.content)) {return { ...next, content: readMessageText(modelMessage.content), parts: modelMessage.content as ChatMessagePart[] };}
   return typeof modelMessage.content === 'string' ? { ...next, content: modelMessage.content } : next;
 }
 
@@ -226,32 +166,18 @@ function readMessageText(parts: unknown[]): string {
     .join('\n');
 }
 
-function createHookContext(
-  conversation: { activePersonaId?: string; id: string; userId: string },
-  message: { model?: string | null; provider?: string | null },
-): PluginCallContext {
+function createHookContext(conversation: { activePersonaId?: string; id: string; userId: string }, message: { model?: string | null; provider?: string | null }): PluginCallContext {
   return { ...(conversation.activePersonaId ? { activePersonaId: conversation.activePersonaId } : {}), ...(message.model ? { activeModelId: message.model } : {}), ...(message.provider ? { activeProviderId: message.provider } : {}), conversationId: conversation.id, source: 'http-route', userId: conversation.userId };
 }
 
-function toHookMessage(message: {
-  content?: string | null;
-  model?: string | null;
-  parts?: ChatMessagePart[];
-  provider?: string | null;
-  role: 'assistant' | 'user';
-  status?: unknown;
-}): HookMessage {
+function toHookMessage(message: { content?: string | null; model?: string | null; parts?: ChatMessagePart[]; provider?: string | null; role: 'assistant' | 'user'; status?: unknown }): HookMessage {
   return { content: message.content ?? '', model: message.model ?? null, parts: message.parts ?? [], provider: message.provider ?? null, role: message.role, status: (message.status ?? 'completed') as JsonValue };
 }
 
 function normalizePluginMessageOutput(content: string | null, parts: ChatMessagePart[] | null): { content: string; parts: ChatMessagePart[] } {
-  if (parts && parts.length > 0) {
-    return {
-      content: parts.filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'),
-      parts: cloneJsonValue(parts),
-    };
-  }
-
+  if (parts && parts.length > 0) {return { content: parts.filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'), parts: cloneJsonValue(parts) };}
   const normalizedContent = content?.trim() ?? '';
   return { content: normalizedContent, parts: normalizedContent ? [{ text: normalizedContent, type: 'text' as const }] : [] };
 }
+
+function toMessagePatch(message: HookMessage): MessagePatch { return { content: message.content, parts: message.parts, ...(message.provider !== undefined ? { provider: message.provider } : {}), ...(message.model !== undefined ? { model: message.model } : {}), ...(message.status !== undefined ? { status: message.status as ChatMessageStatus } : {}) }; }

@@ -3,58 +3,33 @@ import { stepCountIs } from 'ai';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { AiModelExecutionService } from '../../ai/ai-model-execution.service';
 import { ToolRegistryService } from '../../execution/tool/tool-registry.service';
-import { runDispatchableHookChain } from '../kernel/runtime-plugin-hook-governance';
+import { applyMutatingDispatchableHooks, runDispatchableHookChain } from '../kernel/runtime-plugin-hook-governance';
 import { RuntimeHostPluginDispatchService } from './runtime-host-plugin-dispatch.service';
 import { asJsonValue, cloneJsonValue, readAssistantStreamPart, readJsonObject, readJsonStringRecord, readPluginLlmMessages } from './runtime-host-values';
 import { RuntimeHostConversationMessageService } from './runtime-host-conversation-message.service';
-import { RuntimeHostSubagentTaskStoreService } from './runtime-host-subagent-task-store.service';
+import { RuntimeHostSubagentTaskStoreService, type RuntimeSubagentTaskRecord } from './runtime-host-subagent-task-store.service';
 
 @Injectable()
 export class RuntimeHostSubagentRunnerService {
-  private executeSubagent = (input: { context: PluginCallContext; pluginId: string; request: PluginSubagentRequest }) => this.executeSubagentRequest(input);
   private readonly scheduledTaskIds = new Set<string>();
 
-  constructor(
-    private readonly aiModelExecutionService: AiModelExecutionService,
-    private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService,
-    private readonly toolRegistryService: ToolRegistryService,
-    @Inject(RuntimeHostPluginDispatchService)
-    private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService,
-    private readonly runtimeHostSubagentTaskStoreService: RuntimeHostSubagentTaskStoreService,
-  ) {}
+  constructor(private readonly aiModelExecutionService: AiModelExecutionService, private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly toolRegistryService: ToolRegistryService, @Inject(RuntimeHostPluginDispatchService) private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, private readonly runtimeHostSubagentTaskStoreService: RuntimeHostSubagentTaskStoreService) {}
 
   resumePendingTasks(pluginId?: string): void {
-    for (const task of this.runtimeHostSubagentTaskStoreService.listPendingTasks(pluginId)) {
-      this.scheduleTaskExecution(task.id);
-    }
+    for (const task of this.runtimeHostSubagentTaskStoreService.listPendingTasks(pluginId)) {this.scheduleTaskExecution(task.id);}
   }
 
-  getTask(pluginId: string, taskId: string): PluginSubagentTaskDetail {
-    return this.runtimeHostSubagentTaskStoreService.getTask(pluginId, taskId);
-  }
+  getTask(pluginId: string, taskId: string): PluginSubagentTaskDetail { return this.runtimeHostSubagentTaskStoreService.getTask(pluginId, taskId); }
 
-  getTaskOrThrow(taskId: string): PluginSubagentTaskDetail {
-    return this.runtimeHostSubagentTaskStoreService.getTaskOrThrow(taskId);
-  }
+  getTaskOrThrow(taskId: string): PluginSubagentTaskDetail { return this.runtimeHostSubagentTaskStoreService.getTaskOrThrow(taskId); }
 
-  listOverview(): PluginSubagentTaskOverview {
-    return this.runtimeHostSubagentTaskStoreService.listOverview();
-  }
+  listOverview(): PluginSubagentTaskOverview { return this.runtimeHostSubagentTaskStoreService.listOverview(); }
 
-  listTasks(pluginId: string): PluginSubagentTaskSummary[] {
-    return this.runtimeHostSubagentTaskStoreService.listTasks(pluginId);
-  }
+  listTasks(pluginId: string): PluginSubagentTaskSummary[] { return this.runtimeHostSubagentTaskStoreService.listTasks(pluginId); }
 
-  async runSubagent(pluginId: string, context: PluginCallContext, params: JsonObject): Promise<JsonValue> {
-    return asJsonValue(await this.executeSubagent({ context, pluginId, request: readSubagentRequest(params) }));
-  }
+  async runSubagent(pluginId: string, context: PluginCallContext, params: JsonObject): Promise<JsonValue> { return asJsonValue(await this.executeSubagent({ context, pluginId, request: readSubagentRequest(params) })); }
 
-  async startTask(
-    pluginId: string,
-    pluginDisplayName: string | undefined,
-    context: PluginCallContext,
-    params: JsonObject,
-  ): Promise<JsonValue> {
+  async startTask(pluginId: string, pluginDisplayName: string | undefined, context: PluginCallContext, params: JsonObject): Promise<JsonValue> {
     const request = readSubagentRequest(params);
     const writeBackTarget = readSubagentWriteBackTarget(params);
     const previewContent = request.messages.at(-1)?.content;
@@ -73,46 +48,13 @@ export class RuntimeHostSubagentRunnerService {
 
   private async completeTaskAsync(taskId: string): Promise<void> {
     const snapshot = this.runtimeHostSubagentTaskStoreService.readTask(taskId);
-    this.runtimeHostSubagentTaskStoreService.updateTask(snapshot.pluginId, taskId, (task, now) => {
-      task.startedAt = task.startedAt ?? now;
-      task.status = 'running';
-    });
-
+    this.runtimeHostSubagentTaskStoreService.updateTask(snapshot.pluginId, taskId, markTaskRunning);
     try {
-      const result = await this.executeSubagent({
-        context: snapshot.context,
-        pluginId: snapshot.pluginId,
-        request: snapshot.request,
-      });
-      const writeBack = await this.writeBackResultIfNeeded(
-        snapshot.context,
-        result,
-        snapshot.writeBackTarget ?? null,
-        snapshot.writeBackConversationRevision,
-      );
-      this.runtimeHostSubagentTaskStoreService.updateTask(snapshot.pluginId, taskId, (task, now) => {
-        task.startedAt = task.startedAt ?? now;
-        task.status = 'completed';
-        task.finishedAt = now;
-        task.error = undefined;
-        task.result = result;
-        task.resultPreview = result.text;
-        task.writeBackError = writeBack.error ?? undefined;
-        task.writeBackMessageId = writeBack.messageId ?? undefined;
-        task.writeBackStatus = writeBack.status;
-      });
+      const result = await this.executeSubagent({ context: snapshot.context, pluginId: snapshot.pluginId, request: snapshot.request });
+      const writeBack = await this.writeBackResultIfNeeded(snapshot.context, result, snapshot.writeBackTarget ?? null, snapshot.writeBackConversationRevision);
+      this.runtimeHostSubagentTaskStoreService.updateTask(snapshot.pluginId, taskId, (task, now) => markTaskCompleted(task, now, result, writeBack));
     } catch (error) {
-      this.runtimeHostSubagentTaskStoreService.updateTask(snapshot.pluginId, taskId, (task, now) => {
-        task.startedAt = task.startedAt ?? now;
-        task.status = 'error';
-        task.error = error instanceof Error ? error.message : '后台子代理任务执行失败';
-        task.finishedAt = now;
-        task.result = null;
-        task.resultPreview = undefined;
-        task.writeBackError = undefined;
-        task.writeBackMessageId = undefined;
-        task.writeBackStatus = 'skipped';
-      });
+      this.runtimeHostSubagentTaskStoreService.updateTask(snapshot.pluginId, taskId, (task, now) => markTaskFailed(task, now, error));
     }
   }
 
@@ -126,17 +68,10 @@ export class RuntimeHostSubagentRunnerService {
   }
 
   private async writeBackResultIfNeeded(context: PluginCallContext, result: PluginSubagentRunResult, target: PluginMessageTargetInfo | null, conversationRevision?: string) {
-    if (!target) {return { status: 'skipped' as const };}
+    if (!target) {return { error: null, messageId: null, status: 'skipped' as const };}
     try {
-      if (conversationRevision && this.runtimeHostConversationMessageService.readConversationRevision(target.id) !== conversationRevision) {
-        throw new Error(`Conversation revision changed: ${target.id}`);
-      }
-      const sent = await this.runtimeHostConversationMessageService.sendMessage(context, {
-        content: result.text,
-        model: result.modelId,
-        provider: result.providerId,
-        target: { id: target.id, type: target.type },
-      });
+      if (conversationRevision && this.runtimeHostConversationMessageService.readConversationRevision(target.id) !== conversationRevision) {throw new Error(`Conversation revision changed: ${target.id}`);}
+      const sent = await this.runtimeHostConversationMessageService.sendMessage(context, { content: result.text, model: result.modelId, provider: result.providerId, target: { id: target.id, type: target.type } });
       const messageId = readJsonObject(sent)?.id;
       return { error: null, messageId: typeof messageId === 'string' ? messageId : null, status: 'sent' as const };
     } catch (error) {
@@ -144,36 +79,19 @@ export class RuntimeHostSubagentRunnerService {
     }
   }
 
-  private async executeSubagentRequest(input: { context: PluginCallContext; pluginId: string; request: PluginSubagentRequest }): Promise<PluginSubagentRunResult> {
+  private async executeSubagent(input: { context: PluginCallContext; pluginId: string; request: PluginSubagentRequest }): Promise<PluginSubagentRunResult> {
     const beforeHooks = await runDispatchableHookChain<PluginSubagentRequest, SubagentBeforeRunHookResult, PluginSubagentRunResult>({
-      applyResponse: (request, response) => response.action === 'short-circuit'
-        ? {
-            shortCircuitResult: {
-              ...(response.finishReason !== undefined ? { finishReason: response.finishReason } : {}),
-              message: { content: response.text, role: 'assistant' },
-              modelId: response.modelId ?? request.modelId ?? 'unknown-model',
-              providerId: response.providerId ?? request.providerId ?? 'unknown-provider',
-              text: response.text,
-              toolCalls: response.toolCalls ?? [],
-              toolResults: response.toolResults ?? [],
-            },
-          }
-        : { state: applySubagentBeforeRunMutation(request, response) },
+      applyResponse: (request, response) => readSubagentBeforeRunResponse(request, response),
       hookName: 'subagent:before-run',
       kernel: this.runtimeHostPluginDispatchService,
-      mapPayload: (request) => buildHookPayload({ context: input.context, pluginId: input.pluginId, request }),
+      mapPayload: (request) => asJsonValue({ context: input.context, pluginId: input.pluginId, request }) as JsonObject,
       initialState: input.request,
       readContext: () => input.context,
       excludedPluginId: input.pluginId,
     });
     if ('shortCircuitResult' in beforeHooks) {return beforeHooks.shortCircuitResult;}
-
     const request = beforeHooks.state;
-    const tools = await this.toolRegistryService.buildToolSet({
-      allowedToolNames: request.toolNames,
-      context: input.context,
-      excludedPluginId: input.pluginId,
-    });
+    const tools = await this.toolRegistryService.buildToolSet({ allowedToolNames: request.toolNames, context: input.context, excludedPluginId: input.pluginId });
     const stream = this.aiModelExecutionService.streamText({
       headers: request.headers,
       maxOutputTokens: request.maxOutputTokens,
@@ -186,24 +104,16 @@ export class RuntimeHostSubagentRunnerService {
       tools,
       variant: request.variant,
     });
-    const result = await collectSubagentRunResult({
-      finishReason: stream.finishReason,
-      fullStream: stream.fullStream,
-      modelId: stream.modelId,
-      providerId: stream.providerId,
-    });
-    const afterHooks = await runDispatchableHookChain<PluginSubagentRunResult, SubagentAfterRunHookResult>({
-      applyResponse: (nextResult, response) => ({
-        state: applySubagentAfterRunMutation(nextResult, response),
-      }),
+    const result = await collectSubagentRunResult({ finishReason: stream.finishReason, fullStream: stream.fullStream, modelId: stream.modelId, providerId: stream.providerId });
+    return applyMutatingDispatchableHooks({
+      applyMutation: (nextResult, response) => applySubagentAfterRunMutation(nextResult, response as unknown as Extract<SubagentAfterRunHookResult, { action: 'mutate' }>),
       hookName: 'subagent:after-run',
       kernel: this.runtimeHostPluginDispatchService,
-      mapPayload: (nextResult) => buildHookPayload({ context: input.context, pluginId: input.pluginId, request, result: nextResult }),
-      initialState: result,
+      payload: result,
+      mapPayload: (nextResult) => asJsonValue({ context: input.context, pluginId: input.pluginId, request, result: nextResult }) as JsonObject,
       readContext: () => input.context,
       excludedPluginId: input.pluginId,
     });
-    return 'state' in afterHooks ? afterHooks.state : afterHooks.shortCircuitResult;
   }
 }
 
@@ -228,33 +138,66 @@ function readSubagentWriteBackTarget(params: JsonObject): PluginMessageTargetInf
   const target = readJsonObject(readJsonObject(params.writeBack)?.target);
   if (!target) {return null;}
   if (target.type !== 'conversation' || typeof target.id !== 'string') {throw new BadRequestException('subagent writeBack.target is invalid');}
+  return { id: target.id, ...(typeof target.label === 'string' ? { label: target.label } : {}), type: 'conversation' };
+}
+
+function applySubagentAfterRunMutation(
+  nextResult: PluginSubagentRunResult,
+  mutation: Extract<SubagentAfterRunHookResult, { action: 'mutate' }>,
+): PluginSubagentRunResult {
+  const text = typeof mutation.text === 'string' ? mutation.text : nextResult.text;
   return {
-    id: target.id,
-    ...(typeof target.label === 'string' ? { label: target.label } : {}),
-    type: 'conversation',
+    ...cloneJsonValue(nextResult) as PluginSubagentRunResult,
+    ...(typeof mutation.providerId === 'string' ? { providerId: mutation.providerId } : {}),
+    ...(typeof mutation.modelId === 'string' ? { modelId: mutation.modelId } : {}),
+    ...('finishReason' in mutation ? { finishReason: mutation.finishReason ?? undefined } : {}),
+    ...(Array.isArray(mutation.toolCalls) ? { toolCalls: mutation.toolCalls } : {}),
+    ...(Array.isArray(mutation.toolResults) ? { toolResults: mutation.toolResults } : {}),
+    ...(typeof mutation.text === 'string' ? { message: { ...nextResult.message, content: text }, text } : {}),
   };
 }
 
-async function collectSubagentRunResult(input: {
-  finishReason?: Promise<unknown> | unknown;
-  fullStream: AsyncIterable<unknown>;
-  modelId: string;
-  providerId: string;
-}): Promise<PluginSubagentRunResult> {
+function readSubagentBeforeRunResponse(request: PluginSubagentRequest, response: SubagentBeforeRunHookResult) {
+  if (response.action === 'short-circuit') {
+    return {
+      shortCircuitResult: {
+        ...(response.finishReason !== undefined ? { finishReason: response.finishReason } : {}),
+        message: { content: response.text, role: 'assistant' as const },
+        modelId: response.modelId ?? request.modelId ?? 'unknown-model',
+        providerId: response.providerId ?? request.providerId ?? 'unknown-provider',
+        text: response.text,
+        toolCalls: response.toolCalls ?? [],
+        toolResults: response.toolResults ?? [],
+      },
+    };
+  }
+  if (response.action === 'pass') {return { state: cloneJsonValue(request) as PluginSubagentRequest };}
+  return {
+    state: {
+      ...(cloneJsonValue(request) as PluginSubagentRequest),
+      ...(typeof response.providerId === 'string' ? { providerId: response.providerId } : {}),
+      ...(typeof response.modelId === 'string' ? { modelId: response.modelId } : {}),
+      ...('system' in response ? { system: response.system ?? undefined } : {}),
+      ...(Array.isArray(response.messages) ? { messages: response.messages } : {}),
+      ...('toolNames' in response ? { toolNames: response.toolNames ?? undefined } : {}),
+      ...('variant' in response ? { variant: response.variant ?? undefined } : {}),
+      ...('providerOptions' in response ? { providerOptions: response.providerOptions ?? undefined } : {}),
+      ...('headers' in response ? { headers: response.headers ?? undefined } : {}),
+      ...('maxOutputTokens' in response && typeof response.maxOutputTokens === 'number' ? { maxOutputTokens: response.maxOutputTokens } : {}),
+      ...('maxSteps' in response && typeof response.maxSteps === 'number' ? { maxSteps: response.maxSteps } : {}),
+    },
+  };
+}
+
+async function collectSubagentRunResult(input: { finishReason?: Promise<unknown> | unknown; fullStream: AsyncIterable<unknown>; modelId: string; providerId: string }): Promise<PluginSubagentRunResult> {
   let text = '';
   const toolCalls: PluginSubagentRunResult['toolCalls'] = [];
   const toolResults: PluginSubagentRunResult['toolResults'] = [];
   for await (const rawPart of input.fullStream) {
     const part = readAssistantStreamPart(rawPart);
     if (!part) {continue;}
-    if (part.type === 'text-delta') {
-      text += part.text;
-      continue;
-    }
-    if (part.type === 'tool-call') {
-      toolCalls.push({ input: asJsonValue(part.input), toolCallId: part.toolCallId, toolName: part.toolName });
-      continue;
-    }
+    if (part.type === 'text-delta') {text += part.text; continue;}
+    if (part.type === 'tool-call') {toolCalls.push({ input: asJsonValue(part.input), toolCallId: part.toolCallId, toolName: part.toolName }); continue;}
     toolResults.push({ output: asJsonValue(part.output), toolCallId: part.toolCallId, toolName: part.toolName });
   }
   const finishReason = await input.finishReason;
@@ -269,46 +212,10 @@ async function collectSubagentRunResult(input: {
   };
 }
 
-function applySubagentBeforeRunMutation(
-  request: PluginSubagentRequest,
-  mutation: Extract<SubagentBeforeRunHookResult, { action: 'mutate' }>,
-): PluginSubagentRequest {
-  return {
-    ...(cloneJsonValue(request) as PluginSubagentRequest),
-    ...(typeof mutation.providerId === 'string' ? { providerId: mutation.providerId } : {}),
-    ...(typeof mutation.modelId === 'string' ? { modelId: mutation.modelId } : {}),
-    ...('system' in mutation ? { system: mutation.system ?? undefined } : {}),
-    ...(Array.isArray(mutation.messages) ? { messages: mutation.messages } : {}),
-    ...('toolNames' in mutation ? { toolNames: mutation.toolNames ?? undefined } : {}),
-    ...('variant' in mutation ? { variant: mutation.variant ?? undefined } : {}),
-    ...('providerOptions' in mutation ? { providerOptions: mutation.providerOptions ?? undefined } : {}),
-    ...('headers' in mutation ? { headers: mutation.headers ?? undefined } : {}),
-    ...('maxOutputTokens' in mutation && typeof mutation.maxOutputTokens === 'number' ? { maxOutputTokens: mutation.maxOutputTokens } : {}),
-    ...('maxSteps' in mutation && typeof mutation.maxSteps === 'number' ? { maxSteps: mutation.maxSteps } : {}),
-  };
-}
-
-function applySubagentAfterRunMutation(
-  result: PluginSubagentRunResult,
-  mutation: Extract<SubagentAfterRunHookResult, { action: 'mutate' }>,
-): PluginSubagentRunResult {
-  const next = cloneJsonValue(result) as PluginSubagentRunResult;
-  const text = typeof mutation.text === 'string' ? mutation.text : next.text;
-  return {
-    ...next,
-    ...(typeof mutation.providerId === 'string' ? { providerId: mutation.providerId } : {}),
-    ...(typeof mutation.modelId === 'string' ? { modelId: mutation.modelId } : {}),
-    ...('finishReason' in mutation ? { finishReason: mutation.finishReason ?? undefined } : {}),
-    ...(Array.isArray(mutation.toolCalls) ? { toolCalls: mutation.toolCalls } : {}),
-    ...(Array.isArray(mutation.toolResults) ? { toolResults: mutation.toolResults } : {}),
-    ...(typeof mutation.text === 'string' ? { message: { ...next.message, content: text }, text } : {}),
-  };
-}
-
-function buildHookPayload(input: { context: PluginCallContext; pluginId: string; request: PluginSubagentRequest; result?: PluginSubagentRunResult }): JsonObject {
-  return asJsonValue({ context: input.context, pluginId: input.pluginId, request: input.request, ...(input.result ? { result: input.result } : {}) }) as JsonObject;
-}
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
+
+function markTaskRunning(task: RuntimeSubagentTaskRecord, now: string): void { task.startedAt = task.startedAt ?? now; task.status = 'running'; }
+function markTaskCompleted(task: RuntimeSubagentTaskRecord, now: string, result: PluginSubagentRunResult, writeBack: { error: string | null; messageId: string | null; status: 'failed' | 'sent' | 'skipped' }): void { task.startedAt = task.startedAt ?? now; task.status = 'completed'; task.finishedAt = now; task.error = undefined; task.result = result; task.resultPreview = result.text; task.writeBackError = writeBack.error ?? undefined; task.writeBackMessageId = writeBack.messageId ?? undefined; task.writeBackStatus = writeBack.status; }
+function markTaskFailed(task: RuntimeSubagentTaskRecord, now: string, error: unknown): void { task.startedAt = task.startedAt ?? now; task.status = 'error'; task.error = error instanceof Error ? error.message : '后台子代理任务执行失败'; task.finishedAt = now; task.result = null; task.resultPreview = undefined; task.writeBackError = undefined; task.writeBackMessageId = undefined; task.writeBackStatus = 'skipped'; }

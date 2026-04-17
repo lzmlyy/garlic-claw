@@ -45,7 +45,7 @@
       ],
       "requiredSubstrings": [
         {
-          "file": "packages/server/test/adapters/ws/plugin-gateway/plugin-gateway-ws-module.spec.ts",
+          "file": "packages/server/tests/adapters/ws/plugin-gateway/plugin-gateway-ws-module.spec.ts",
           "patterns": [
             "authenticates remote plugins and replies with AUTH_OK",
             "registers remote plugins and requests outbound flush",
@@ -54,7 +54,7 @@
           ]
         },
         {
-          "file": "packages/server/test/adapters/ws/plugin-gateway/plugin-gateway-ws-connection.spec.ts",
+          "file": "packages/server/tests/adapters/ws/plugin-gateway/plugin-gateway-ws-connection.spec.ts",
           "patterns": [
             "opens connections with remoteAddress and flushes replies and outbound messages",
             "closes unauthenticated sockets after auth timeout",
@@ -62,7 +62,7 @@
           ]
         },
         {
-          "file": "packages/server/test/runtime/gateway/runtime-gateway-connection-lifecycle.service.spec.ts",
+          "file": "packages/server/tests/runtime/gateway/runtime-gateway-connection-lifecycle.service.spec.ts",
           "patterns": [
             "registers remote plugins against authenticated connections",
             "creates remote transport requests and settles pending results",

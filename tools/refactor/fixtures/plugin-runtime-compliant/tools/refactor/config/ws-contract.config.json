@@ -45,14 +45,14 @@
       ],
       "requiredSubstrings": [
         {
-          "file": "packages/server/src/plugin/plugin-contract-freeze.spec.ts",
+          "file": "packages/server/tests/plugin/plugin-contract-freeze.spec.ts",
           "patterns": [
             "keeps websocket message types stable",
             "keeps websocket actions stable"
           ]
         },
         {
-          "file": "packages/server/src/plugin/plugin.gateway.spec.ts",
+          "file": "packages/server/tests/plugin/plugin.gateway.spec.ts",
           "patterns": [
             "rejects malformed raw websocket payloads before gateway routing",
             "rejects malformed websocket envelopes before they reach the gateway message router",

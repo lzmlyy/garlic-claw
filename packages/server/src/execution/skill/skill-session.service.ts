@@ -1,39 +1,11 @@
-import type {
-  ChatMessagePart,
-  ConversationSkillState,
-  JsonObject,
-  JsonValue,
-  PluginActionName,
-  PluginCallContext,
-  SkillDetail,
-  ToolInfo,
-  ToolSourceActionResult,
-  ToolSourceInfo,
-} from '@garlic-claw/shared';
+import type { ChatMessagePart, ConversationSkillState, JsonObject, JsonValue, PluginActionName, PluginCallContext, SkillDetail, ToolInfo, ToolSourceActionResult, ToolSourceInfo } from '@garlic-claw/shared';
 import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { RuntimeHostConversationRecordService } from '../../runtime/host/runtime-host-conversation-record.service';
 import { SKILL_DISCOVERY_OPTIONS, SkillRegistryService, type SkillDiscoveryOptions } from './skill-registry.service';
-import {
-  describeSkillPackageToolAccess,
-  runSkillPackageTool,
-  SKILL_SOURCE_ID,
-  SKILL_SOURCE_LABEL,
-  SKILL_SUPPORTED_ACTIONS,
-  type SkillPackageToolDefinition,
-  type SkillPackageToolName,
-} from './skill-package-tools';
+import { describeSkillPackageToolAccess, runSkillPackageTool, SKILL_SOURCE_ID, SKILL_SOURCE_LABEL, SKILL_SUPPORTED_ACTIONS, type SkillPackageToolDefinition, type SkillPackageToolName } from './skill-package-tools';
 
-export interface ConversationSkillContext {
-  systemPrompt: string;
-  allowedToolNames: string[] | null;
-}
-
-export interface ConversationSkillCommandResponse {
-  assistantContent: string;
-  assistantParts: ChatMessagePart[];
-  providerId: string;
-  modelId: string;
-}
+export interface ConversationSkillContext { systemPrompt: string; allowedToolNames: string[] | null; }
+export interface ConversationSkillCommandResponse { assistantContent: string; assistantParts: ChatMessagePart[]; providerId: string; modelId: string; }
 
 const SKILL_HELP_TEXT = ['Skill 命令用法：', '/skill list', '/skill use <id>', '/skill remove <id>', '/skill clear'].join('\n');
 const buildSkillCommandResponse = (text: string): ConversationSkillCommandResponse => ({ assistantContent: text, assistantParts: [{ type: 'text', text }], providerId: 'system', modelId: 'skill-command' });
@@ -42,21 +14,10 @@ const buildSkillCommandResponse = (text: string): ConversationSkillCommandRespon
 export class SkillSessionService {
   private skillPackageToolsEnabled = true;
 
-  constructor(
-    private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService,
-    @Inject(SkillRegistryService)
-    private readonly skillRegistryService: SkillRegistryService,
-    @Optional()
-    @Inject(SKILL_DISCOVERY_OPTIONS)
-    private readonly discoveryOptions: SkillDiscoveryOptions = {},
-  ) {}
+  constructor(private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, @Inject(SkillRegistryService) private readonly skillRegistryService: SkillRegistryService, @Optional() @Inject(SKILL_DISCOVERY_OPTIONS) private readonly discoveryOptions: SkillDiscoveryOptions = {}) {}
 
   async getConversationSkillStateForUser(userId: string, conversationId: string): Promise<ConversationSkillState> {
-    return toConversationSkillState(await this.readConversationSkillSelection({
-      conversationId,
-      userId,
-      persistCleanup: true,
-    }));
+    return toConversationSkillState(await this.readConversationSkillSelection({ conversationId, userId, persistCleanup: true }));
   }
 
   async updateConversationSkillStateForUser(userId: string, conversationId: string, activeSkillIds: string[]): Promise<ConversationSkillState> {
@@ -165,11 +126,7 @@ export class SkillSessionService {
   private async readConversationSkills(conversationId: string): Promise<SkillDetail[]> { return (await this.readConversationSkillSelection({ conversationId })).activeSkills; }
 
   private async renderSkillList(userId: string, conversationId: string): Promise<string> {
-    const { activeSkills: skills } = await this.readConversationSkillSelection({
-      conversationId,
-      userId,
-      persistCleanup: true,
-    });
+    const { activeSkills: skills } = await this.readConversationSkillSelection({ conversationId, userId, persistCleanup: true });
     return [
       `当前可用 skills（${skills.length}）：`,
       ...skills.map((skill) => `- ${skill.id} · ${skill.name} · 已激活${skill.tags.length > 0 ? ` [${skill.tags.join(', ')}]` : ''}`),

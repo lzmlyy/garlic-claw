@@ -14,31 +14,15 @@ export class ToolRegistryService {
   private readonly sourceEnabledOverrides = new Map<string, boolean>();
   private readonly toolEnabledOverrides = new Map<string, boolean>();
 
-  constructor(
-    private readonly mcpService: McpService,
-    private readonly skillExecution: SkillSessionService,
-    @Inject(RuntimeHostPluginDispatchService)
-    private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService,
-    @Inject(RuntimePluginGovernanceService)
-    private readonly runtimePluginGovernanceService: RuntimePluginGovernanceService,
-  ) {}
+  constructor(private readonly mcpService: McpService, private readonly skillExecution: SkillSessionService, @Inject(RuntimeHostPluginDispatchService) private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, @Inject(RuntimePluginGovernanceService) private readonly runtimePluginGovernanceService: RuntimePluginGovernanceService) {}
 
-  async listOverview(context?: PluginCallContext): Promise<ToolOverview> {
-    const pluginSources = this.buildPluginSources();
-    const mcpSources = this.mcpService.listToolSources();
-    const skillSources = await this.skillExecution.listToolSources(context);
-    const allSources = [pluginSources, mcpSources, skillSources] as const;
-    return {
-      sources: allSources.flatMap((entries) => entries.map((entry) => entry.source)),
-      tools: allSources.flatMap((entries) => entries.flatMap((entry) => entry.tools)),
-    };
-  }
+  async listOverview(context?: PluginCallContext): Promise<ToolOverview> { const allSources = [this.buildPluginSources(), this.mcpService.listToolSources(), await this.skillExecution.listToolSources(context)] as const; return { sources: allSources.flatMap((entries) => entries.map((entry) => entry.source)), tools: allSources.flatMap((entries) => entries.flatMap((entry) => entry.tools)) }; }
 
   async runSourceAction(kind: ToolSourceKind, sourceId: string, action: PluginActionName): Promise<ToolSourceActionResult> {
     if (kind === 'mcp') {return this.mcpService.runGovernanceAction(sourceId, action as 'health-check' | 'reconnect' | 'reload');}
     if (kind === 'skill') {return this.skillExecution.runToolSourceAction(sourceId, action);}
     if (kind !== 'plugin') {throw new BadRequestException(`工具源 ${kind}:${sourceId} 不支持治理动作 ${action}`);}
-    const source = await this.readSource(kind, sourceId);
+    const source = readSourceOrThrow(await this.listOverview(), kind, sourceId);
     if (!(source.supportedActions ?? []).includes(action)) {throw new BadRequestException(`工具源 ${kind}:${sourceId} 不支持治理动作 ${action}`);}
     const result = await this.runtimePluginGovernanceService.runPluginAction({ action, pluginId: sourceId });
     return {
@@ -51,25 +35,21 @@ export class ToolRegistryService {
   }
 
   async setSourceEnabled(kind: ToolSourceKind, sourceId: string, enabled: boolean): Promise<ToolSourceInfo> {
-    const readSource = () => this.readSource(kind, sourceId);
-    if (kind === 'mcp') {
-      await this.mcpService.setServerEnabled(sourceId, enabled);
-      return readSource();
-    }
+    if (kind === 'mcp') { await this.mcpService.setServerEnabled(sourceId, enabled); return readSourceOrThrow(await this.listOverview(), kind, sourceId); }
     if (kind === 'skill') {
-      await readSource();
+      readSourceOrThrow(await this.listOverview(), kind, sourceId);
       this.skillExecution.setSkillPackageToolsEnabled(enabled);
-      return readSource();
+      return readSourceOrThrow(await this.listOverview(), kind, sourceId);
     }
-    await readSource();
+    readSourceOrThrow(await this.listOverview(), kind, sourceId);
     this.sourceEnabledOverrides.set(`${kind}:${sourceId}`, enabled);
-    return readSource();
+    return readSourceOrThrow(await this.listOverview(), kind, sourceId);
   }
 
   async setToolEnabled(toolId: string, enabled: boolean): Promise<ToolInfo> {
-    await this.readTool(toolId);
+    readToolOrThrow(await this.listOverview(), toolId);
     this.toolEnabledOverrides.set(toolId, enabled);
-    return this.readTool(toolId);
+    return readToolOrThrow(await this.listOverview(), toolId);
   }
 
   async buildToolSet(input: { allowedToolNames?: string[]; context: PluginCallContext; excludedPluginId?: string }): Promise<Record<string, Tool> | undefined> {
@@ -102,53 +82,24 @@ export class ToolRegistryService {
     return toolSet as Record<string, Tool>;
   }
 
-  async listAvailableTools(input: { context: PluginCallContext; excludedPluginId?: string }): Promise<PluginAvailableToolSummary[]> {
-    return (await this.readEnabledTools(input)).map(toAvailableToolSummary);
-  }
+  async listAvailableTools(input: { context: PluginCallContext; excludedPluginId?: string }): Promise<PluginAvailableToolSummary[]> { return (await this.readEnabledTools(input)).map(toAvailableToolSummary); }
 
-  private async readEnabledTools(input: { allowedToolNames?: string[]; context: PluginCallContext; excludedPluginId?: string }): Promise<ToolInfo[]> {
-    return (await this.listOverview(input.context)).tools.filter((entry) =>
-      (entry.sourceKind !== 'plugin' || entry.pluginId !== input.excludedPluginId)
-      && this.isToolEnabledForContext(entry, input.context)
-      && (input.allowedToolNames ? input.allowedToolNames.includes(entry.callName) : true),
-    );
-  }
+  private async readEnabledTools(input: { allowedToolNames?: string[]; context: PluginCallContext; excludedPluginId?: string }): Promise<ToolInfo[]> { return (await this.listOverview(input.context)).tools.filter((entry) => (entry.sourceKind !== 'plugin' || entry.pluginId !== input.excludedPluginId) && this.isToolEnabledForContext(entry, input.context) && (input.allowedToolNames ? input.allowedToolNames.includes(entry.callName) : true)); }
 
   private buildPluginSources(): Array<{ source: ToolSourceInfo; tools: ToolInfo[] }> {
     return this.runtimePluginGovernanceService.listPlugins()
       .filter((plugin) => plugin.connected && plugin.manifest.tools.length > 0)
       .map((plugin) => {
         const sourceEnabled = this.sourceEnabledOverrides.get(`plugin:${plugin.pluginId}`) ?? plugin.defaultEnabled;
-        const source: ToolSourceInfo = {
-          kind: 'plugin',
-          id: plugin.pluginId,
-          label: plugin.manifest.name,
-          enabled: sourceEnabled,
-          health: plugin.connected ? 'healthy' : 'unknown',
-          lastError: null,
-          lastCheckedAt: plugin.lastSeenAt,
-          totalTools: plugin.manifest.tools.length,
-          enabledTools: 0,
-          pluginId: plugin.pluginId,
-          runtimeKind: plugin.manifest.runtime,
-          supportedActions: this.runtimePluginGovernanceService.listSupportedActions(plugin.pluginId) as PluginActionName[],
-        };
-        const tools = plugin.manifest.tools.map((tool: typeof plugin.manifest.tools[number]) => createPluginToolInfo(
-          plugin,
-          source,
-          tool,
-          this.toolEnabledOverrides.get(`plugin:${plugin.pluginId}:${tool.name}`) ?? sourceEnabled,
-        ));
+        const source: ToolSourceInfo = { kind: 'plugin', id: plugin.pluginId, label: plugin.manifest.name, enabled: sourceEnabled, health: plugin.connected ? 'healthy' : 'unknown', lastError: null, lastCheckedAt: plugin.lastSeenAt, totalTools: plugin.manifest.tools.length, enabledTools: 0, pluginId: plugin.pluginId, runtimeKind: plugin.manifest.runtime, supportedActions: this.runtimePluginGovernanceService.listSupportedActions(plugin.pluginId) as PluginActionName[] };
+        const tools = plugin.manifest.tools.map((tool: typeof plugin.manifest.tools[number]) => createPluginToolInfo(plugin, source, tool, this.toolEnabledOverrides.get(`plugin:${plugin.pluginId}:${tool.name}`) ?? sourceEnabled));
         source.enabledTools = tools.filter((tool: ToolInfo) => tool.enabled).length;
         return { source, tools };
       });
   }
 
   private isToolEnabledForContext(tool: ToolInfo, context: PluginCallContext): boolean {
-    if (tool.sourceKind === 'mcp') {
-      const source = this.mcpService.getToolingSnapshot().statuses.find((entry) => entry.name === tool.sourceId);
-      return source?.enabled === true && source.connected === true;
-    }
+    if (tool.sourceKind === 'mcp') {return tool.enabled;}
     if (tool.sourceKind === 'skill') {
       return Boolean(context.conversationId) && tool.enabled;
     }
@@ -162,22 +113,9 @@ export class ToolRegistryService {
     }, context);
     return sourceEnabled && (this.toolEnabledOverrides.get(tool.toolId) ?? true);
   }
-
-  private async readSource(kind: ToolSourceKind, sourceId: string): Promise<ToolSourceInfo> {
-    return readSourceOrThrow(await this.listOverview(), kind, sourceId);
-  }
-
-  private async readTool(toolId: string): Promise<ToolInfo> {
-    return readToolOrThrow(await this.listOverview(), toolId);
-  }
 }
 
-function createPluginToolInfo(
-  plugin: RegisteredPluginRecord,
-  source: ToolSourceInfo,
-  tool: RegisteredPluginRecord['manifest']['tools'][number],
-  enabled: boolean,
-) {
+function createPluginToolInfo(plugin: RegisteredPluginRecord, source: ToolSourceInfo, tool: RegisteredPluginRecord['manifest']['tools'][number], enabled: boolean) {
   return {
     toolId: `plugin:${plugin.pluginId}:${tool.name}`,
     name: tool.name,
@@ -237,9 +175,4 @@ function paramSchemaToZod(params: Record<string, PluginParamSchema>) {
   return z.object(shape);
 }
 
-function requireConversationId(context: PluginCallContext): string {
-  if (context.conversationId) {
-    return context.conversationId;
-  }
-  throw new BadRequestException('Skill package tools require a conversation context');
-}
+function requireConversationId(context: PluginCallContext): string { if (context.conversationId) {return context.conversationId;} throw new BadRequestException('Skill package tools require a conversation context'); }

@@ -15,14 +15,7 @@ import { RuntimeHostPluginDispatchService } from './runtime-host-plugin-dispatch
 import { RuntimeHostPluginRuntimeService } from './runtime-host-plugin-runtime.service';
 import { RuntimeHostSubagentRunnerService } from './runtime-host-subagent-runner.service';
 import { RuntimeHostUserContextService } from './runtime-host-user-context.service';
-import {
-  asJsonValue,
-  readJsonObject,
-  readOptionalString,
-  readPluginLlmMessages,
-  readRequiredString,
-  requireContextField,
-} from './runtime-host-values';
+import { asJsonValue, readJsonObject, readOptionalString, readPluginLlmMessages, readRequiredString, requireContextField } from './runtime-host-values';
 
 type RuntimeHostMethod = PluginHostMethod;
 type RuntimeHostCallHandler = (input: RuntimeHostCallInput) => JsonValue | Promise<JsonValue>;
@@ -39,26 +32,11 @@ interface RuntimeHostCallInput {
 export class RuntimeHostService implements OnModuleInit {
   private readonly callHandlers: Record<RuntimeHostMethod, RuntimeHostCallHandler>;
 
-  constructor(
-    private readonly pluginBootstrapService: PluginBootstrapService,
-    private readonly automationService: AutomationService,
-    private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService,
-    private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService,
-    private readonly aiModelExecutionService: AiModelExecutionService,
-    private readonly aiManagementService: AiManagementService,
-    private readonly runtimeHostKnowledgeService: RuntimeHostKnowledgeService,
-    private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService,
-    private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService,
-    private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService,
-    private readonly runtimeHostUserContextService: RuntimeHostUserContextService,
-    private readonly userService: UserService,
-  ) {
+  constructor(private readonly pluginBootstrapService: PluginBootstrapService, private readonly automationService: AutomationService, private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly aiModelExecutionService: AiModelExecutionService, private readonly aiManagementService: AiManagementService, private readonly runtimeHostKnowledgeService: RuntimeHostKnowledgeService, private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService, private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService, private readonly runtimeHostUserContextService: RuntimeHostUserContextService, private readonly userService: UserService) {
     this.callHandlers = this.buildCallHandlers();
   }
 
-  onModuleInit(): void {
-    this.runtimeHostPluginDispatchService.registerHostCaller((input) => this.call(input));
-  }
+  onModuleInit(): void { this.runtimeHostPluginDispatchService.registerHostCaller((input) => this.call(input)); }
 
   async call(input: {
     context: PluginCallContext;
@@ -71,11 +49,9 @@ export class RuntimeHostService implements OnModuleInit {
     if (!handler) {throw new BadRequestException(`Host API ${input.method} is not implemented in the current server runtime`);}
     const plugin = this.pluginBootstrapService.getPlugin(input.pluginId);
     this.assertHostPermission(plugin, method);
-    if (input.context.conversationId && input.context.activePersonaId) {
-      this.runtimeHostConversationRecordService.rememberConversationActivePersona(input.context.conversationId, input.context.activePersonaId);
-    }
+    if (input.context.conversationId && input.context.activePersonaId) {this.runtimeHostConversationRecordService.rememberConversationActivePersona(input.context.conversationId, input.context.activePersonaId);}
     this.runtimeHostUserContextService.rememberPersonaContext(input.context);
-    return await handler({ ...input, method, plugin });
+    return handler({ ...input, method, plugin });
   }
 
   private assertHostPermission(plugin: RegisteredPluginRecord, method: PluginHostMethod): void {
@@ -89,13 +65,10 @@ export class RuntimeHostService implements OnModuleInit {
     const readConversation = (context: RuntimeHostCallInput['context']) => this.runtimeHostConversationRecordService.requireConversation(readConversationId(context));
     const readPersonaId = (params: RuntimeHostCallInput['params']) => readRequiredString(params, 'personaId');
     const readUserId = (context: RuntimeHostCallInput['context']) => requireContextField(context, 'userId');
-    const runStoreMutation = (
-      surface: 'state' | 'storage',
-      action: 'deleteStoreValue' | 'getStoreValue' | 'listStoreValues' | 'setStoreValue',
-      input: RuntimeHostCallInput,
-    ) => this.runtimeHostPluginRuntimeService[action](surface, input.pluginId, input.context, input.params);
+    const runStoreMutation = (surface: 'state' | 'storage', action: 'deleteStoreValue' | 'getStoreValue' | 'listStoreValues' | 'setStoreValue', input: RuntimeHostCallInput) => this.runtimeHostPluginRuntimeService[action](surface, input.pluginId, input.context, input.params);
+    const createLlmHandler = (method: 'llm.generate' | 'llm.generate-text') => ({ context, params, pluginId }: RuntimeHostCallInput) => this.executeLlmGenerate(pluginId, context, params, method);
 
-    return {
+    const handlers: Record<RuntimeHostMethod, RuntimeHostCallHandler> = {
       'automation.create': ({ context, params }) => this.automationService.create(readUserId(context), params),
       'automation.event.emit': async ({ context, params }) => asJsonValue(await this.automationService.emitEvent(readUserId(context), readRequiredString(params, 'event'))),
       'automation.list': ({ context }) => this.automationService.listByUser(readUserId(context)),
@@ -111,7 +84,7 @@ export class RuntimeHostService implements OnModuleInit {
       'cron.register': ({ params, pluginId }) => this.runtimeHostPluginRuntimeService.registerCronJob(pluginId, params),
       'conversation.get': ({ context }) => this.runtimeHostConversationRecordService.readConversationSummary(readConversationId(context)),
       'conversation.messages.list': ({ context }) => readConversation(context).messages.map((message) => structuredClone(message)),
-      'conversation.session.finish': ({ context, pluginId }) => this.runtimeHostConversationRecordService.finishConversationSession(pluginId, context),
+      'conversation.session.finish': ({ context, pluginId }) => this.runtimeHostConversationRecordService.finishPluginConversationSession(pluginId, readConversationId(context)),
       'conversation.session.get': ({ context, pluginId }) => this.runtimeHostConversationRecordService.getConversationSession(pluginId, context),
       'conversation.session.keep': ({ context, params, pluginId }) => this.runtimeHostConversationRecordService.keepConversationSession(pluginId, context, params),
       'conversation.session.start': ({ context, params, pluginId }) => this.runtimeHostConversationRecordService.startConversationSession(pluginId, context, params),
@@ -119,8 +92,8 @@ export class RuntimeHostService implements OnModuleInit {
       'kb.get': ({ params }) => this.runtimeHostKnowledgeService.getKbEntry(params),
       'kb.list': ({ params }) => this.runtimeHostKnowledgeService.listKbEntries(params),
       'kb.search': ({ params }) => this.runtimeHostKnowledgeService.searchKbEntries(params),
-      'llm.generate': ({ context, params, pluginId }) => this.executeLlmGenerate(pluginId, context, params, 'llm.generate'),
-      'llm.generate-text': ({ context, params, pluginId }) => this.executeLlmGenerate(pluginId, context, params, 'llm.generate-text'),
+      'llm.generate': createLlmHandler('llm.generate'),
+      'llm.generate-text': createLlmHandler('llm.generate-text'),
       'log.list': ({ params, pluginId }) => this.runtimeHostPluginRuntimeService.listPluginLogs(pluginId, params),
       'log.write': ({ params, pluginId }) => this.runtimeHostPluginRuntimeService.writePluginLog(pluginId, params),
       'memory.save': ({ context, params }) => this.runtimeHostUserContextService.saveMemory(context, params),
@@ -155,14 +128,10 @@ export class RuntimeHostService implements OnModuleInit {
         return asJsonValue(await this.userService.findById(readUserId(context)));
       },
     };
+    return handlers;
   }
 
-  private async executeLlmGenerate(
-    pluginId: string,
-    context: RuntimeHostCallInput['context'],
-    params: JsonObject,
-    method: 'llm.generate' | 'llm.generate-text',
-  ): Promise<JsonValue> {
+  private async executeLlmGenerate(pluginId: string, context: RuntimeHostCallInput['context'], params: JsonObject, method: 'llm.generate' | 'llm.generate-text'): Promise<JsonValue> {
     const request = readRuntimeHostLlmRequest({ context, method, params, pluginId });
     const result = await this.aiModelExecutionService.generateText({
       allowFallbackChatModels: true,
@@ -179,10 +148,7 @@ export class RuntimeHostService implements OnModuleInit {
     if (method === 'llm.generate-text') {return { modelId: result.modelId, providerId: result.providerId, text: result.text };}
     return {
       ...(result.finishReason !== undefined ? { finishReason: result.finishReason } : {}),
-      message: {
-        content: result.text,
-        role: 'assistant',
-      },
+      message: { content: result.text, role: 'assistant' },
       modelId: result.modelId,
       providerId: result.providerId,
       text: result.text,

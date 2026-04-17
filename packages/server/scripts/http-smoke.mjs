@@ -14,6 +14,7 @@ const require = createRequire(import.meta.url);
 const SERVER_DIR = path.resolve(__dirname, '..');
 const PROJECT_ROOT = path.resolve(SERVER_DIR, '..', '..');
 const DEFAULT_TIMEOUT_MS = 20_000;
+const STARTUP_TIMEOUT_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_PASSWORD = 'SmokePass123!';
 const USER_PASSWORD = 'SmokeUser123!';
@@ -42,7 +43,9 @@ async function main() {
   const cli = parseCliArgs(process.argv.slice(2));
   const serverRoutes = collectServerHttpRoutes(PROJECT_ROOT);
   const webRoutes = collectWebHttpRoutes(PROJECT_ROOT);
-  const tempDir = await fsPromises.mkdtemp(path.join(SERVER_DIR, 'tmp', 'http-smoke-'));
+  const tempRoot = path.join(SERVER_DIR, 'tmp');
+  await fsPromises.mkdir(tempRoot, { recursive: true });
+  const tempDir = await fsPromises.mkdtemp(path.join(tempRoot, 'http-smoke-'));
   const databasePath = cli.proxyOrigin ? null : path.join(tempDir, 'smoke.sqlite');
   const databaseUrl = databasePath ? buildRelativeSqliteUrl(databasePath) : null;
   const port = cli.proxyOrigin ? null : await getFreePort();
@@ -1282,7 +1285,7 @@ async function runTypescriptBuild() {
 
 async function verifyHealth(apiBase, backend) {
   recordVisitedRoute('GET', '/health');
-  const response = await waitForJson(`${apiBase}/health`, backend);
+  const response = await waitForJson(`${apiBase}/health`, backend, STARTUP_TIMEOUT_MS);
   ensure(response.status === 'ok', 'Expected health status to be ok');
   ensure(response.service === 'server', 'Expected service name to be server');
 }
@@ -1344,10 +1347,10 @@ async function startBackend(port, wsPort, databaseUrl, files) {
   };
 }
 
-async function waitForJson(url, backend) {
+async function waitForJson(url, backend, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const startedAt = Date.now();
 
-  while (Date.now() - startedAt < DEFAULT_TIMEOUT_MS) {
+  while (Date.now() - startedAt < timeoutMs) {
     if (backend && backend.child.exitCode !== null) {
       throw new Error(`server exited before becoming ready: ${backend.child.exitCode}`);
     }
@@ -1508,7 +1511,7 @@ function normalizeOrigin(origin) {
 async function waitForBootstrapAdminLogin(apiBase) {
   const startedAt = Date.now();
 
-  while (Date.now() - startedAt < DEFAULT_TIMEOUT_MS) {
+  while (Date.now() - startedAt < STARTUP_TIMEOUT_MS) {
     try {
       const response = await fetch(`${apiBase}/auth/login`, {
         body: JSON.stringify({

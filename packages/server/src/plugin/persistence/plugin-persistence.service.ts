@@ -1,15 +1,4 @@
-import type {
-  JsonObject,
-  ListPluginEventOptions,
-  PluginEventLevel,
-  PluginEventListResult,
-  PluginEventRecord,
-  PluginConfigSnapshot,
-  PluginGovernanceInfo,
-  PluginManifest,
-  PluginStatus,
-  PluginScopeSettings,
-} from '@garlic-claw/shared';
+import type { JsonObject, ListPluginEventOptions, PluginEventLevel, PluginEventListResult, PluginEventRecord, PluginConfigSnapshot, PluginGovernanceInfo, PluginManifest, PluginStatus, PluginScopeSettings } from '@garlic-claw/shared';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PLUGIN_STATUS } from '../plugin.constants';
 import { createPluginConfigSnapshot } from './plugin-read-model';
@@ -32,12 +21,7 @@ export interface RegisteredPluginRecord {
 type UpsertPluginRecordInput =
   Omit<RegisteredPluginRecord, 'createdAt' | 'status' | 'updatedAt'>
   & Partial<Pick<RegisteredPluginRecord, 'createdAt' | 'status' | 'updatedAt'>>;
-type PluginEventInput = {
-  level: PluginEventLevel;
-  message: string;
-  metadata?: JsonObject;
-  type: string;
-};
+type PluginEventInput = { level: PluginEventLevel; message: string; metadata?: JsonObject; type: string };
 
 @Injectable()
 export class PluginPersistenceService {
@@ -45,46 +29,28 @@ export class PluginPersistenceService {
   private readonly events = new Map<string, PluginEventRecord[]>();
   private readonly records = new Map<string, RegisteredPluginRecord>();
 
-  findPlugin(pluginId: string): RegisteredPluginRecord | null {
-    return this.findRecord(pluginId);
-  }
+  findPlugin(pluginId: string): RegisteredPluginRecord | null { const record = this.records.get(pluginId); return record ? cloneRegisteredPluginRecord(record) : null; }
 
   getPluginOrThrow(pluginId: string): RegisteredPluginRecord {
-    return this.readRecord(pluginId);
+    return cloneRegisteredPluginRecord(this.readMutableRecord(pluginId));
   }
 
-  getPluginConfig(pluginId: string): PluginConfigSnapshot {
-    return createPluginConfigSnapshot(this.readRecord(pluginId));
-  }
-
-  getPluginScope(pluginId: string): PluginScopeSettings {
-    const record = this.readRecord(pluginId);
-    return {
-      defaultEnabled: record.defaultEnabled,
-      conversations: { ...(record.conversationScopes ?? {}) },
-    };
-  }
+  getPluginConfig(pluginId: string): PluginConfigSnapshot { return createPluginConfigSnapshot(this.readMutableRecord(pluginId)); }
+  getPluginScope(pluginId: string): PluginScopeSettings { return toPluginScopeSettings(this.readMutableRecord(pluginId)); }
 
   listPluginEvents(pluginId: string, options: ListPluginEventOptions = {}): PluginEventListResult {
     const limit = options.limit ?? 50;
     const filtered = [...(this.events.get(pluginId) ?? [])]
-      .slice()
       .reverse()
       .filter((event) => !options.level || event.level === options.level)
       .filter((event) => !options.type || event.type === options.type)
       .filter((event) => !options.keyword || pluginEventMatchesKeyword(event, options.keyword))
       .filter((event) => !options.cursor || event.id !== options.cursor);
     const items = filtered.slice(0, limit);
-
-    return {
-      items,
-      nextCursor: filtered.length > limit ? items.at(-1)?.id ?? null : null,
-    };
+    return { items, nextCursor: filtered.length > limit ? items.at(-1)?.id ?? null : null };
   }
 
-  listPlugins(): RegisteredPluginRecord[] {
-    return [...this.records.values()].map(cloneRegisteredPluginRecord);
-  }
+  listPlugins(): RegisteredPluginRecord[] { return [...this.records.values()].map(cloneRegisteredPluginRecord); }
 
   recordPluginEvent(pluginId: string, input: PluginEventInput): PluginEventRecord {
     const record: PluginEventRecord = {
@@ -133,7 +99,7 @@ export class PluginPersistenceService {
 
   upsertPlugin(record: UpsertPluginRecordInput): RegisteredPluginRecord {
     const now = new Date().toISOString();
-    const existing = this.findRecord(record.pluginId);
+    const existing = this.records.get(record.pluginId);
     return this.writeRecord({
       ...record,
       configValues: record.configValues ?? {},
@@ -147,12 +113,11 @@ export class PluginPersistenceService {
   updatePluginConfig(pluginId: string, values: JsonObject): PluginConfigSnapshot {
     const current = this.readMutableRecord(pluginId);
     validatePluginConfig(current.manifest, values);
-    this.writeRecord({
+    return createPluginConfigSnapshot(this.writeRecord({
       ...current,
       configValues: { ...values },
       updatedAt: new Date().toISOString(),
-    });
-    return this.getPluginConfig(pluginId);
+    }));
   }
 
   updatePluginScope(
@@ -160,7 +125,7 @@ export class PluginPersistenceService {
     patch: Partial<PluginScopeSettings>,
   ): PluginScopeSettings {
     const current = this.readMutableRecord(pluginId);
-    const updated = this.writeRecord({
+    return toPluginScopeSettings(this.writeRecord({
       ...current,
       defaultEnabled: typeof patch.defaultEnabled === 'boolean'
         ? patch.defaultEnabled
@@ -169,33 +134,10 @@ export class PluginPersistenceService {
         ? { ...patch.conversations }
         : { ...(current.conversationScopes ?? {}) },
       updatedAt: new Date().toISOString(),
-    });
-    return {
-      defaultEnabled: updated.defaultEnabled,
-      conversations: { ...(updated.conversationScopes ?? {}) },
-    };
+    }));
   }
 
-  private findRecord(pluginId: string): RegisteredPluginRecord | null {
-    const record = this.records.get(pluginId);
-    return record ? cloneRegisteredPluginRecord(record) : null;
-  }
-
-  private readRecord(pluginId: string): RegisteredPluginRecord {
-    const record = this.records.get(pluginId);
-    if (!record) {
-      throw new NotFoundException(`Plugin not found: ${pluginId}`);
-    }
-    return cloneRegisteredPluginRecord(record);
-  }
-
-  private readMutableRecord(pluginId: string): RegisteredPluginRecord {
-    const record = this.records.get(pluginId);
-    if (!record) {
-      throw new NotFoundException(`Plugin not found: ${pluginId}`);
-    }
-    return record;
-  }
+  private readMutableRecord(pluginId: string): RegisteredPluginRecord { const record = this.records.get(pluginId); if (!record) {throw new NotFoundException(`Plugin not found: ${pluginId}`);} return record; }
 
   private writeRecord(record: RegisteredPluginRecord): RegisteredPluginRecord {
     const nextRecord = cloneRegisteredPluginRecord(record);
@@ -208,20 +150,18 @@ export function cloneRegisteredPluginRecord(record: RegisteredPluginRecord): Reg
   return structuredClone(record);
 }
 
+function toPluginScopeSettings(record: RegisteredPluginRecord): PluginScopeSettings {
+  return { defaultEnabled: record.defaultEnabled, conversations: { ...(record.conversationScopes ?? {}) } };
+}
+
 export function validatePluginConfig(manifest: PluginManifest, values: JsonObject): void {
   const schema = manifest.config;
-  if (!schema) {
-    throw new BadRequestException(`Plugin ${manifest.id} 未声明配置 schema`);
-  }
+  if (!schema) {throw new BadRequestException(`Plugin ${manifest.id} 未声明配置 schema`);}
   const fields = new Map(schema.fields.map((field) => [field.key, field]));
   for (const [key, value] of Object.entries(values)) {
     const field = fields.get(key);
-    if (!field) {
-      throw new BadRequestException(`未知配置字段: ${key}`);
-    }
-    if (!matchesConfigFieldType(field.type, value)) {
-      throw new BadRequestException(`配置字段 ${key} 类型不合法`);
-    }
+    if (!field) {throw new BadRequestException(`未知配置字段: ${key}`);}
+    if (!matchesConfigFieldType(field.type, value)) {throw new BadRequestException(`配置字段 ${key} 类型不合法`);}
   }
   for (const field of schema.fields) {
     if (!field.required) {continue;}
@@ -252,7 +192,5 @@ function matchesConfigFieldType(
 
 function pluginEventMatchesKeyword(event: PluginEventRecord, keyword: string): boolean {
   const normalizedKeyword = keyword.toLowerCase();
-  return event.message.toLowerCase().includes(normalizedKeyword)
-    || event.type.toLowerCase().includes(normalizedKeyword)
-    || JSON.stringify(event.metadata ?? {}).toLowerCase().includes(normalizedKeyword);
+  return event.message.toLowerCase().includes(normalizedKeyword) || event.type.toLowerCase().includes(normalizedKeyword) || JSON.stringify(event.metadata ?? {}).toLowerCase().includes(normalizedKeyword);
 }
