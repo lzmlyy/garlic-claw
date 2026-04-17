@@ -15,14 +15,15 @@ import globals from 'globals'
 
 const typescriptFiles = [
   'packages/*/src/**/*.ts',
+  'packages/*/tests/**/*.ts',
   'packages/plugins/*/src/**/*.ts',
 ]
 
 const testFiles = [
-  'packages/*/src/**/*.spec.ts',
-  'packages/*/src/**/*.test.ts',
-  'packages/*/test/**/*.ts',
-  'packages/plugins/*/src/**/*.spec.ts',
+  'packages/*/tests/**/*.spec.ts',
+  'packages/*/tests/**/*.test.ts',
+  'packages/*/tests/**/*.ts',
+  'packages/plugins/*/tests/**/*.spec.ts',
 ]
 
 export default [

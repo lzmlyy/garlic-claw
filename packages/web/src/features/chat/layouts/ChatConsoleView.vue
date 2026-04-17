@@ -17,6 +17,7 @@
           :key="conversation.id"
           type="button"
           class="conversation-item"
+          :data-id="conversation.id"
           :class="{ active: conversation.id === chat.currentConversationId }"
           @click="chat.selectConversation(conversation.id)"
         >

@@ -10,7 +10,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "smoke:browser": "node tests/smoke/browser-smoke.mjs"
   },
   "dependencies": {
     "@garlic-claw/shared": "*",
@@ -27,6 +28,7 @@
     "@vitejs/plugin-vue": "^6.0.0",
     "@vue/test-utils": "^2.4.6",
     "jsdom": "^26.1.0",
+    "playwright": "^1.59.1",
     "typescript": "~5.7.0",
     "vite": "^7.3.1",
     "vitest": "^2.1.9",

@@ -86,6 +86,9 @@ packages/: server(NestJS) | web(Vue) | shared | plugin-sdk | plugins
 
 - NestJS 使用内置异常；Prisma 错误用 `try-catch` 转换为对应 HTTP 异常
 - 单元测试命名为 `*.spec.ts`，E2E 测试命名为 `*.e2e-spec.ts`
+- 各包与工具的测试入口、测试夹具、测试 mock、测试 helper 一律放在各自的 `tests/` 目录下分门别类；不要把测试文件继续放在 `src/`、`test/` 或业务文件旁边
+- 上述规则同样适用于 `tools/` 下的 fixture 工作区；示例仓库里的测试文件也必须放在各自 `tests/` 目录，不要因为是 fixture 就继续留在 `src/`
+- 浏览器 smoke / E2E / 集成测试如果会创建 provider、conversation、automation、plugin 配置、聊天记录或其他持久数据，必须在 `finally` 中清理；即使断言失败也不能残留测试副作用
 - 在 WSL 下执行测试、脚本或长输出命令时，不直接依赖终端串流输出；统一把 stdout/stderr 以 UTF-8 写入文件，再从文件读取和核对
 - 在 WSL 下执行测试、脚本或冒烟前，若工作目录位于 `/mnt/*` 挂载路径，先把当前工作树同步到 WSL 内部文件系统后再执行；如果当前目录本来就在 Linux / WSL 内部文件系统，则忽略这一步
 - 如果需要从 PowerShell 调用 WSL，也按同一规则处理：先重定向到文件，再读取 UTF-8 文件内容，不直接根据控制台输出下结论
