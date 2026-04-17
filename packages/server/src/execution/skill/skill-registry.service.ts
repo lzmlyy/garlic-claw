@@ -2,13 +2,7 @@ import * as fs from 'node:fs';
 import * as fsPromises from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type {
-  SkillAssetKind,
-  SkillAssetSummary,
-  SkillDetail,
-  SkillGovernanceInfo,
-  UpdateSkillGovernancePayload,
-} from '@garlic-claw/shared';
+import type { SkillAssetKind, SkillAssetSummary, SkillDetail, SkillGovernanceInfo, UpdateSkillGovernancePayload } from '@garlic-claw/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import YAML from 'yaml';
 
@@ -22,9 +16,7 @@ export interface SkillDiscoveryOptions {
   userSkillsRoot?: string;
 }
 
-const DEFAULT_SKILL_GOVERNANCE: SkillGovernanceInfo = {
-  trustLevel: 'prompt-only',
-};
+const DEFAULT_SKILL_GOVERNANCE: SkillGovernanceInfo = { trustLevel: 'prompt-only' };
 
 @Injectable()
 export class SkillRegistryService {
@@ -51,46 +43,25 @@ export class SkillRegistryService {
     return this.cachedSkills;
   }
 
-  async updateSkillGovernance(
-    skillId: string,
-    patch: UpdateSkillGovernancePayload,
-  ): Promise<SkillDetail> {
+  async updateSkillGovernance(skillId: string, patch: UpdateSkillGovernancePayload): Promise<SkillDetail> {
     const skill = (await this.listSkills()).find((entry) => entry.id === skillId);
-    if (!skill) {
-      throw new NotFoundException(`Unknown skill: ${skillId}`);
-    }
-
-    const nextGovernance: SkillGovernanceInfo = {
-      trustLevel: patch.trustLevel ?? skill.governance.trustLevel,
-    };
+    if (!skill) {throw new NotFoundException(`Unknown skill: ${skillId}`);}
+    const nextGovernance: SkillGovernanceInfo = { trustLevel: patch.trustLevel ?? skill.governance.trustLevel };
     this.governance.skills[skillId] = nextGovernance;
     writeSkillGovernanceFile(this.governancePath, this.governance);
     this.cachedSkills = null;
-
-    return {
-      ...skill,
-      governance: nextGovernance,
-    };
+    return { ...skill, governance: nextGovernance };
   }
 }
 
 function resolveProjectSkillsRoot(): string {
-  for (const candidate of [
-    path.resolve(__dirname, '..', '..', '..', '..'),
-    process.cwd(),
-  ]) {
-    if (fs.existsSync(path.join(candidate, 'package.json'))) {
-      return path.join(candidate, 'skills');
-    }
-  }
+  for (const candidate of [path.resolve(__dirname, '..', '..', '..', '..'), process.cwd()]) { if (fs.existsSync(path.join(candidate, 'package.json'))) {return path.join(candidate, 'skills');} }
   return path.join(process.cwd(), 'skills');
 }
 
 function readSkillGovernanceFile(filePath: string): SkillGovernanceFile {
   try {
-    if (!fs.existsSync(filePath)) {
-      return { skills: {} };
-    }
+    if (!fs.existsSync(filePath)) {return { skills: {} };}
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as SkillGovernanceFile;
     return parsed && typeof parsed === 'object' && parsed.skills ? parsed : { skills: {} };
   } catch {
@@ -108,11 +79,7 @@ async function readSkillSource(
   root: string,
 ): Promise<SkillDetail[]> {
   const filePaths = await walkFiles(root);
-  return Promise.all(
-    filePaths
-      .filter((filePath) => path.basename(filePath) === 'SKILL.md')
-      .map((filePath) => buildSkillDetail(kind, root, filePath, filePaths)),
-  );
+  return Promise.all(filePaths.filter((filePath) => path.basename(filePath) === 'SKILL.md').map((filePath) => buildSkillDetail(kind, root, filePath, filePaths)));
 }
 
 async function buildSkillDetail(
@@ -125,9 +92,7 @@ async function buildSkillDetail(
   const skillPath = entryPath.replace(/\/SKILL\.md$/i, '');
   const parsed = await parseSkillFile(filePath);
   const tools = readUnknownObject(parsed.frontmatter.tools);
-  const name = typeof parsed.frontmatter.name === 'string'
-    ? parsed.frontmatter.name.trim()
-    : '';
+  const name = typeof parsed.frontmatter.name === 'string' ? parsed.frontmatter.name.trim() : '';
 
   return {
     id: `${kind}/${skillPath || 'root'}`,
@@ -165,14 +130,9 @@ async function parseSkillFile(filePath: string): Promise<{
 }> {
   const normalized = (await fsPromises.readFile(filePath, 'utf8')).replace(/\r\n/g, '\n');
   const fallback = { frontmatter: {}, content: normalized.trim() };
-  if (!normalized.startsWith('---\n')) {
-    return fallback;
-  }
-
+  if (!normalized.startsWith('---\n')) {return fallback;}
   const frontmatterEnd = normalized.indexOf('\n---\n', 4);
-  if (frontmatterEnd === -1) {
-    return fallback;
-  }
+  if (frontmatterEnd === -1) {return fallback;}
 
   try {
     return {
@@ -185,19 +145,12 @@ async function parseSkillFile(filePath: string): Promise<{
 }
 
 async function walkFiles(root: string): Promise<string[]> {
-  if (!fs.existsSync(root)) {
-    return [];
-  }
-
+  if (!fs.existsSync(root)) {return [];}
   const entries = await fsPromises.readdir(root, { withFileTypes: true });
   const files: string[] = [];
   for (const entry of entries) {
     const absolutePath = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await walkFiles(absolutePath));
-    } else {
-      files.push(absolutePath);
-    }
+    if (entry.isDirectory()) {files.push(...await walkFiles(absolutePath));} else {files.push(absolutePath);}
   }
   return files;
 }

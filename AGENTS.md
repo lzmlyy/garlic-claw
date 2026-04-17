@@ -47,6 +47,8 @@
 
 - Python 使用 `mypy` 和 `ruff`
 - Node 使用 `lint` 和 `typecheck`
+- 修改完成代码后、继续后续工作前，必须实际执行项目约定的全部冒烟测试；不能只看静态检查或局部单测
+- 提交前必须再次实际跑完全部冒烟测试，直到全部通过后才能继续；只要有一项失败，就先修复，不能跳过
 - 提交前先检查，不提交半成品
 - 提交 git 只是保存阶段进度；如果当前计划未完成，提交后必须继续推进直到完成
 
@@ -85,8 +87,36 @@ packages/: server(NestJS) | web(Vue) | shared | plugin-sdk | plugins
 - NestJS 使用内置异常；Prisma 错误用 `try-catch` 转换为对应 HTTP 异常
 - 单元测试命名为 `*.spec.ts`，E2E 测试命名为 `*.e2e-spec.ts`
 - 在 WSL 下执行测试、脚本或长输出命令时，不直接依赖终端串流输出；统一把 stdout/stderr 以 UTF-8 写入文件，再从文件读取和核对
+- 在 WSL 下执行测试、脚本或冒烟前，若工作目录位于 `/mnt/*` 挂载路径，先把当前工作树同步到 WSL 内部文件系统后再执行；如果当前目录本来就在 Linux / WSL 内部文件系统，则忽略这一步
 - 如果需要从 PowerShell 调用 WSL，也按同一规则处理：先重定向到文件，再读取 UTF-8 文件内容，不直接根据控制台输出下结论
 - WSL 测试完成后，回复里应基于输出文件给出结论；必要时同时保留失败命令与输出文件路径，方便复查
+
+## 跨平台结论
+
+- 当前已验证可工作的 fresh 冒烟基线：
+  - Windows：root `npm run smoke:server`
+  - WSL：先同步到 WSL 内部目录，再执行 `other/test-logs/2026-04-17-smoke/wsl-internal-smoke.sh`
+- 当前已验证 WSL 默认 Node 需对齐到 `v24.9.0`；不能只在项目内临时切版本，必须保证 WSL shell 默认 `node` 就是该版本
+- WSL 必须使用其内部自行安装的 `node / npm / npx / 全局工具`；不要挂载或复用 Windows 侧 Node 安装、`global_bin` 或 `/.local/bin` 映射
+- 跨平台验证尽量减少跨系统交互；能在各自系统内闭环完成的安装、测试、冒烟，就不要混用另一侧运行时
+- 当前机器上，WSL 使用 `networkingMode=nat` 比 `mirrored` 稳定；如无新的强证据，不要擅自切回 `mirrored`
+- WSL 内部安装依赖时，优先直连 registry；只有直连不可用且宿主代理确实可达时，才回退代理
+- 程序代码、脚本逻辑、仓库配置里都不允许硬编码绝对路径；跨平台 smoke 使用的 SQLite 路径也应保持相对 `file:` 写法
+- `packages/server/scripts/http-smoke.mjs` 当前已验证需要：
+  - 先确保 `packages/server/tmp` 存在
+  - 启动阶段等待上限单独放宽，避免 Windows 冷启动误判
+
+## WSL 网络判定
+
+- 若 WSL 内出现以下任一现象，不要继续根据失败测试下结论，先判定为环境故障：
+  - `ip route` 为空
+  - `/etc/resolv.conf` 缺失
+  - `CreateInstance/CreateVm/ConfigureNetworking/0x8007054f`
+  - 代理或 registry 请求直接报 `ECONNREFUSED` / `Could not resolve host`
+- 遇到上述情况时，先做：
+  - `wsl --shutdown`
+  - 重新进入 WSL 后检查 `ip route`、`/etc/resolv.conf`、registry 连通性
+  - 只有网络恢复后，才能重新执行 WSL 内部目录测试并采信结果
 
 ## 进程管理
 

@@ -19,23 +19,15 @@ import type { StoredAiProviderConfig } from './ai-management.types';
 export class AiManagementService {
   private readonly models = new Map<string, AiModelConfig>();
 
-  constructor(
-    private readonly aiProviderSettingsService: AiProviderSettingsService,
-  ) {}
+  constructor(private readonly aiProviderSettingsService: AiProviderSettingsService) {}
 
-  listProviderCatalog() {
-    return this.aiProviderSettingsService.listProviderCatalog();
-  }
+  listProviderCatalog() { return this.aiProviderSettingsService.listProviderCatalog(); }
 
-  listProviders() {
-    return this.aiProviderSettingsService.listProviders();
-  }
+  listProviders() { return this.aiProviderSettingsService.listProviders(); }
 
   getDefaultProviderSelection(): { modelId: string | null; providerId: string | null; source: 'default' } {
     const provider = this.listProviders()[0];
-    return !provider?.defaultModel
-      ? { modelId: null, providerId: null, source: 'default' }
-      : { modelId: provider.defaultModel, providerId: provider.id, source: 'default' };
+    return !provider?.defaultModel ? { modelId: null, providerId: null, source: 'default' } : { modelId: provider.defaultModel, providerId: provider.id, source: 'default' };
   }
 
   getProviderSummary(providerId: string): AiProviderSummary {
@@ -55,13 +47,9 @@ export class AiManagementService {
     };
   }
 
-  getProvider(providerId: string): StoredAiProviderConfig {
-    return this.aiProviderSettingsService.getProvider(providerId);
-  }
+  getProvider(providerId: string): StoredAiProviderConfig { return this.aiProviderSettingsService.getProvider(providerId); }
 
-  upsertProvider(providerId: string, input: Omit<StoredAiProviderConfig, 'id'>): StoredAiProviderConfig {
-    return this.aiProviderSettingsService.upsertProvider(providerId, input);
-  }
+  upsertProvider(providerId: string, input: Omit<StoredAiProviderConfig, 'id'>): StoredAiProviderConfig { return this.aiProviderSettingsService.upsertProvider(providerId, input); }
 
   deleteProvider(providerId: string): void {
     this.aiProviderSettingsService.removeProvider(providerId);
@@ -72,25 +60,16 @@ export class AiManagementService {
     }
   }
 
-  listModels(providerId: string): AiModelConfig[] {
-    const provider = this.requireProvider(providerId);
-    return provider.models.map((modelId) => this.getProviderModel(providerId, modelId));
-  }
+  listModels(providerId: string): AiModelConfig[] { return this.getProvider(providerId).models.map((modelId) => this.getProviderModel(providerId, modelId)); }
 
   getProviderModel(providerId: string, modelId: string): AiModelConfig {
-    const provider = this.requireProvider(providerId);
-    if (!provider.models.includes(modelId)) {
-      throw new NotFoundException(`Model "${modelId}" is not configured for provider "${providerId}"`);
-    }
+    const provider = this.getProvider(providerId);
+    if (!provider.models.includes(modelId)) {throw new NotFoundException(`Model "${modelId}" is not configured for provider "${providerId}"`);}
 
     const key = buildAiModelKey(providerId, modelId);
-    const existing = this.models.get(key);
-    if (existing) {
-      return existing;
-    }
-    const created = createAiModelConfig(PROVIDER_CATALOG, provider, modelId);
-    this.models.set(key, created);
-    return created;
+    const existing = this.models.get(key) ?? createAiModelConfig(PROVIDER_CATALOG, provider, modelId);
+    this.models.set(key, existing);
+    return existing;
   }
 
   upsertModel(
@@ -98,14 +77,10 @@ export class AiManagementService {
     modelId: string,
     input: { name?: string; capabilities?: ModelCapabilitiesUpdate } = {},
   ): AiModelConfig {
-    const provider = this.requireProvider(providerId);
-    if (!provider.models.includes(modelId)) {
-      provider.models.push(modelId);
-    }
-    if (!provider.defaultModel) {
-      provider.defaultModel = modelId;
-    }
-    this.aiProviderSettingsService.upsertProvider(providerId, provider);
+    this.updateProvider(providerId, (provider) => {
+      if (!provider.models.includes(modelId)) {provider.models.push(modelId);}
+      if (!provider.defaultModel) {provider.defaultModel = modelId;}
+    });
 
     const nextModel = {
       ...this.getProviderModel(providerId, modelId),
@@ -119,20 +94,16 @@ export class AiManagementService {
   }
 
   deleteModel(providerId: string, modelId: string): void {
-    const provider = this.requireProvider(providerId);
-    provider.models = provider.models.filter((entry) => entry !== modelId);
-    if (provider.defaultModel === modelId) {
-      provider.defaultModel = provider.models[0];
-    }
+    this.updateProvider(providerId, (provider) => {
+      provider.models = provider.models.filter((entry) => entry !== modelId);
+      if (provider.defaultModel === modelId) {provider.defaultModel = provider.models[0];}
+    });
     this.models.delete(buildAiModelKey(providerId, modelId));
-    this.aiProviderSettingsService.upsertProvider(providerId, provider);
   }
 
   setDefaultModel(providerId: string, modelId: string): StoredAiProviderConfig {
     this.getProviderModel(providerId, modelId);
-    const provider = this.requireProvider(providerId);
-    provider.defaultModel = modelId;
-    return this.aiProviderSettingsService.upsertProvider(providerId, provider);
+    return this.updateProvider(providerId, (provider) => { provider.defaultModel = modelId; });
   }
 
   updateModelCapabilities(
@@ -147,22 +118,9 @@ export class AiManagementService {
   }
 
   async discoverModels(providerId: string) {
-    return this.discoverProviderModels(this.requireProvider(providerId));
-  }
-
-  async testConnection(providerId: string, modelId?: string) {
-    return this.testProviderConnection(this.requireProvider(providerId), modelId);
-  }
-
-  private requireProvider(providerId: string): StoredAiProviderConfig {
-    return this.aiProviderSettingsService.getProvider(providerId);
-  }
-
-  private async discoverProviderModels(provider: StoredAiProviderConfig): Promise<DiscoveredAiModel[]> {
-    if (!provider.baseUrl || !provider.apiKey) {
-      return provider.models.map((modelId) => ({ id: modelId, name: modelId }));
-    }
-
+    const provider = this.getProvider(providerId);
+    const fallbackModels = provider.models.map(toDiscoveredModel);
+    if (!provider.baseUrl || !provider.apiKey) {return fallbackModels;}
     try {
       const response = await fetch(`${provider.baseUrl.replace(/\/+$/, '')}/models`, {
         headers: buildAiProviderHeaders(PROVIDER_CATALOG, provider),
@@ -173,37 +131,16 @@ export class AiManagementService {
       }
       const payload = await response.json() as Record<string, unknown>;
       const models = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : [];
-      const discovered = models
-        .map((entry) => {
-          if (!entry || typeof entry !== 'object') {
-            return null;
-          }
-          const record = entry as Record<string, unknown>;
-          const id = [record.id, record.name, record.model].find((value) => typeof value === 'string') as string | undefined;
-          if (!id) {
-            return null;
-          }
-          return {
-            id: id.replace(/^models\//, ''),
-            name: (typeof record.display_name === 'string' ? record.display_name : id).replace(/^models\//, ''),
-          };
-        })
-        .filter((entry): entry is DiscoveredAiModel => Boolean(entry));
-      return discovered.length > 0
-        ? discovered
-        : provider.models.map((modelId) => ({ id: modelId, name: modelId }));
+      const discovered = models.map(readDiscoveredModel).filter((entry): entry is DiscoveredAiModel => Boolean(entry));
+      return discovered.length > 0 ? discovered : fallbackModels;
     } catch (error) {
-      if (error instanceof BadGatewayException) {
-        throw error;
-      }
+      if (error instanceof BadGatewayException) {throw error;}
       throw new BadGatewayException(`Failed to discover models for provider "${provider.id}": ${String(error)}`);
     }
   }
 
-  private testProviderConnection(
-    provider: StoredAiProviderConfig,
-    modelId?: string,
-  ): { ok: true; providerId: string; modelId: string; text: string } {
+  async testConnection(providerId: string, modelId?: string) {
+    const provider = this.getProvider(providerId);
     const resolvedModelId = modelId ?? provider.defaultModel ?? provider.models[0];
     if (!resolvedModelId) {
       throw new BadRequestException(`Provider "${provider.id}" does not have any testable model`);
@@ -215,4 +152,21 @@ export class AiManagementService {
       text: 'OK',
     };
   }
+
+  private updateProvider(providerId: string, mutate: (provider: StoredAiProviderConfig) => void): StoredAiProviderConfig {
+    const provider = this.getProvider(providerId);
+    mutate(provider);
+    return this.aiProviderSettingsService.upsertProvider(providerId, provider);
+  }
+}
+
+function readDiscoveredModel(entry: unknown): DiscoveredAiModel | null {
+  if (!entry || typeof entry !== 'object') {return null;}
+  const record = entry as Record<string, unknown>;
+  const id = [record.id, record.name, record.model].find((value) => typeof value === 'string') as string | undefined;
+  return id ? { id: id.replace(/^models\//, ''), name: (typeof record.display_name === 'string' ? record.display_name : id).replace(/^models\//, '') } : null;
+}
+
+function toDiscoveredModel(modelId: string): DiscoveredAiModel {
+  return { id: modelId, name: modelId };
 }

@@ -2,28 +2,13 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type {
-  JsonObject,
-  JsonValue,
-  PluginActionName,
-  PluginParamSchema,
-  SkillAssetReadResult,
-  SkillAssetRef,
-  SkillDetail,
-  SkillTrustLevel,
-} from '@garlic-claw/shared';
+import type { JsonObject, JsonValue, PluginActionName, PluginParamSchema, SkillAssetReadResult, SkillAssetRef, SkillDetail, SkillTrustLevel } from '@garlic-claw/shared';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { SkillDiscoveryOptions } from './skill-registry.service';
 
 export type SkillPackageToolName = 'asset.list' | 'asset.read' | 'script.run';
 
-export type SkillPackageToolDefinition = {
-  name: SkillPackageToolName;
-  callName: string;
-  description: string;
-  parameters: Record<string, PluginParamSchema>;
-  requires: 'read' | 'run';
-};
+export type SkillPackageToolDefinition = { name: SkillPackageToolName; callName: string; description: string; parameters: Record<string, PluginParamSchema>; requires: 'read' | 'run' };
 
 export const SKILL_SOURCE_ID = 'active-packages';
 export const SKILL_SOURCE_LABEL = 'Active Skill Packages';
@@ -62,12 +47,7 @@ export function describeSkillPackageToolAccess(
       : enabled && activeSkills.some((skill) => hasSkillAssetAccess(skill, 'local-script', 'executable')));
 }
 
-export async function runSkillPackageTool(input: {
-  activeSkills: readonly SkillDetail[];
-  discoveryOptions: SkillDiscoveryOptions;
-  params: JsonObject;
-  toolName: SkillPackageToolName;
-}): Promise<JsonValue> {
+export async function runSkillPackageTool(input: { activeSkills: readonly SkillDetail[]; discoveryOptions: SkillDiscoveryOptions; params: JsonObject; toolName: SkillPackageToolName }): Promise<JsonValue> {
   switch (input.toolName) {
     case 'asset.list':
       return listReadableSkillAssets(
@@ -119,11 +99,7 @@ function listReadableSkillAssets(skills: readonly SkillDetail[], skillId?: strin
     })));
 }
 
-function requireSkillPackageString(params: Record<string, unknown>, key: string): string {
-  const value = readSkillPackageParam(params, key, 'string');
-  if (!value) {throw new BadRequestException(`${key} is required`);}
-  return value;
-}
+function requireSkillPackageString(params: Record<string, unknown>, key: string): string { const value = readSkillPackageParam(params, key, 'string'); if (!value) {throw new BadRequestException(`${key} is required`);} return value; }
 
 type SkillPackageParamType = 'string' | 'number' | 'string[]';
 type SkillPackageParamValue<T extends SkillPackageParamType> =
@@ -131,11 +107,7 @@ type SkillPackageParamValue<T extends SkillPackageParamType> =
     : T extends 'number' ? number
       : string[];
 
-function readSkillPackageParam<T extends SkillPackageParamType>(
-  params: Record<string, unknown>,
-  key: string,
-  type: T,
-): SkillPackageParamValue<T> | null {
+function readSkillPackageParam<T extends SkillPackageParamType>(params: Record<string, unknown>, key: string, type: T): SkillPackageParamValue<T> | null {
   const value = params[key];
   if (value === undefined || value === null) {return null;}
   if (type === 'string' && typeof value === 'string') {return value as SkillPackageParamValue<T>;}
@@ -144,12 +116,7 @@ function readSkillPackageParam<T extends SkillPackageParamType>(
   throw new BadRequestException(`${key} must be ${type === 'string[]' ? 'an array' : `a ${type}`}`);
 }
 
-async function readSkillTextAsset(input: {
-  assetPath: string;
-  discoveryOptions: SkillDiscoveryOptions;
-  maxChars?: number;
-  skill: SkillDetail;
-}): Promise<SkillAssetReadResult> {
+async function readSkillTextAsset(input: { assetPath: string; discoveryOptions: SkillDiscoveryOptions; maxChars?: number; skill: SkillDetail }): Promise<SkillAssetReadResult> {
   const { asset, absolutePath } = resolveKnownSkillAsset(input.skill, input.assetPath, input.discoveryOptions);
   if (!asset.textReadable) {throw new BadRequestException(`Asset is not text-readable: ${input.assetPath}`);}
 
@@ -159,13 +126,7 @@ async function readSkillTextAsset(input: {
   return { content: normalized.slice(0, maxChars), path: asset.path, skillId: input.skill.id, truncated: normalized.length > maxChars };
 }
 
-async function runSkillScript(input: {
-  args?: string[];
-  assetPath: string;
-  discoveryOptions: SkillDiscoveryOptions;
-  skill: SkillDetail;
-  timeoutMs?: number;
-}): Promise<JsonValue> {
+async function runSkillScript(input: { args?: string[]; assetPath: string; discoveryOptions: SkillDiscoveryOptions; skill: SkillDetail; timeoutMs?: number }): Promise<JsonValue> {
   const { asset, absolutePath, skillRoot } = resolveKnownSkillAsset(input.skill, input.assetPath, input.discoveryOptions);
   if (!asset.executable) {throw new BadRequestException(`Asset is not executable: ${input.assetPath}`);}
 
@@ -206,11 +167,7 @@ async function runSkillScript(input: {
   });
 }
 
-function resolveKnownSkillAsset(
-  skill: SkillDetail,
-  assetPath: string,
-  discoveryOptions: SkillDiscoveryOptions,
-): { asset: SkillDetail['assets'][number]; absolutePath: string; skillRoot: string } {
+function resolveKnownSkillAsset(skill: SkillDetail, assetPath: string, discoveryOptions: SkillDiscoveryOptions): { asset: SkillDetail['assets'][number]; absolutePath: string; skillRoot: string } {
   const normalizedPath = normalizeRelativeSkillAssetPath(assetPath);
   const asset = skill.assets.find((entry) => entry.path === normalizedPath);
   if (!asset) {throw new BadRequestException(`Unknown skill asset: ${assetPath}`);}
@@ -221,10 +178,7 @@ function resolveKnownSkillAsset(
   return { absolutePath, asset, skillRoot };
 }
 
-function resolveSkillRootPath(skill: Pick<SkillDetail, 'sourceKind' | 'entryPath'>, discoveryOptions: SkillDiscoveryOptions): string {
-  const sourceRoot = skill.sourceKind === 'project' ? (discoveryOptions.projectSkillsRoot ?? path.join(process.cwd(), 'skills')) : (discoveryOptions.userSkillsRoot ?? path.join(os.homedir(), '.garlic-claw', 'skills'));
-  return path.join(sourceRoot, path.dirname(skill.entryPath));
-}
+function resolveSkillRootPath(skill: Pick<SkillDetail, 'sourceKind' | 'entryPath'>, discoveryOptions: SkillDiscoveryOptions): string { const sourceRoot = skill.sourceKind === 'project' ? (discoveryOptions.projectSkillsRoot ?? path.join(process.cwd(), 'skills')) : (discoveryOptions.userSkillsRoot ?? path.join(os.homedir(), '.garlic-claw', 'skills')); return path.join(sourceRoot, path.dirname(skill.entryPath)); }
 
 function normalizeRelativeSkillAssetPath(assetPath: string): string {
   const normalized = assetPath.replace(/\\/g, '/').trim();
@@ -247,16 +201,6 @@ function resolveSkillScriptRunner(absolutePath: string): { command: string; pref
   throw new BadRequestException(`Unsupported script type: ${extension || absolutePath}`);
 }
 
-function createSkillPackageTool(
-  name: SkillPackageToolName,
-  callName: string,
-  description: string,
-  requires: SkillPackageToolDefinition['requires'],
-  parameters: Record<string, PluginParamSchema>,
-): SkillPackageToolDefinition {
-  return { name, callName, description, parameters, requires };
-}
+function createSkillPackageTool(name: SkillPackageToolName, callName: string, description: string, requires: SkillPackageToolDefinition['requires'], parameters: Record<string, PluginParamSchema>): SkillPackageToolDefinition { return { name, callName, description, parameters, requires }; }
 
-function createParam(type: PluginParamSchema['type'], required: boolean, description: string): PluginParamSchema {
-  return { description, required, type };
-}
+function createParam(type: PluginParamSchema['type'], required: boolean, description: string): PluginParamSchema { return { description, required, type }; }

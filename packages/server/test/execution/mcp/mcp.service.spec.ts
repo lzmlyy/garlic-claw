@@ -8,7 +8,6 @@ import { McpService } from '../../../src/execution/mcp/mcp.service';
 describe('McpService', () => {
   const envKey = 'GARLIC_CLAW_MCP_CONFIG_PATH';
   const configService = { get: jest.fn() };
-  const toolSettings = { getSourceEnabled: jest.fn() };
   let tempConfigPath: string;
 
   let service: McpService;
@@ -23,9 +22,7 @@ describe('McpService', () => {
     tempConfigPath = path.join(os.tmpdir(), `mcp.service.spec-${Date.now()}-${Math.random()}`, 'mcp.json');
     fs.rmSync(path.dirname(tempConfigPath), { recursive: true, force: true });
     process.env[envKey] = tempConfigPath;
-    toolSettings.getSourceEnabled.mockReturnValue(undefined);
     service = new McpService(configService as never, new McpConfigStoreService());
-    (service as any).sourceEnabledReader = toolSettings.getSourceEnabled;
   });
 
   afterEach(() => {
@@ -61,23 +58,23 @@ describe('McpService', () => {
     ]);
   });
 
-  it('skips disabled MCP sources during config reload warmup', async () => {
+  it('reloads MCP sources from config with default enabled state', async () => {
     const weather = createServer('weather');
     const tavily = createServer('tavily');
     await service.saveServer(weather);
     await service.saveServer(tavily);
-    toolSettings.getSourceEnabled.mockImplementation((kind: string, id: string) =>
-      kind === 'mcp' && id === 'weather' ? false : undefined);
+    await service.setServerEnabled('weather', false);
     const disconnectAllSpy = jest.spyOn(service as any, 'disconnectAllClients').mockResolvedValue(undefined);
     const connectSpy = jest.spyOn(service as any, 'connectMcpServer').mockResolvedValue(undefined);
 
     await service.reloadServersFromConfig();
 
     expect(disconnectAllSpy).toHaveBeenCalledTimes(1);
-    expect(connectSpy).toHaveBeenCalledTimes(1);
+    expect(connectSpy).toHaveBeenCalledTimes(2);
+    expect(connectSpy).toHaveBeenCalledWith('weather', weather);
     expect(connectSpy).toHaveBeenCalledWith('tavily', tavily);
     expect(service.getToolingSnapshot().statuses).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'weather', enabled: false, connected: false, health: 'unknown' }),
+      expect.objectContaining({ name: 'weather', enabled: true }),
       expect.objectContaining({ name: 'tavily', enabled: true }),
     ]));
   });

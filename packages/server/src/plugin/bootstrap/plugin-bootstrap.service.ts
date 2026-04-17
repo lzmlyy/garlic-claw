@@ -1,49 +1,14 @@
-import type {
-  DeviceType,
-  PluginCapability,
-  PluginCommandDescriptor,
-  PluginConfigSchema,
-  PluginCronDescriptor,
-  PluginHookDescriptor,
-  PluginManifest,
-  PluginPermission,
-  PluginRouteDescriptor,
-  PluginRuntimeKind,
-  RemotePluginBootstrapInfo,
-} from '@garlic-claw/shared';
+import type { DeviceType, PluginCapability, PluginCommandDescriptor, PluginConfigSchema, PluginCronDescriptor, PluginHookDescriptor, PluginManifest, PluginPermission, PluginRouteDescriptor, PluginRuntimeKind, RemotePluginBootstrapInfo } from '@garlic-claw/shared';
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { BuiltinPluginRegistryService } from '../builtin/builtin-plugin-registry.service';
-import {
-  PluginGovernanceService,
-  type PluginGovernanceOverrides,
-} from '../governance/plugin-governance.service';
-import {
-  PluginPersistenceService,
-  type RegisteredPluginRecord,
-} from '../persistence/plugin-persistence.service';
+import { PluginGovernanceService, type PluginGovernanceOverrides } from '../governance/plugin-governance.service';
+import { PluginPersistenceService, type RegisteredPluginRecord } from '../persistence/plugin-persistence.service';
 
-export interface RegisterPluginInput {
-  deviceType?: string;
-  fallback: PluginManifestFallback;
-  governance?: PluginGovernanceOverrides;
-  manifest?: Partial<PluginManifest> | null;
-}
-export interface CreateRemotePluginBootstrapInput {
-  description?: string;
-  deviceType: DeviceType;
-  displayName?: string;
-  pluginName: string;
-  version?: string;
-}
-export interface PluginManifestFallback {
-  description?: string;
-  id: string;
-  name?: string;
-  runtime?: PluginRuntimeKind;
-  version?: string;
-}
+export interface RegisterPluginInput { deviceType?: string; fallback: PluginManifestFallback; governance?: PluginGovernanceOverrides; manifest?: Partial<PluginManifest> | null; }
+export interface CreateRemotePluginBootstrapInput { description?: string; deviceType: DeviceType; displayName?: string; pluginName: string; version?: string; }
+export interface PluginManifestFallback { description?: string; id: string; name?: string; runtime?: PluginRuntimeKind; version?: string; }
 
 @Injectable()
 export class PluginBootstrapService {
@@ -58,13 +23,9 @@ export class PluginBootstrapService {
     private readonly jwtService?: JwtService,
   ) {}
 
-  getPlugin(pluginId: string): RegisteredPluginRecord {
-    return this.pluginPersistenceService.getPluginOrThrow(pluginId);
-  }
+  getPlugin(pluginId: string): RegisteredPluginRecord { return this.pluginPersistenceService.getPluginOrThrow(pluginId); }
 
-  listPlugins(): RegisteredPluginRecord[] {
-    return this.pluginPersistenceService.listPlugins();
-  }
+  listPlugins(): RegisteredPluginRecord[] { return this.pluginPersistenceService.listPlugins(); }
 
   bootstrapBuiltins(): string[] {
     return this.builtinPluginRegistryService
@@ -74,9 +35,7 @@ export class PluginBootstrapService {
       : [];
   }
 
-  markPluginOffline(pluginId: string): RegisteredPluginRecord {
-    return this.pluginPersistenceService.setConnectionState(pluginId, false);
-  }
+  markPluginOffline(pluginId: string): RegisteredPluginRecord { return this.pluginPersistenceService.setConnectionState(pluginId, false); }
 
   registerPlugin(input: RegisterPluginInput): RegisteredPluginRecord {
     const manifest = normalizePluginManifest(input.manifest, input.fallback);
@@ -97,12 +56,8 @@ export class PluginBootstrapService {
   }
 
   reloadBuiltin(pluginId: string): string {
-    if (!this.builtinPluginRegistryService) {
-      throw new Error('Builtin plugin registry is unavailable');
-    }
-    return this.registerBuiltinDefinition(
-      this.builtinPluginRegistryService.getDefinition(pluginId),
-    ).pluginId;
+    if (!this.builtinPluginRegistryService) {throw new Error('Builtin plugin registry is unavailable');}
+    return this.registerBuiltinDefinition(this.builtinPluginRegistryService.getDefinition(pluginId)).pluginId;
   }
 
   issueRemoteBootstrap(input: CreateRemotePluginBootstrapInput): RemotePluginBootstrapInfo {
@@ -110,6 +65,7 @@ export class PluginBootstrapService {
       throw new Error('Remote bootstrap dependencies are unavailable');
     }
     const normalized = normalizeRemoteBootstrapInput(input);
+    const tokenExpiresIn = this.configService.get('REMOTE_PLUGIN_TOKEN_EXPIRES_IN', '30d');
 
     this.registerPlugin({
       deviceType: normalized.deviceType,
@@ -128,41 +84,29 @@ export class PluginBootstrapService {
       },
     });
 
-    const tokenExpiresIn = this.configService.get('REMOTE_PLUGIN_TOKEN_EXPIRES_IN', '30d');
-    const token = this.jwtService.sign(
-      {
-        authKind: 'remote-plugin',
-        deviceType: normalized.deviceType,
-        pluginName: normalized.pluginName,
-        role: 'remote_plugin',
-      },
-      {
-        secret: this.configService.get('JWT_SECRET', 'fallback-secret'),
-        expiresIn: readJwtExpiresIn(tokenExpiresIn),
-      },
-    );
-
     return {
       deviceType: normalized.deviceType,
       pluginName: normalized.pluginName,
       serverUrl: this.resolveRemotePluginServerUrl(),
-      token,
+      token: this.jwtService.sign({
+        authKind: 'remote-plugin',
+        deviceType: normalized.deviceType,
+        pluginName: normalized.pluginName,
+        role: 'remote_plugin',
+      }, {
+        secret: this.configService.get('JWT_SECRET', 'fallback-secret'),
+        expiresIn: readJwtExpiresIn(tokenExpiresIn),
+      }),
       tokenExpiresIn,
     };
   }
 
-  touchHeartbeat(pluginId: string, seenAt: string = new Date().toISOString()): RegisteredPluginRecord {
-    return this.pluginPersistenceService.touchHeartbeat(pluginId, seenAt);
-  }
+  touchHeartbeat(pluginId: string, seenAt: string = new Date().toISOString()): RegisteredPluginRecord { return this.pluginPersistenceService.touchHeartbeat(pluginId, seenAt); }
 
   private resolveRemotePluginServerUrl(): string {
-    if (!this.configService) {
-      return 'ws://127.0.0.1:23331';
-    }
+    if (!this.configService) {return 'ws://127.0.0.1:23331';}
     const explicitUrl = this.configService.get('REMOTE_PLUGIN_WS_URL');
-    if (explicitUrl?.trim()) {
-      return explicitUrl.trim();
-    }
+    if (explicitUrl?.trim()) {return explicitUrl.trim();}
     const port = this.configService.get('WS_PORT', 23331);
     return `ws://127.0.0.1:${port}`;
   }
@@ -184,12 +128,8 @@ export class PluginBootstrapService {
 }
 
 function readJwtExpiresIn(value: string): number | JwtTimeSpan {
-  if (/^\d+$/.test(value)) {
-    return Number(value);
-  }
-  if (/^\d+(ms|s|m|h|d|w|y)$/.test(value)) {
-    return value as JwtTimeSpan;
-  }
+  if (/^\d+$/.test(value)) {return Number(value);}
+  if (/^\d+(ms|s|m|h|d|w|y)$/.test(value)) {return value as JwtTimeSpan;}
   return '30d';
 }
 
@@ -205,13 +145,7 @@ type JwtTimeSpan =
 function normalizeRemoteBootstrapInput(
   input: CreateRemotePluginBootstrapInput,
 ): CreateRemotePluginBootstrapInput {
-  return {
-    ...(input.description?.trim() ? { description: input.description.trim() } : {}),
-    deviceType: input.deviceType,
-    ...(input.displayName?.trim() ? { displayName: input.displayName.trim() } : {}),
-    pluginName: input.pluginName.trim(),
-    ...(input.version?.trim() ? { version: input.version.trim() } : {}),
-  };
+  return { ...(input.description?.trim() ? { description: input.description.trim() } : {}), deviceType: input.deviceType, ...(input.displayName?.trim() ? { displayName: input.displayName.trim() } : {}), pluginName: input.pluginName.trim(), ...(input.version?.trim() ? { version: input.version.trim() } : {}) };
 }
 
 export function normalizePluginManifest(
@@ -229,63 +163,36 @@ export function normalizePluginManifest(
   };
 
   const description = readNonEmptyString(source?.description) ?? fallback.description;
-  if (description) {
-    manifest.description = description;
-  }
-
   const commands = readManifestArray<PluginCommandDescriptor>(source?.commands);
-  if (commands.length > 0) {
-    manifest.commands = commands;
-  }
   const crons = readManifestArray<PluginCronDescriptor>(source?.crons);
-  if (crons.length > 0) {
-    manifest.crons = crons;
-  }
   const hooks = readManifestArray<PluginHookDescriptor>(source?.hooks);
-  if (hooks.length > 0) {
-    manifest.hooks = hooks;
-  }
   const routes = readManifestArray<PluginRouteDescriptor>(source?.routes);
-  if (routes.length > 0) {
-    manifest.routes = routes;
-  }
+  if (description) {manifest.description = description;}
+  if (commands.length > 0) {manifest.commands = commands;}
+  if (crons.length > 0) {manifest.crons = crons;}
+  if (hooks.length > 0) {manifest.hooks = hooks;}
+  if (routes.length > 0) {manifest.routes = routes;}
   const config = readConfig(source?.config);
-  if (config) {
-    manifest.config = config;
-  }
+  if (config) {manifest.config = config;}
 
   return manifest;
 }
 
-function readManifestRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
+function readManifestRecord(value: unknown): Record<string, unknown> | null { return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null; }
 
 function readNonEmptyString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
+  if (typeof value !== 'string') {return null;}
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 }
 
-function readRuntimeKind(value: unknown): PluginRuntimeKind | null {
-  return value === 'builtin' || value === 'remote' ? value : null;
-}
+function readRuntimeKind(value: unknown): PluginRuntimeKind | null { return value === 'builtin' || value === 'remote' ? value : null; }
 
-function readManifestArray<T>(value: unknown): T[] {
-  return Array.isArray(value) ? [...value] as T[] : [];
-}
+function readManifestArray<T>(value: unknown): T[] { return Array.isArray(value) ? [...value] as T[] : []; }
 
 function readConfig(value: unknown): PluginConfigSchema | null {
   const record = readManifestRecord(value);
-  if (!record) {
-    return null;
-  }
-
+  if (!record) {return null;}
   const fields = readManifestArray<PluginConfigSchema['fields'][number]>(record.fields);
   return fields.length > 0 ? { fields } : null;
 }

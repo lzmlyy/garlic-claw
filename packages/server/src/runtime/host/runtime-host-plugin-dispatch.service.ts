@@ -38,7 +38,7 @@ export class RuntimeHostPluginDispatchService {
     toolName: string;
   }): Promise<JsonValue> {
     const plugin = this.requirePluginCapability(input.pluginId, 'tools', input.toolName, 'Tool');
-    return this.readPluginTransport(plugin, input.pluginId, input.context).executeTool({
+    return this.createPluginTransport(plugin, input.context).executeTool({
       context: input.context,
       params: input.params,
       toolName: input.toolName,
@@ -52,7 +52,7 @@ export class RuntimeHostPluginDispatchService {
     pluginId: string;
   }): Promise<JsonValue> {
     const plugin = this.requirePluginCapability(input.pluginId, 'hooks', input.hookName, 'Hook');
-    const result = await this.readPluginTransport(plugin, input.pluginId, input.context).invokeHook({
+    const result = await this.createPluginTransport(plugin, input.context).invokeHook({
       context: input.context,
       hookName: input.hookName,
       payload: input.payload,
@@ -66,31 +66,12 @@ export class RuntimeHostPluginDispatchService {
     request: PluginRouteRequest;
   }): Promise<PluginRouteResponse> {
     const plugin = this.pluginBootstrapService.getPlugin(input.pluginId);
-    const requestPath = normalizeRoutePath(input.request.path);
-    const route = plugin.manifest.routes?.find((entry) =>
-      normalizeRoutePath(entry.path) === requestPath
-      && entry.methods.includes(input.request.method),
-    );
-    if (!route) {
-      throw new NotFoundException(
-        `Route not declared by plugin: ${input.pluginId}/${input.request.method} ${requestPath}`,
-      );
-    }
-    const request = {
-      ...input.request,
-      path: normalizeRoutePath(route.path),
-    };
-    return this.readPluginTransport(plugin, input.pluginId, input.context).invokeRoute({
-      context: input.context,
-      request,
-    });
+    const route = plugin.manifest.routes?.find((entry) => routeMatches(entry, input.request));
+    if (!route) {throw new NotFoundException(`Route not declared by plugin: ${input.pluginId}/${input.request.method} ${normalizeRoutePath(input.request.path)}`);}
+    return this.createPluginTransport(plugin, input.context).invokeRoute({ context: input.context, request: { ...input.request, path: normalizeRoutePath(route.path) } });
   }
 
-  listPlugins(): RegisteredPluginRecord[] {
-    return this.pluginBootstrapService
-      .listPlugins()
-      .sort((left, right) => left.pluginId.localeCompare(right.pluginId));
-  }
+  listPlugins(): RegisteredPluginRecord[] { return this.pluginBootstrapService.listPlugins().sort((left, right) => left.pluginId.localeCompare(right.pluginId)); }
 
   private requirePluginCapability(
     pluginId: string,
@@ -105,44 +86,29 @@ export class RuntimeHostPluginDispatchService {
     throw new NotFoundException(`${label} not declared by plugin: ${pluginId}/${name}`);
   }
 
-  private readPluginTransport(plugin: RegisteredPluginRecord, pluginId: string, context: PluginCallContext) {
+  private createPluginTransport(plugin: RegisteredPluginRecord, context: PluginCallContext) {
     return plugin.manifest.runtime === 'builtin'
-      ? this.createBuiltinTransport(pluginId, context)
-      : this.runtimeGatewayRemoteTransportService.createRemoteTransport(pluginId);
-  }
-
-  private createBuiltinTransport(pluginId: string, context: PluginCallContext) {
-    const definition = this.builtinPluginRegistryService.getDefinition(pluginId);
-    return createPluginAuthorTransportExecutor({
-      createExecutionContext: () => ({
-        callContext: context,
-        host: this.createBuiltinHostFacade(pluginId, context),
-      }),
-      definition,
-    });
+      ? createPluginAuthorTransportExecutor({
+          createExecutionContext: () => ({ callContext: context, host: this.createBuiltinHostFacade(plugin.pluginId, context) }),
+          definition: this.builtinPluginRegistryService.getDefinition(plugin.pluginId),
+        })
+      : this.runtimeGatewayRemoteTransportService.createRemoteTransport(plugin.pluginId);
   }
 
   private createBuiltinHostFacade(pluginId: string, context: PluginCallContext) {
     const runtimeHostCaller = this.runtimeHostCaller;
-    if (!runtimeHostCaller) {
-      throw new Error('RuntimeHostPluginDispatchService host caller not registered');
-    }
-    const callHost = <T>(
-      method: Parameters<RuntimeHostService['call']>[0]['method'],
-      params: JsonObject = {},
-    ) => runtimeHostCaller({ context, method, params, pluginId }) as Promise<T>;
-
-    return createPluginHostFacade({
-      call: (method, params) => callHost(method, params),
-      callHost,
-    });
+    if (!runtimeHostCaller) {throw new Error('RuntimeHostPluginDispatchService host caller not registered');}
+    const callHost = <T>(method: Parameters<RuntimeHostService['call']>[0]['method'], params: JsonObject = {}) => runtimeHostCaller({ context, method, params, pluginId }) as Promise<T>;
+    return createPluginHostFacade({ call: (method, params) => callHost(method, params), callHost });
   }
+}
+
+function routeMatches(entry: { methods: string[]; path: string }, request: PluginRouteRequest): boolean {
+  return normalizeRoutePath(entry.path) === normalizeRoutePath(request.path) && entry.methods.includes(request.method);
 }
 
 function normalizeRoutePath(path: string): string {
   const trimmed = path.trim();
-  if (!trimmed) {
-    throw new BadRequestException('Route path cannot be empty');
-  }
+  if (!trimmed) {throw new BadRequestException('Route path cannot be empty');}
   return trimmed.replace(/^\/+/, '').replace(/\/+$/, '');
 }

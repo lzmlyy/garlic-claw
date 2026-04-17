@@ -1,6 +1,5 @@
 import type {
   ActionConfig,
-  AutomationAfterRunHookResult,
   AutomationBeforeRunHookResult,
   AutomationInfo,
   JsonValue,
@@ -8,7 +7,7 @@ import type {
 import { Inject, Injectable } from '@nestjs/common';
 import { RuntimeHostConversationMessageService } from '../../runtime/host/runtime-host-conversation-message.service';
 import { RuntimeHostPluginDispatchService } from '../../runtime/host/runtime-host-plugin-dispatch.service';
-import { runDispatchableHookChain } from '../../runtime/kernel/runtime-plugin-hook-governance';
+import { applyMutatingDispatchableHooks, runDispatchableHookChain } from '../../runtime/kernel/runtime-plugin-hook-governance';
 import { asJsonValue, cloneJsonValue } from '../../runtime/host/runtime-host-values';
 import type { RuntimeAutomationRecord, AutomationRunContext } from './automation.service';
 
@@ -151,19 +150,14 @@ export class AutomationExecutionService {
     automation: AutomationInfo,
     execution: { results: JsonValue[]; status: string },
   ): Promise<{ results: JsonValue[]; status: string }> {
-    const result = await runDispatchableHookChain<
-      { results: JsonValue[]; status: string },
-      AutomationAfterRunHookResult
-    >({
-      applyResponse: (next, mutation) => ({
-        state: {
-          status: typeof mutation.status === 'string' ? mutation.status : next.status,
-          results: Array.isArray(mutation.results) ? mutation.results : next.results,
-        },
+    return applyMutatingDispatchableHooks({
+      applyMutation: (next, mutation) => ({
+        status: typeof mutation.status === 'string' ? mutation.status : next.status,
+        results: Array.isArray(mutation.results) ? mutation.results : next.results,
       }),
       hookName: 'automation:after-run',
-      initialState: execution,
       kernel: this.runtimeHostPluginDispatchService,
+      payload: execution,
       mapPayload: (next) =>
         asJsonValue({
           context,
@@ -173,7 +167,6 @@ export class AutomationExecutionService {
         }),
       readContext: () => context,
     });
-    return 'state' in result ? result.state : result.shortCircuitResult;
   }
 }
 

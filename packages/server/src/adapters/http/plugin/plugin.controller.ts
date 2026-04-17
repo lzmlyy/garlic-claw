@@ -1,35 +1,8 @@
-import {
-  type DeviceType,
-  type JsonObject,
-  type JsonValue,
-  type PluginActionName,
-  type PluginCommandOverview,
-  type PluginSubagentTaskDetail,
-  type PluginSubagentTaskOverview,
-} from '@garlic-claw/shared';
-import {
-  All,
-  BadRequestException,
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Put,
-  Query,
-  Req,
-  Res,
-  Inject,
-  UseGuards,
-} from '@nestjs/common';
+import { type DeviceType, type JsonObject, type JsonValue, type PluginActionName, type PluginCommandOverview, type PluginSubagentTaskDetail, type PluginSubagentTaskOverview } from '@garlic-claw/shared';
+import { All, BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, Res, Inject, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../../auth/http-auth';
-import {
-  buildPluginCommandConflicts,
-  buildPluginInfo,
-  listPluginCommands,
-} from '../../../plugin/persistence/plugin-read-model';
+import { buildPluginCommandConflicts, buildPluginInfo, listPluginCommands } from '../../../plugin/persistence/plugin-read-model';
 import { PluginPersistenceService } from '../../../plugin/persistence/plugin-persistence.service';
 import { PluginBootstrapService } from '../../../plugin/bootstrap/plugin-bootstrap.service';
 import { RuntimeHostConversationRecordService } from '../../../runtime/host/runtime-host-conversation-record.service';
@@ -39,14 +12,7 @@ import { RuntimeHostSubagentRunnerService } from '../../../runtime/host/runtime-
 import { RuntimePluginGovernanceService } from '../../../runtime/kernel/runtime-plugin-governance.service';
 import { readPluginEventQuery, readPluginRouteInvocation, writePluginRouteResponse } from '../http-request.codec';
 
-interface CreateRemotePluginBootstrapDto {
-  description?: string;
-  deviceType: DeviceType;
-  displayName?: string;
-  pluginName: string;
-  version?: string;
-}
-
+interface CreateRemotePluginBootstrapDto { description?: string; deviceType: DeviceType; displayName?: string; pluginName: string; version?: string; }
 interface UpdatePluginConfigDto { values: JsonObject; }
 interface UpdatePluginScopeDto { defaultEnabled?: boolean; conversations?: Record<string, boolean>; }
 interface UpdatePluginStorageDto { key: string; value: JsonValue; }
@@ -54,41 +20,19 @@ interface PluginEventQueryInput { limit?: string; level?: string; type?: string;
 
 @Controller()
 export class PluginController {
-  constructor(
-    private readonly pluginBootstrapService: PluginBootstrapService,
-    private readonly pluginPersistenceService: PluginPersistenceService,
-    private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService,
-    @Inject(RuntimeHostPluginDispatchService)
-    private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService,
-    private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService,
-    private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService,
-    private readonly runtimePluginGovernanceService: RuntimePluginGovernanceService,
-  ) {}
+  constructor(private readonly pluginBootstrapService: PluginBootstrapService, private readonly pluginPersistenceService: PluginPersistenceService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, @Inject(RuntimeHostPluginDispatchService) private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService, private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService, private readonly runtimePluginGovernanceService: RuntimePluginGovernanceService) {}
 
   @Get('plugins')
-  listPlugins() {
-    return this.runtimePluginGovernanceService.listPlugins().map((plugin) =>
-      buildPluginInfo(plugin, this.runtimePluginGovernanceService.listSupportedActions(plugin.pluginId)));
-  }
+  listPlugins() { return this.runtimePluginGovernanceService.listPlugins().map((plugin) => buildPluginInfo(plugin, this.runtimePluginGovernanceService.listSupportedActions(plugin.pluginId))); }
 
   @Get('plugins/connected')
-  getConnectedPlugins() {
-    return this.runtimePluginGovernanceService.listConnectedPlugins().map((plugin) => ({
-      manifest: plugin.manifest,
-      name: plugin.pluginId,
-      runtimeKind: plugin.manifest.runtime,
-    }));
-  }
+  getConnectedPlugins() { return this.runtimePluginGovernanceService.listPlugins().filter((plugin) => plugin.connected).map((plugin) => ({ manifest: plugin.manifest, name: plugin.pluginId, runtimeKind: plugin.manifest.runtime })); }
 
   @Get('plugins/:pluginId/health')
-  getPluginHealth(@Param('pluginId') pluginId: string) {
-    return this.runtimePluginGovernanceService.checkPluginHealth(pluginId);
-  }
+  getPluginHealth(@Param('pluginId') pluginId: string) { return this.runtimePluginGovernanceService.checkPluginHealth(pluginId); }
 
   @Post('plugins/remote/bootstrap')
-  createRemoteBootstrap(@Body() dto: CreateRemotePluginBootstrapDto) {
-    return this.pluginBootstrapService.issueRemoteBootstrap(dto);
-  }
+  createRemoteBootstrap(@Body() dto: CreateRemotePluginBootstrapDto) { return this.pluginBootstrapService.issueRemoteBootstrap(dto); }
 
   @Delete('plugins/:pluginId')
   deletePlugin(@Param('pluginId') pluginId: string) {
@@ -98,63 +42,40 @@ export class PluginController {
   }
 
   @Get('plugins/:pluginId/config')
-  getPluginConfig(@Param('pluginId') pluginId: string) {
-    return this.pluginPersistenceService.getPluginConfig(pluginId);
-  }
+  getPluginConfig(@Param('pluginId') pluginId: string) { return this.pluginPersistenceService.getPluginConfig(pluginId); }
 
   @Put('plugins/:pluginId/config')
-  updatePluginConfig(
-    @Param('pluginId') pluginId: string,
-    @Body() dto: UpdatePluginConfigDto,
-  ) {
+  updatePluginConfig(@Param('pluginId') pluginId: string, @Body() dto: UpdatePluginConfigDto) {
     const snapshot = this.pluginPersistenceService.updatePluginConfig(pluginId, dto.values);
     this.recordPluginEvent(pluginId, { message: `Updated plugin config for ${pluginId}`, metadata: { keys: Object.keys(dto.values) }, type: 'plugin:config.updated' });
     return snapshot;
   }
 
   @Get('plugins/:pluginId/scopes')
-  getPluginScope(@Param('pluginId') pluginId: string) {
-    return this.pluginPersistenceService.getPluginScope(pluginId);
-  }
+  getPluginScope(@Param('pluginId') pluginId: string) { return this.pluginPersistenceService.getPluginScope(pluginId); }
 
   @Get('plugins/:pluginId/events')
-  listPluginEvents(@Param('pluginId') pluginId: string, @Query() query?: PluginEventQueryInput) {
-    return this.pluginPersistenceService.listPluginEvents(pluginId, readPluginEventQuery(query ?? {}));
-  }
+  listPluginEvents(@Param('pluginId') pluginId: string, @Query() query?: PluginEventQueryInput) { return this.pluginPersistenceService.listPluginEvents(pluginId, readPluginEventQuery(query ?? {})); }
 
   @Put('plugins/:pluginId/scopes')
-  updatePluginScope(
-    @Param('pluginId') pluginId: string,
-    @Body() dto: UpdatePluginScopeDto,
-  ) {
+  updatePluginScope(@Param('pluginId') pluginId: string, @Body() dto: UpdatePluginScopeDto) {
     const scope = this.pluginPersistenceService.updatePluginScope(pluginId, dto);
     this.recordPluginEvent(pluginId, { message: `Updated plugin scope for ${pluginId}`, metadata: { conversationCount: Object.keys(scope.conversations).length }, type: 'plugin:scope.updated' });
     return scope;
   }
 
   @Post('plugins/:pluginId/actions/:action')
-  async runPluginAction(
-    @Param('pluginId') pluginId: string,
-    @Param('action') action: string,
-  ) {
-    const result = await this.runtimePluginGovernanceService.runPluginAction({
-      action: readPluginActionName(action),
-      pluginId,
-    });
+  async runPluginAction(@Param('pluginId') pluginId: string, @Param('action') action: string) {
+    const result = await this.runtimePluginGovernanceService.runPluginAction({ action: readPluginActionName(action), pluginId });
     this.recordPluginEvent(pluginId, { level: result.action === 'health-check' && result.message.includes('失败') ? 'warn' : 'info', message: result.message, type: `governance:${result.action}` });
     return result;
   }
 
   @Get('plugins/:pluginId/storage')
-  listPluginStorage(@Param('pluginId') pluginId: string, @Query('prefix') prefix?: string) {
-    return this.runtimeHostPluginRuntimeService.listPluginStorage(pluginId, prefix?.trim() || undefined);
-  }
+  listPluginStorage(@Param('pluginId') pluginId: string, @Query('prefix') prefix?: string) { return this.runtimeHostPluginRuntimeService.listPluginStorage(pluginId, prefix?.trim() || undefined); }
 
   @Put('plugins/:pluginId/storage')
-  setPluginStorage(
-    @Param('pluginId') pluginId: string,
-    @Body() dto: UpdatePluginStorageDto,
-  ) {
+  setPluginStorage(@Param('pluginId') pluginId: string, @Body() dto: UpdatePluginStorageDto) {
     const entry = { key: dto.key, value: this.runtimeHostPluginRuntimeService.setPluginStorage(pluginId, dto.key, dto.value) };
     this.recordPluginEvent(pluginId, { message: `Updated plugin storage key ${dto.key}`, metadata: { key: dto.key }, type: 'plugin:storage.updated' });
     return entry;
@@ -172,27 +93,16 @@ export class PluginController {
   }
 
   @Get('plugins/:pluginId/crons')
-  listPluginCrons(@Param('pluginId') pluginId: string) {
-    return this.runtimeHostPluginRuntimeService.listCronJobs(pluginId);
-  }
+  listPluginCrons(@Param('pluginId') pluginId: string) { return this.runtimeHostPluginRuntimeService.listCronJobs(pluginId); }
 
   @Delete('plugins/:pluginId/crons/:jobId')
-  deletePluginCron(@Param('pluginId') pluginId: string, @Param('jobId') jobId: string) {
-    return this.runtimeHostPluginRuntimeService.deleteCronJob(pluginId, { jobId }) as boolean;
-  }
+  deletePluginCron(@Param('pluginId') pluginId: string, @Param('jobId') jobId: string) { return this.runtimeHostPluginRuntimeService.deleteCronJob(pluginId, { jobId }) as boolean; }
 
   @Get('plugins/:pluginId/sessions')
-  listPluginConversationSessions(@Param('pluginId') pluginId: string) {
-    return this.runtimeHostConversationRecordService.listPluginConversationSessions(pluginId);
-  }
+  listPluginConversationSessions(@Param('pluginId') pluginId: string) { return this.runtimeHostConversationRecordService.listPluginConversationSessions(pluginId); }
 
   @Delete('plugins/:pluginId/sessions/:conversationId')
-  finishPluginConversationSession(
-    @Param('pluginId') pluginId: string,
-    @Param('conversationId') conversationId: string,
-  ) {
-    return this.runtimeHostConversationRecordService.finishPluginConversationSession(pluginId, conversationId);
-  }
+  finishPluginConversationSession(@Param('pluginId') pluginId: string, @Param('conversationId') conversationId: string) { return this.runtimeHostConversationRecordService.finishPluginConversationSession(pluginId, conversationId); }
 
   @Get('plugin-commands/overview')
   async listCommandOverview(): Promise<PluginCommandOverview> {
@@ -201,14 +111,10 @@ export class PluginController {
   }
 
   @Get('plugin-subagent-tasks/overview')
-  listSubagentTaskOverview(): PluginSubagentTaskOverview {
-    return this.runtimeHostSubagentRunnerService.listOverview();
-  }
+  listSubagentTaskOverview(): PluginSubagentTaskOverview { return this.runtimeHostSubagentRunnerService.listOverview(); }
 
   @Get('plugin-subagent-tasks/:taskId')
-  getSubagentTask(@Param('taskId') taskId: string): PluginSubagentTaskDetail {
-    return this.runtimeHostSubagentRunnerService.getTaskOrThrow(taskId);
-  }
+  getSubagentTask(@Param('taskId') taskId: string): PluginSubagentTaskDetail { return this.runtimeHostSubagentRunnerService.getTaskOrThrow(taskId); }
 
   private recordPluginEvent(inputPluginId: string, input: {
     level?: 'error' | 'info' | 'warn';
@@ -216,31 +122,16 @@ export class PluginController {
     metadata?: JsonObject;
     type: string;
   }): void {
-    this.pluginPersistenceService.recordPluginEvent(inputPluginId, {
-      level: input.level ?? 'info',
-      message: input.message,
-      ...(input.metadata ? { metadata: input.metadata } : {}),
-      type: input.type,
-    });
+    this.pluginPersistenceService.recordPluginEvent(inputPluginId, { level: input.level ?? 'info', message: input.message, ...(input.metadata ? { metadata: input.metadata } : {}), type: input.type });
   }
 
   @All('plugin-routes/:pluginId/*path')
   @UseGuards(JwtAuthGuard)
-  async handleRoute(
-    @Param('pluginId') pluginId: string,
-    @Query() query: Record<string, unknown>,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<JsonValue> {
+  async handleRoute(@Param('pluginId') pluginId: string, @Query() query: Record<string, unknown>, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<JsonValue> {
     const route = readPluginRouteInvocation(req, query);
-    const result = await this.runtimeHostPluginDispatchService.invokeRoute({
-      pluginId,
-      request: route.request,
-      context: route.context,
-    });
+    const result = await this.runtimeHostPluginDispatchService.invokeRoute({ pluginId, request: route.request, context: route.context });
     return writePluginRouteResponse(res, result);
   }
-
 }
 
 function readPluginActionName(action: string): PluginActionName {
