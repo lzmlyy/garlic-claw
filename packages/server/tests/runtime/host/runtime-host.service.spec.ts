@@ -88,18 +88,18 @@ describe('RuntimeHostService', () => {
       {
         manifest: {
           config: {
-            fields: [
-              {
+            type: 'object',
+            items: {
+              defaultLimit: {
                 defaultValue: 5,
-                key: 'defaultLimit',
-                type: 'number',
+                type: 'int',
               },
-            ],
+            },
           },
           id: 'builtin.host-roundtrip',
           name: 'Host Roundtrip',
           permissions: ['config:read'],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [
             {
               description: 'read host config through builtin facade',
@@ -185,7 +185,7 @@ describe('RuntimeHostService', () => {
       defaultEnabled: true,
       id: 'builtin.memory-context',
       name: 'Memory Context',
-      runtimeKind: 'builtin',
+      runtimeKind: 'local',
       version: '1.0.0',
     });
   });
@@ -505,7 +505,7 @@ describe('RuntimeHostService', () => {
       fallback: {
         id: 'builtin.conversation-title',
         name: 'Conversation Title',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['llm:generate'],
@@ -927,17 +927,17 @@ function createFixture(input?: {
     fallback: {
       id: 'builtin.memory-context',
       name: 'Memory Context',
-      runtime: 'builtin',
+      runtime: 'local',
     },
     manifest: {
       config: {
-        fields: [
-          {
+        type: 'object',
+        items: {
+          defaultLimit: {
             defaultValue: 5,
-            key: 'defaultLimit',
-            type: 'number',
+            type: 'int',
           },
-        ],
+        },
       },
       permissions: input?.permissions ?? [],
       tools: [],

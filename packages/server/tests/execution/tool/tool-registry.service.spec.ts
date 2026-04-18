@@ -148,7 +148,7 @@ describe('ToolRegistryService', () => {
       accepted: true,
       action,
       pluginId,
-      message: action === 'health-check' ? '插件健康检查通过' : '已重新装载内建插件',
+      message: action === 'health-check' ? '插件健康检查通过' : '已重新装载本地插件',
     })) as never;
 
     await expect(
@@ -183,7 +183,7 @@ describe('ToolRegistryService', () => {
       action: 'reload',
       sourceKind: 'plugin',
       sourceId: 'builtin.memory-tools',
-      message: '已重新装载内建插件',
+      message: '已重新装载本地插件',
     });
   });
 
@@ -459,7 +459,7 @@ function createFixture() {
     fallback: {
       id: 'builtin.memory-tools',
       name: '记忆工具',
-      runtime: 'builtin',
+      runtime: 'local',
     },
     manifest: {
       permissions: [],

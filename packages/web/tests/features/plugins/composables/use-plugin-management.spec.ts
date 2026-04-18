@@ -33,12 +33,12 @@ function createPlugin(
     status: input.status ?? 'online',
     connected: input.connected ?? true,
     defaultEnabled: input.defaultEnabled ?? true,
-    runtimeKind: input.runtimeKind ?? 'builtin',
+    runtimeKind: input.runtimeKind ?? 'local',
     manifest: input.manifest ?? {
       id: input.name,
       name: input.displayName ?? input.name,
       version: '1.0.0',
-      runtime: input.runtimeKind ?? 'builtin',
+      runtime: input.runtimeKind ?? 'local',
       permissions: [],
       tools: [],
     },
@@ -236,7 +236,7 @@ describe('usePluginManagement', () => {
           id: 'builtin.tool-audit',
           name: 'Tool Audit',
           version: '1.0.0',
-          runtime: 'builtin',
+          runtime: 'local',
           permissions: ['storage:write'],
           tools: [],
         },
@@ -251,16 +251,16 @@ describe('usePluginManagement', () => {
           id: 'builtin.provider-router',
           name: 'Provider Router',
           version: '1.0.0',
-          runtime: 'builtin',
+          runtime: 'local',
           permissions: ['config:read', 'provider:read'],
           tools: [],
           config: {
-            fields: [
-              {
-                key: 'targetProviderId',
+            type: 'object',
+            items: {
+              targetProviderId: {
                 type: 'string',
               },
-            ],
+            },
           },
         },
         lastSeenAt: null,
@@ -302,16 +302,16 @@ describe('usePluginManagement', () => {
           id: 'builtin.provider-router',
           name: 'Provider Router',
           version: '1.0.0',
-          runtime: 'builtin',
+          runtime: 'local',
           permissions: ['config:read', 'provider:read'],
           tools: [],
           config: {
-            fields: [
-              {
-                key: 'targetProviderId',
+            type: 'object',
+            items: {
+              targetProviderId: {
                 type: 'string',
               },
-            ],
+            },
           },
         },
         lastSeenAt: null,
@@ -325,16 +325,16 @@ describe('usePluginManagement', () => {
           id: 'builtin.persona-router',
           name: 'Persona Router',
           version: '1.0.0',
-          runtime: 'builtin',
+          runtime: 'local',
           permissions: ['config:read', 'persona:read', 'persona:write'],
           tools: [],
           config: {
-            fields: [
-              {
-                key: 'targetPersonaId',
+            type: 'object',
+            items: {
+              targetPersonaId: {
                 type: 'string',
               },
-            ],
+            },
           },
         },
         lastSeenAt: null,

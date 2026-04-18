@@ -75,7 +75,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -193,7 +193,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -300,7 +300,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -312,7 +312,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.subagent-observer',
         name: 'Builtin Hooker',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       governance: {
         defaultEnabled: true,
@@ -403,7 +403,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -492,7 +492,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -575,7 +575,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -669,7 +669,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],

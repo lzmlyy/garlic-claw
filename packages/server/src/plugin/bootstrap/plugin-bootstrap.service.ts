@@ -1,4 +1,4 @@
-import type { DeviceType, PluginCapability, PluginCommandDescriptor, PluginConfigSchema, PluginCronDescriptor, PluginHookDescriptor, PluginManifest, PluginPermission, PluginRouteDescriptor, PluginRuntimeKind, RemotePluginBootstrapInfo } from '@garlic-claw/shared';
+import type { DeviceType, JsonValue, PluginCapability, PluginCommandDescriptor, PluginConfigConditionValue, PluginConfigNodeSchema, PluginConfigOptionSchema, PluginConfigRenderType, PluginConfigSchema, PluginCronDescriptor, PluginHookDescriptor, PluginManifest, PluginPermission, PluginRouteDescriptor, PluginRuntimeKind, RemotePluginBootstrapInfo } from '@garlic-claw/shared';
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -119,7 +119,7 @@ export class PluginBootstrapService {
       fallback: {
         id: definition.manifest.id,
         name: definition.manifest.name,
-        runtime: 'builtin',
+        runtime: 'local',
         version: definition.manifest.version,
       },
       governance: definition.governance,
@@ -187,13 +187,151 @@ function readNonEmptyString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function readRuntimeKind(value: unknown): PluginRuntimeKind | null { return value === 'builtin' || value === 'remote' ? value : null; }
+function readRuntimeKind(value: unknown): PluginRuntimeKind | null { return value === 'local' || value === 'remote' ? value : null; }
 
 function readManifestArray<T>(value: unknown): T[] { return Array.isArray(value) ? [...value] as T[] : []; }
 
 function readConfig(value: unknown): PluginConfigSchema | null {
+  const node = readConfigNode(value);
+  return node?.type === 'object' ? node : null;
+}
+
+function readConfigNode(value: unknown): PluginConfigNodeSchema | null {
   const record = readManifestRecord(value);
   if (!record) {return null;}
-  const fields = readManifestArray<PluginConfigSchema['fields'][number]>(record.fields);
-  return fields.length > 0 ? { fields } : null;
+  const type = readConfigNodeType(record.type);
+  if (!type) {return null;}
+  const description = readNonEmptyString(record.description);
+  const hint = readNonEmptyString(record.hint);
+  const renderType = readConfigRenderType(record.renderType);
+  const editorLanguage = readNonEmptyString(record.editorLanguage);
+  const editorTheme = readNonEmptyString(record.editorTheme);
+  const specialType = readNonEmptyString(record.specialType);
+
+  const base = {
+    type,
+    ...(description ? { description } : {}),
+    ...(hint ? { hint } : {}),
+    ...(typeof record.obviousHint === 'boolean' ? { obviousHint: record.obviousHint } : {}),
+    ...(typeof record.invisible === 'boolean' ? { invisible: record.invisible } : {}),
+    ...(typeof record.collapsed === 'boolean' ? { collapsed: record.collapsed } : {}),
+    ...(renderType ? { renderType } : {}),
+    ...(typeof record.editorMode === 'boolean' ? { editorMode: record.editorMode } : {}),
+    ...(editorLanguage ? { editorLanguage } : {}),
+    ...(editorTheme ? { editorTheme } : {}),
+    ...(specialType ? { specialType } : {}),
+    ...(typeof record.secret === 'boolean' ? { secret: record.secret } : {}),
+    ...(isJsonValue(record.defaultValue) ? { defaultValue: structuredClone(record.defaultValue) } : {}),
+  };
+
+  const condition = readConfigCondition(record.condition);
+  const options = readConfigOptions(record.options);
+
+  if (type === 'object') {
+    const items = readConfigItems(record.items);
+    if (Object.keys(items).length === 0) {return null;}
+    return {
+      ...base,
+      ...(condition ? { condition } : {}),
+      ...(options.length > 0 ? { options } : {}),
+      items,
+      type,
+    };
+  }
+
+  if (type === 'list') {
+    const itemSchema = readConfigNode(record.items);
+    return {
+      ...base,
+      ...(condition ? { condition } : {}),
+      ...(options.length > 0 ? { options } : {}),
+      ...(itemSchema ? { items: itemSchema } : {}),
+      type,
+    };
+  }
+
+  return {
+    ...base,
+    ...(condition ? { condition } : {}),
+    ...(options.length > 0 ? { options } : {}),
+    type,
+  };
+}
+
+function readConfigNodeType(value: unknown): PluginConfigNodeSchema['type'] | null {
+  return value === 'string'
+    || value === 'text'
+    || value === 'int'
+    || value === 'float'
+    || value === 'bool'
+    || value === 'object'
+    || value === 'list'
+    ? value
+    : null;
+}
+
+function readConfigItems(value: unknown): Record<string, PluginConfigNodeSchema> {
+  const record = readManifestRecord(value);
+  if (!record) {return {};}
+  return Object.fromEntries(
+    Object.entries(record)
+      .map(([key, itemValue]) => [key, readConfigNode(itemValue)] as const)
+      .filter((entry): entry is [string, PluginConfigNodeSchema] => entry[1] !== null),
+  );
+}
+
+function readConfigCondition(value: unknown): Record<string, PluginConfigConditionValue> | null {
+  const record = readManifestRecord(value);
+  if (!record) {return null;}
+  const entries = Object.entries(record)
+    .filter((entry): entry is [string, PluginConfigConditionValue] =>
+      typeof entry[1] === 'string'
+      || typeof entry[1] === 'number'
+      || typeof entry[1] === 'boolean'
+      || entry[1] === null,
+    );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+function readConfigOptions(value: unknown): PluginConfigOptionSchema[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => readConfigOption(item))
+    .filter((item): item is PluginConfigOptionSchema => item !== null);
+}
+
+function readConfigOption(value: unknown): PluginConfigOptionSchema | null {
+  const record = readManifestRecord(value);
+  if (!record) {
+    return null;
+  }
+  const optionValue = readNonEmptyString(record.value);
+  if (!optionValue) {
+    return null;
+  }
+  const label = readNonEmptyString(record.label);
+  const description = readNonEmptyString(record.description);
+  return {
+    value: optionValue,
+    ...(label ? { label } : {}),
+    ...(description ? { description } : {}),
+  };
+}
+
+function readConfigRenderType(value: unknown): PluginConfigRenderType | null {
+  return value === 'checkbox' || value === 'select'
+    ? value
+    : null;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null) {return true;}
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {return true;}
+  if (Array.isArray(value)) {return value.every((item) => isJsonValue(item));}
+  if (typeof value === 'object') {
+    return Object.values(value).every((item) => typeof item !== 'undefined' && isJsonValue(item));
+  }
+  return false;
 }

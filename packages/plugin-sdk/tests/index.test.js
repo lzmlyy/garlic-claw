@@ -29,13 +29,13 @@ const {
   buildPluginGovernanceSummary,
   buildConversationTitlePrompt,
   buildToolAuditStorageKey,
-  CONVERSATION_TITLE_CONFIG_FIELDS,
+  CONVERSATION_TITLE_CONFIG_SCHEMA,
   CONVERSATION_TITLE_DEFAULT_TITLE,
   CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES,
-  KB_CONTEXT_CONFIG_FIELDS,
+  KB_CONTEXT_CONFIG_SCHEMA,
   KB_CONTEXT_DEFAULT_LIMIT,
   KB_CONTEXT_DEFAULT_PROMPT_PREFIX,
-  MEMORY_CONTEXT_CONFIG_FIELDS,
+  MEMORY_CONTEXT_CONFIG_SCHEMA,
   MEMORY_CONTEXT_DEFAULT_LIMIT,
   MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
   buildMessageLifecycleSummary,
@@ -56,7 +56,6 @@ const {
   describeJsonValueKind,
   filterAllowedToolNames,
   normalizePositiveInteger,
-  parseCommaSeparatedNames,
   persistPluginObservation,
   readCurrentPersonaInfo,
   readCurrentProviderInfo,
@@ -65,8 +64,8 @@ const {
   readConversationMessages,
   readPersonaRouterConfig,
   readPersonaSummaryInfo,
-  PERSONA_ROUTER_CONFIG_FIELDS,
-  PROVIDER_ROUTER_CONFIG_FIELDS,
+  PERSONA_ROUTER_CONFIG_SCHEMA,
+  PROVIDER_ROUTER_CONFIG_SCHEMA,
   PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY,
   readConversationSummary,
   readConversationTitleConfig,
@@ -559,7 +558,7 @@ test('createPluginAuthorTransportExecutor runs author definitions with shared ro
         id: 'plugin.sdk.author-transport',
         name: 'Author Transport',
         version: '1.0.0',
-        runtime: 'builtin',
+        runtime: 'local',
         permissions: [],
         tools: [],
       },
@@ -748,12 +747,6 @@ test('plugin-sdk exposes shared author-side text helpers for builtin plugins', (
       promptPrefix: '相关知识',
     },
   );
-  assert.deepEqual(parseCommaSeparatedNames(' alpha, beta ,, gamma '), [
-    'alpha',
-    'beta',
-    'gamma',
-  ]);
-  assert.equal(parseCommaSeparatedNames('   '), undefined);
   assert.deepEqual(
     filterAllowedToolNames(['beta', 'gamma'], ['alpha', 'beta', 'gamma']),
     ['beta', 'gamma'],
@@ -870,20 +863,29 @@ test('plugin-sdk exposes shared host result readers for conversation, memory and
   );
   assert.deepEqual(
     readProviderRouterConfig({
-      targetProviderId: 'anthropic',
-      targetModelId: 'claude-3-7-sonnet',
-      allowedToolNames: 'recall_memory',
-      shortCircuitKeyword: '#fast',
-      shortCircuitReply: '直接回复',
+      routing: {
+        targetProviderId: 'anthropic',
+        targetModelId: 'claude-3-7-sonnet',
+      },
+      tools: {
+        allowedToolNames: ['recall_memory'],
+      },
+      shortCircuit: {
+        shortCircuitKeyword: '#fast',
+        shortCircuitReply: '直接回复',
+      },
     }),
     {
       targetProviderId: 'anthropic',
       targetModelId: 'claude-3-7-sonnet',
-      allowedToolNames: 'recall_memory',
+      allowedToolNames: ['recall_memory'],
       shortCircuitKeyword: '#fast',
       shortCircuitReply: '直接回复',
     },
   );
+  assert.equal(PROVIDER_ROUTER_CONFIG_SCHEMA.items.routing.type, 'object');
+  assert.equal(PROVIDER_ROUTER_CONFIG_SCHEMA.items.tools.items.allowedToolNames.type, 'list');
+  assert.equal(PROVIDER_ROUTER_CONFIG_SCHEMA.items.shortCircuit.collapsed, true);
   assert.deepEqual(
     readCurrentProviderInfo({
       providerId: 'openai',

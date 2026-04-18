@@ -357,12 +357,12 @@ describe('PluginSidebar', () => {
             name: 'builtin.tool-audit',
             displayName: 'Tool Audit',
             description: 'system builtin',
-            runtimeKind: 'builtin',
+            runtimeKind: 'local',
             manifest: {
               id: 'builtin.tool-audit',
               name: 'Tool Audit',
               version: '1.0.0',
-              runtime: 'builtin',
+              runtime: 'local',
               permissions: ['storage:write'],
               tools: [],
             },
@@ -382,21 +382,21 @@ describe('PluginSidebar', () => {
             name: 'builtin.provider-router',
             displayName: 'Provider Router',
             description: 'user-facing builtin',
-            runtimeKind: 'builtin',
+            runtimeKind: 'local',
             manifest: {
               id: 'builtin.provider-router',
               name: 'Provider Router',
               version: '1.0.0',
-              runtime: 'builtin',
+              runtime: 'local',
               permissions: ['config:read', 'provider:read'],
               tools: [],
               config: {
-                fields: [
-                  {
-                    key: 'targetProviderId',
+                type: 'object',
+                items: {
+                  targetProviderId: {
                     type: 'string',
                   },
-                ],
+                },
               },
             },
             health: {
@@ -434,7 +434,7 @@ describe('PluginSidebar', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('已隐藏 1 个系统内建插件')
+    expect(wrapper.text()).toContain('已隐藏 1 个系统本地插件')
     let titles = wrapper.findAll('.plugin-item strong').map((node) => node.text())
     expect(titles).toEqual(['PC Host', 'Provider Router'])
     expect(wrapper.text()).not.toContain('Tool Audit')
@@ -443,7 +443,7 @@ describe('PluginSidebar', () => {
 
     titles = wrapper.findAll('.plugin-item strong').map((node) => node.text())
     expect(titles).toContain('Tool Audit')
-    expect(wrapper.text()).toContain('已显示 1 个系统内建插件')
+    expect(wrapper.text()).toContain('已显示 1 个系统本地插件')
   })
 
   it('restores and persists the show-system-builtins preference', async () => {
@@ -460,12 +460,12 @@ describe('PluginSidebar', () => {
             name: 'builtin.tool-audit',
             displayName: 'Tool Audit',
             description: 'system builtin',
-            runtimeKind: 'builtin',
+            runtimeKind: 'local',
             manifest: {
               id: 'builtin.tool-audit',
               name: 'Tool Audit',
               version: '1.0.0',
-              runtime: 'builtin',
+              runtime: 'local',
               permissions: ['storage:write'],
               tools: [],
             },
@@ -504,7 +504,7 @@ describe('PluginSidebar', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('已显示 1 个系统内建插件')
+    expect(wrapper.text()).toContain('已显示 1 个系统本地插件')
     expect(wrapper.text()).toContain('Tool Audit')
 
     await wrapper.get('[data-test="plugin-sidebar-toggle-system"] input').setValue(false)

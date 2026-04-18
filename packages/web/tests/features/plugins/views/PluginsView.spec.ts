@@ -1,17 +1,11 @@
 import { computed, ref, shallowRef } from 'vue'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PluginInfo } from '@garlic-claw/shared'
 import PluginsView from '@/features/plugins/views/PluginsView.vue'
 
-vi.mock('vue-router', () => ({
-  useRoute: () => ({
-    query: {},
-  }),
-}))
-
-vi.mock('@/features/plugins/composables/use-plugin-management', () => {
-  const plugin = ref<PluginInfo | null>({
+function createSelectedPlugin(permissions: string[]): PluginInfo {
+  return {
     id: 'plugin-1',
     name: 'builtin.demo',
     displayName: 'Demo Plugin',
@@ -20,7 +14,7 @@ vi.mock('@/features/plugins/composables/use-plugin-management', () => {
     status: 'online',
     connected: true,
     defaultEnabled: true,
-    runtimeKind: 'builtin',
+    runtimeKind: 'local',
     supportedActions: ['health-check', 'reload'],
     crons: [
       {
@@ -41,14 +35,8 @@ vi.mock('@/features/plugins/composables/use-plugin-management', () => {
       id: 'builtin.demo',
       name: 'Demo Plugin',
       version: '1.0.0',
-      runtime: 'builtin',
-      permissions: [
-        'conversation:read',
-        'memory:write',
-        'storage:write',
-        'log:write',
-        'subagent:run',
-      ],
+      runtime: 'local',
+      permissions,
       tools: [],
       hooks: [
         { name: 'conversation:created' },
@@ -87,8 +75,25 @@ vi.mock('@/features/plugins/composables/use-plugin-management', () => {
     lastSeenAt: '2026-03-28T00:00:00.000Z',
     createdAt: '2026-03-28T00:00:00.000Z',
     updatedAt: '2026-03-28T00:00:00.000Z',
-  })
+  }
+}
 
+const selectedPluginState = ref<PluginInfo | null>(createSelectedPlugin([
+  'conversation:read',
+  'llm:generate',
+  'memory:write',
+  'storage:write',
+  'log:write',
+  'subagent:run',
+]))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => ({
+    query: {},
+  }),
+}))
+
+vi.mock('@/features/plugins/composables/use-plugin-management', () => {
   return {
     usePluginManagement: () => ({
       loading: ref(false),
@@ -104,9 +109,9 @@ vi.mock('@/features/plugins/composables/use-plugin-management', () => {
       deleting: ref(false),
       error: ref(null),
       notice: ref(null),
-      plugins: shallowRef(plugin.value ? [plugin.value] : []),
-      selectedPluginName: ref(plugin.value?.name ?? null),
-      selectedPlugin: computed(() => plugin.value),
+      plugins: shallowRef(selectedPluginState.value ? [selectedPluginState.value] : []),
+      selectedPluginName: ref(selectedPluginState.value?.name ?? null),
+      selectedPlugin: computed(() => selectedPluginState.value),
       configSnapshot: shallowRef(null),
       llmPreference: shallowRef({
         mode: 'inherit',
@@ -118,7 +123,7 @@ vi.mock('@/features/plugins/composables/use-plugin-management', () => {
       conversationSessions: shallowRef([]),
       cronJobs: shallowRef([]),
       scopeSettings: shallowRef(null),
-      healthSnapshot: shallowRef(plugin.value?.health ?? null),
+      healthSnapshot: shallowRef(selectedPluginState.value?.health ?? null),
       eventLogs: shallowRef([]),
       eventQuery: shallowRef({
         limit: 50,
@@ -148,6 +153,17 @@ vi.mock('@/features/plugins/composables/use-plugin-management', () => {
 })
 
 describe('PluginsView', () => {
+  beforeEach(() => {
+    selectedPluginState.value = createSelectedPlugin([
+      'conversation:read',
+      'llm:generate',
+      'memory:write',
+      'storage:write',
+      'log:write',
+      'subagent:run',
+    ])
+  })
+
   it('renders the richer plugin highlight labels for the selected plugin', () => {
     const wrapper = mount(PluginsView, {
       global: {
@@ -197,5 +213,32 @@ describe('PluginsView', () => {
     expect(wrapper.text()).toContain('最后检查')
     expect(wrapper.text()).toContain('并发占用')
     expect(wrapper.text()).toContain('2 / 6')
+  })
+
+  it('only renders the plugin model panel for plugins that declare llm access', () => {
+    selectedPluginState.value = createSelectedPlugin(['config:read'])
+
+    const wrapper = mount(PluginsView, {
+      global: {
+        stubs: {
+          PluginAttentionPanel: { template: '<div />' },
+          PluginSidebar: { template: '<div />' },
+          PluginConfigForm: { template: '<div />' },
+          PluginLlmPreferencePanel: { template: '<div>插件模型策略</div>' },
+          PluginScopeEditor: { template: '<div />' },
+          ToolGovernancePanel: { template: '<div>插件工具治理</div>' },
+          PluginEventLog: { template: '<div />' },
+          PluginStoragePanel: {
+            props: ['prefix'],
+            template: '<div />',
+          },
+          PluginCronList: { template: '<div />' },
+          PluginConversationSessionList: { template: '<div />' },
+          PluginRouteList: { template: '<div />' },
+        },
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('插件模型策略')
   })
 })

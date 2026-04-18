@@ -30,7 +30,7 @@ export class PluginController {
   getConnectedPlugins() { return this.runtimePluginGovernanceService.listPlugins().filter((plugin) => plugin.connected).map((plugin) => ({ manifest: plugin.manifest, name: plugin.pluginId, runtimeKind: plugin.manifest.runtime })); }
 
   @Get('plugins/:pluginId/health')
-  getPluginHealth(@Param('pluginId') pluginId: string) { return this.runtimePluginGovernanceService.checkPluginHealth(pluginId); }
+  getPluginHealth(@Param('pluginId') pluginId: string) { return this.runtimePluginGovernanceService.readPluginHealthSnapshot(pluginId); }
 
   @Post('plugins/remote/bootstrap')
   createRemoteBootstrap(@Body() dto: CreateRemotePluginBootstrapDto) { return this.pluginBootstrapService.issueRemoteBootstrap(dto); }

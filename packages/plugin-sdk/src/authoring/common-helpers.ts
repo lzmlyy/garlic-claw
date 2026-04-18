@@ -41,12 +41,6 @@ export function pickOptionalNumberFields<T extends string>(object: JsonObject | 
   return pickOptionalFields(object, keys, (value): value is number => typeof value === "number");
 }
 
-export function parseCommaSeparatedNames(raw?: string): string[] | undefined {
-  const normalized = sanitizeOptionalText(raw);
-  if (!normalized) {return undefined;}
-  const names = normalized.split(",").map((item) => item.trim()).filter(Boolean);
-  return names.length > 0 ? names : undefined;
-}
 export function textIncludesKeyword(text: string, keyword?: string): boolean {
   const normalizedKeyword = sanitizeOptionalText(keyword);
   return Boolean(normalizedKeyword) && text.includes(normalizedKeyword);

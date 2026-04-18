@@ -87,7 +87,7 @@ export class RuntimeHostPluginDispatchService {
   }
 
   private createPluginTransport(plugin: RegisteredPluginRecord, context: PluginCallContext) {
-    return plugin.manifest.runtime === 'builtin'
+    return plugin.manifest.runtime === 'local'
       ? createPluginAuthorTransportExecutor({
           createExecutionContext: () => ({ callContext: context, host: this.createBuiltinHostFacade(plugin.pluginId, context) }),
           definition: this.builtinPluginRegistryService.getDefinition(plugin.pluginId),

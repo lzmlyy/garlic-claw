@@ -101,7 +101,7 @@ const formError = ref<string | null>(null)
 const canDisable = computed(() => props.plugin?.governance?.canDisable !== false)
 const disableReason = computed(() =>
   props.plugin?.governance?.disableReason?.trim()
-  || '当前插件属于受保护的系统内建插件，不能禁用。',
+  || '当前插件属于受保护的系统本地插件，不能禁用。',
 )
 
 watch(

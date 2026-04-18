@@ -4,7 +4,7 @@
       <div class="hero-copy">
         <span class="hero-kicker">Plugin Control Surface</span>
         <h1>插件管理</h1>
-        <p>统一管理内建插件与远程插件的配置、作用域、健康和治理动作。</p>
+        <p>统一管理本地插件与远程插件的配置、作用域、健康和治理动作。</p>
       </div>
       <div class="hero-side">
         <button type="button" class="hero-action" title="刷新全部" @click="$emit('refresh')">
@@ -13,7 +13,7 @@
         <div class="hero-note">
           <span class="hero-note-label">统一协议运行面</span>
           <strong>{{ headline }}</strong>
-          <p>内建插件跟随后端启动，远程插件继续通过同一套宿主协议接入与治理。</p>
+          <p>本地插件跟随后端启动，远程插件继续通过同一套宿主协议接入与治理。</p>
         </div>
       </div>
     </header>

@@ -18,9 +18,13 @@ describe('BUILTIN_SUBAGENT_DELEGATE_PLUGIN', () => {
       },
       host: {
         getConfig: jest.fn().mockResolvedValue({
-          allowedToolNames: 'memory.search,web.search',
-          targetModelId: 'gpt-5.4',
-          targetProviderId: 'openai',
+          llm: {
+            targetModelId: 'gpt-5.4',
+            targetProviderId: 'openai',
+          },
+          tools: {
+            allowedToolNames: ['memory.search', 'web.search'],
+          },
         }),
         runSubagent,
       },
@@ -63,8 +67,10 @@ describe('BUILTIN_SUBAGENT_DELEGATE_PLUGIN', () => {
       },
       host: {
         getConfig: jest.fn().mockResolvedValue({
-          targetModelId: 'gpt-5.4',
-          targetProviderId: 'openai',
+          llm: {
+            targetModelId: 'gpt-5.4',
+            targetProviderId: 'openai',
+          },
         }),
         startSubagentTask,
       },

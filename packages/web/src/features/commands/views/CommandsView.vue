@@ -103,7 +103,7 @@
 
             <div class="meta-row">
               <span class="meta-chip">{{ command.pluginDisplayName || command.pluginId }}</span>
-              <span class="meta-chip">{{ command.runtimeKind === 'builtin' ? '内建' : '远程' }}</span>
+              <span class="meta-chip">{{ command.runtimeKind === 'local' ? '本地' : '远程' }}</span>
               <span class="meta-chip">{{ command.connected ? '在线' : '离线' }}</span>
               <span class="meta-chip">{{ sourceLabel(command.source) }}</span>
               <span class="meta-chip">优先级 {{ command.priority ?? 0 }}</span>

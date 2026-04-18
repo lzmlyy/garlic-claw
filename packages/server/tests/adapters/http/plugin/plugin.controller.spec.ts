@@ -39,6 +39,7 @@ describe('PluginController', () => {
   };
   const runtimePluginGovernanceService = {
     checkPluginHealth: jest.fn(),
+    readPluginHealthSnapshot: jest.fn(),
     listConnectedPlugins: jest.fn(),
     listPlugins: jest.fn(),
     listSupportedActions: jest.fn(),
@@ -75,7 +76,7 @@ describe('PluginController', () => {
           name: 'Memory Context',
           description: 'Memory plugin',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
@@ -117,7 +118,7 @@ describe('PluginController', () => {
           name: 'Memory Context',
           description: 'Memory plugin',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
@@ -152,12 +153,12 @@ describe('PluginController', () => {
           name: 'Memory Context',
           description: 'Memory plugin',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
         name: 'builtin.memory-context',
-        runtimeKind: 'builtin',
+        runtimeKind: 'local',
         status: 'online',
         supportedActions: ['health-check', 'reload'],
         updatedAt: '2026-03-26T01:00:00.000Z',
@@ -206,12 +207,12 @@ describe('PluginController', () => {
           id: 'builtin.memory-context',
           name: 'Memory Context',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
         name: 'builtin.memory-context',
-        runtimeKind: 'builtin',
+        runtimeKind: 'local',
       },
     ]);
   });
@@ -224,7 +225,15 @@ describe('PluginController', () => {
       token: 'signed-token',
       tokenExpiresIn: '30d',
     });
-    runtimePluginGovernanceService.checkPluginHealth.mockReturnValue({ ok: true });
+    runtimePluginGovernanceService.readPluginHealthSnapshot.mockReturnValue({
+      status: 'healthy',
+      failureCount: 0,
+      consecutiveFailures: 0,
+      lastError: null,
+      lastErrorAt: null,
+      lastSuccessAt: '2026-03-28T00:00:00.000Z',
+      lastCheckedAt: '2026-03-28T00:05:00.000Z',
+    });
     runtimePluginGovernanceService.runPluginAction.mockResolvedValue({
       accepted: true,
       action: 'reload',
@@ -242,7 +251,15 @@ describe('PluginController', () => {
       token: 'signed-token',
       tokenExpiresIn: '30d',
     });
-    expect(controller.getPluginHealth('remote.echo')).toEqual({ ok: true });
+    expect(controller.getPluginHealth('remote.echo')).toEqual({
+      status: 'healthy',
+      failureCount: 0,
+      consecutiveFailures: 0,
+      lastError: null,
+      lastErrorAt: null,
+      lastSuccessAt: '2026-03-28T00:00:00.000Z',
+      lastCheckedAt: '2026-03-28T00:05:00.000Z',
+    });
     await expect(
       controller.runPluginAction('remote.echo', 'reload'),
     ).resolves.toEqual({

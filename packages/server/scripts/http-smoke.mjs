@@ -579,7 +579,7 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('plugins.health', async () => {
     const health = await getJson(apiBase, '/plugins/builtin.memory-context/health');
-    ensure(typeof health.ok === 'boolean', 'Expected plugin health response');
+    ensure(health?.status === 'healthy', 'Expected plugin health response');
   });
 
   await runStep('plugins.config.get', async () => {
@@ -730,7 +730,7 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('plugins.remote.health.offline', async () => {
     const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
-    ensure(health.ok === false, 'Expected unconnected remote plugin health to be false');
+    ensure(health?.status === 'offline', 'Expected unconnected remote plugin health to be offline');
   });
 
   await runStep('plugins.remote.connect', async () => {
@@ -740,7 +740,7 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('plugins.remote.health.online', async () => {
     const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
-    ensure(health.ok === true, 'Expected connected remote plugin health to be true');
+    ensure(health?.status === 'healthy', 'Expected connected remote plugin health to be healthy');
   });
 
   await runStep('plugins.routes.get.success', async () => {
@@ -851,7 +851,7 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('plugins.remote.health.disconnected', async () => {
     await waitForPluginHealth(apiBase, state.remotePluginId, false);
     const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
-    ensure(health.ok === false, 'Expected reconnect action to disconnect remote plugin');
+    ensure(health?.status === 'offline', 'Expected reconnect action to disconnect remote plugin');
   });
 
   await runStep('plugins.remote.stop-client', async () => {
@@ -1555,7 +1555,7 @@ async function waitForPluginHealth(apiBase, pluginId, expectedOk) {
   while (Date.now() - startedAt < DEFAULT_TIMEOUT_MS) {
     try {
       const health = await getJson(apiBase, `/plugins/${pluginId}/health`);
-      if (health?.ok === expectedOk) {
+      if (readPluginHealthOk(health) === expectedOk) {
         return health;
       }
     } catch {
@@ -1566,6 +1566,10 @@ async function waitForPluginHealth(apiBase, pluginId, expectedOk) {
   }
 
   throw new Error(`Timed out waiting for plugin ${pluginId} health=${expectedOk}`);
+}
+
+function readPluginHealthOk(health) {
+  return health?.status === 'healthy';
 }
 
 async function waitForSubagentTaskCompletion(apiBase, taskId) {

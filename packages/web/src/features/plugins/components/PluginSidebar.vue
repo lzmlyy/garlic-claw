@@ -4,7 +4,7 @@
       <div class="sidebar-header-copy">
         <span class="sidebar-kicker">Plugin Index</span>
         <h2>插件</h2>
-        <p>默认聚焦用户可感知插件，系统内建按需展开。</p>
+        <p>默认聚焦用户可感知插件，系统本地插件按需展开。</p>
       </div>
       <button type="button" class="ghost-button refresh-button" title="刷新" @click="$emit('refresh')">
         <Icon :icon="refreshBold" class="refresh-icon" aria-hidden="true" />
@@ -35,7 +35,7 @@
       >
       <div v-if="systemBuiltinCount > 0" class="sidebar-system-hint">
         <span class="system-hint-text">
-          {{ showSystemBuiltins ? `已显示 ${systemBuiltinCount} 个系统内建插件` : `已隐藏 ${systemBuiltinCount} 个系统内建插件` }}
+          {{ showSystemBuiltins ? `已显示 ${systemBuiltinCount} 个系统本地插件` : `已隐藏 ${systemBuiltinCount} 个系统本地插件` }}
         </span>
         <label class="switch" data-test="plugin-sidebar-toggle-system">
           <input v-model="showSystemBuiltins" type="checkbox">
@@ -64,10 +64,10 @@
         <button
           type="button"
           class="filter-chip"
-          :class="{ active: activeFilter === 'builtin' }"
-          @click="activeFilter = 'builtin'"
+          :class="{ active: activeFilter === 'local' }"
+          @click="activeFilter = 'local'"
         >
-          内建
+          本地
         </button>
         <button
           type="button"
@@ -129,7 +129,6 @@
             <span class="health-dot" :class="healthClass(plugin)" />
             {{ healthLabel(plugin) }}
           </span>
-          <span class="meta-chip">{{ plugin.connected ? '在线' : '离线' }}</span>
           <span
             v-if="runtimePressureLabel(plugin)"
             class="pressure-badge"
@@ -201,7 +200,7 @@ defineEmits<{
 }>()
 
 const searchKeyword = ref('')
-const activeFilter = ref<'all' | 'attention' | 'builtin' | 'remote'>('all')
+const activeFilter = ref<'all' | 'attention' | 'local' | 'remote'>('all')
 const showSystemBuiltins = ref(readShowSystemBuiltinsPreference())
 const normalizedKeyword = computed(() =>
   searchKeyword.value.trim().toLocaleLowerCase(),
@@ -280,10 +279,10 @@ function matchesFilter(plugin: PluginInfo): boolean {
   switch (activeFilter.value) {
     case 'attention':
       return hasPluginIssue(plugin)
-    case 'builtin':
-      return (plugin.runtimeKind ?? 'remote') === 'builtin'
+    case 'local':
+      return (plugin.runtimeKind ?? 'remote') === 'local'
     case 'remote':
-      return (plugin.runtimeKind ?? 'remote') !== 'builtin'
+      return (plugin.runtimeKind ?? 'remote') !== 'local'
     default:
       return true
   }
@@ -345,10 +344,10 @@ function healthClass(plugin: PluginInfo): string {
 /**
  * 生成插件运行形态的简短文案。
  * @param plugin 插件摘要
- * @returns `内建` 或 `远程`
+ * @returns `本地` 或 `远程`
  */
 function runtimeKindLabel(plugin: PluginInfo): string {
-  return (plugin.runtimeKind ?? 'remote') === 'builtin' ? '内建' : '远程'
+  return (plugin.runtimeKind ?? 'remote') === 'local' ? '本地' : '远程'
 }
 
 /**

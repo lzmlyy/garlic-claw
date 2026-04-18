@@ -78,7 +78,7 @@ export class RuntimeHostSubagentTaskStoreService {
       requestedAt: now,
       result: null,
       resultPreview: undefined,
-      runtimeKind: 'builtin',
+      runtimeKind: 'local',
       startedAt: null,
       status: 'queued',
       writeBackError: undefined,

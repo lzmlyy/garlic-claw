@@ -9,165 +9,111 @@
 - `packages/server/src` 已压到 `8494`，Windows 与 WSL 内部目录的 fresh 构建、测试、后端 smoke、前端浏览器 smoke、独立 judge 都已通过。
 - 认证主链已收口为单密钥登录；`users/me / register / dev-login / refresh / role / API Key` 主链路已删除。
 - 聊天链路已支持 provider 自定义扩展块，前端默认折叠展示；插件侧已支持显式 `transportMode: 'generate' | 'stream-collect'`。
+- 聊天页“会话相关元素统一刷新”已完成，发送 / 重试 / 编辑 / 删除 / 停止生成后的摘要刷新、旧 SSE/旧请求竞态收口、独立 judge 都已通过。
 - 文档分层、跨平台约束、无绝对路径约束、测试目录规范已同步到 `AGENTS.md`。
+- N12 Persona 重构（AstrBot 方向）已完成，当前 persona 已改为服务端一等资源并使用目录化存储。
 
-## 当前阶段：[已完成] N12 Persona 重构（AstrBot 方向）
+## 当前阶段：[已完成] N13 插件配置元数据协议重构（AstrBot 方向）
 
 ### 目标
 
-- 把当前 `persona = 会话标签 + 插件改 prompt` 的模式，重构为接近 AstrBot 的独立 persona 资源系统。
-- persona 变成服务端一等资源，而不是 `builtin.persona-router` 这类插件的附属配置。
-- 聊天主链由服务端统一消费 persona，不再把 persona prompt owner 放在普通 `chat:before-model` 插件上。
-- 重构后 persona 至少具备以下能力：
-  - 独立持久化
-  - 列表 / 详情 / 新增 / 编辑 / 删除
-  - 应用到当前对话
-  - 默认 persona 回退
-  - persona prompt 注入
-  - begin dialogs 注入
-  - 按 persona 约束 skills
-  - 按 persona 约束 tools
-  - persona 专属错误消息
+- 把当前插件配置能力从宿主自定义的扁平 `fields[]`，重构为接近 AstrBot 的声明式配置元数据协议。
+- 插件“自定义 UI”第一轮不做插件自带前端，而是由宿主统一渲染插件声明的配置元数据。
+- 新协议要保留跨前端可消费的纯数据语义，不把当前 Vue 组件实现细节写进共享契约。
+- 配置页主语义要尽量贴近 AstrBot：
+  - object section
+  - `description / hint / obvious_hint`
+  - `items`
+  - `default`
+  - `invisible`
+  - `options`
+  - `editor_mode / editor_language / editor_theme`
+  - `_special`
+  - `condition`
+  - `collapsed`
+- 命名与落点保持当前项目风格统一，不直接照搬 AstrBot 文件名。
 
 ### 当前问题
 
-- 当前 persona 主体只存在于 `RuntimeHostUserContextService` 的内存 `Map` 中，不是独立持久化资源。
-- 当前 Web 人设页只能“查看 + 应用到当前对话”，不能管理 persona 资源本身。
-- 当前聊天主链不会直接消费 persona 配置；`activePersonaId` 主要只是传给 Hook 上下文。
-- 当前若把 persona 逻辑继续放在 `chat:before-model` 插件里，会和其它改 `systemPrompt` 的插件产生 owner 冲突。
-- 当前 Hook 链顺序虽然稳定，但主要依赖 `priority + pluginId`；不能把 persona 主语义继续寄托在普通插件顺序上。
+- 当前 `PluginConfigSchema` 只有扁平 `fields[]`，表达不了 AstrBot 风格的 section/object 嵌套结构。
+- 当前字段类型只有 `string / number / boolean / object / array`，缺少 `text / int / float / bool / list` 这种更贴近声明式 UI 的宿主语义。
+- 当前前端 `PluginConfigForm` 只能按扁平字段渲染输入框，无法表达：
+  - 条件显示
+  - 醒目 hint
+  - 折叠高级项
+  - 特殊选择器
+  - 编辑器模式
+- 当前服务端校验逻辑只按扁平字段做类型判断，无法对 object/items 递归处理。
+- 当前插件配置快照仍以“宿主内部字段表单”视角构造，不是“宿主统一消费元数据协议”视角。
 
 ### 设计边界
 
-- persona 必须从“插件 owner”迁回服务端主链 owner。
-- 不以“安装顺序”作为语义顺序；如需顺序，只用显式规则。
-- 第一轮不做新的复杂 prompt DSL；先完成 persona 独立资源化与服务端统一组装。
-- 第一轮不要求完全复刻 AstrBot 所有历史兼容细节，但要复刻其核心能力模型：
-  - persona prompt
-  - begin dialogs
-  - skills 白名单 / 空列表禁用 / `null` 表示全量
-  - tools 白名单 / 空列表禁用 / `null` 表示全量
-  - custom error message
-- 允许保留 `builtin.persona-router` 作为“辅助自动切换策略插件”，但它不再是 persona 主链 owner。
+- 第一轮不做插件自带 iframe、微前端或宿主动态执行插件前端模块。
+- 第一轮不做任意自定义按钮动作；先把 AstrBot 风格配置元数据协议做完整。
+- `_special` 作为宿主扩展控件入口保留，但只实现当前项目已具备稳定 owner 的选择器，不为了“字段名兼容”做空壳。
+- 不做兼容层；旧的 `fields[]` 协议不保留双写。
 - 不新增 `helper / helpers` 命名、目录或抽象层。
 
 ### 实现计划
 
-#### P1. Persona 资源中心
+#### C1. Shared 与 Plugin SDK 契约改造
 
-- 新增服务端 persona store 与 manager，独立于 `RuntimeHostUserContextService`。
-- 采用当前项目已有的务实持久化方式：
-  - 首轮落到 `packages/server/tmp/personas.server.json`
-  - 测试环境走隔离测试文件
-- persona 数据模型至少包含：
-  - `id`
-  - `name`
-  - `description`
-  - `prompt`
-  - `beginDialogs`
-  - `toolNames`
-  - `skillIds`
-  - `customErrorMessage`
-  - `isDefault`
-  - `createdAt`
-  - `updatedAt`
-- 提供默认 persona 种子，替代现在硬编码在 `RuntimeHostUserContextService` 里的单条默认记录。
+- 重写 `PluginConfigSchema` 为 object-tree 元数据协议，至少包含：
+  - section/object 层
+  - item 层
+  - 基础字段类型
+  - `hint / obvious_hint / invisible / condition / collapsed`
+  - `options`
+  - `editor_mode / editor_language / editor_theme`
+  - `_special`
+- 同步更新 `packages/plugin-sdk` 的 manifest 输入类型。
 
-#### P2. HTTP 与共享契约
+#### C2. Server 快照与校验改造
 
-- 扩展 shared persona 契约，区分：
-  - summary
-  - detail
-  - current
-- 扩展 `/personas` HTTP 边界：
-  - `GET /personas`
-  - `GET /personas/:personaId`
-  - `POST /personas`
-  - `PUT /personas/:personaId`
-  - `DELETE /personas/:personaId`
-  - `GET /personas/current`
-  - `PUT /personas/current`
-- 保持现有插件 host persona API 可用：
-  - `persona.list`
-  - `persona.get`
-  - `persona.current.get`
-  - `persona.activate`
+- `PluginBootstrapService` 读取新的 config 元数据协议，不再只解析 `fields[]`。
+- `PluginPersistenceService.validatePluginConfig()` 改为递归校验 object/items。
+- `plugin-read-model` 生成配置快照时，按新的元数据协议补全默认值并保留已存值。
+- 保持现有 `/plugins/:pluginId/config` HTTP 边界不变，避免扩大 API 面。
 
-#### P3. 聊天主链统一消费 persona
+#### C3. Web 宿主渲染器改造
 
-- `ConversationMessagePlanningService` 统一解析当前会话 persona。
-- 在模型调用前由服务端统一完成：
-  - persona prompt 注入
-  - begin dialogs 注入
-  - persona skill 限制
-  - persona tool 限制
-- persona prompt 与 skill prompt 的组合规则由服务端固定，不再由 persona 插件直接覆盖。
-- `chat:before-model` 仍可存在，但 persona 相关 owner 从中移出。
+- 用新的声明式渲染器替换当前扁平 `PluginConfigForm`。
+- 第一轮至少支持：
+  - object section
+  - text / int / float / bool / string / list
+  - options 下拉或多选
+  - hint / obvious_hint
+  - invisible / condition
+  - collapsed
+  - editor mode
+- `_special` 只接入当前宿主已经稳定存在的数据源选择器。
 
-#### P4. 错误与会话行为
+#### C4. 测试与示例
 
-- 聊天主链失败时，如果当前 persona 配置了 `customErrorMessage`，优先返回该消息。
-- 对话记录继续保存 `activePersonaId`，但它引用的是 persona store 中的独立资源。
-- 当前 persona 被删除时，已有对话回退到默认 persona，而不是留下悬空 ID。
-
-#### P5. 前端人设页升级
-
-- `PersonaSettingsView` 从“应用页”升级成“管理 + 应用”页。
-- 前端支持：
-  - persona 列表
-  - 创建
-  - 编辑
-  - 删除
-  - 设置为默认 / 标识默认
-  - 应用到当前对话
-- 页面文案不再把 `builtin.persona-router` 作为人设主入口。
-- 如保留自动切换插件，只把它作为可选增强入口显示。
-
-#### P6. 兼容与清理
-
-- `RuntimeHostUserContextService` 中 persona 相关 owner 迁走，只保留真正属于 user context 的内容。
-- `builtin.persona-router` 从“主 owner”降级为“策略插件”：
-  - 只负责根据规则切换 `activePersonaId`
-  - 不再直接成为 persona prompt 主组装者
-- 清理旧的人设页、旧文档、旧测试中“persona 主要靠插件改 prompt”的表述。
+- 更新 shared/server/web/plugin-sdk 受影响测试与 fixture。
+- 给 builtin/测试插件补一份能覆盖 object/items/condition/options/_special 的示例 schema。
+- fresh 跑完 build、lint、server smoke，以及受影响的 web 测试；如插件页有真实 UI 变化，再跑 `smoke:web-ui`。
 
 ### 验收标准
 
-- persona 成为独立持久化资源，不再只存在于运行时内存。
-- 前端可直接创建、编辑、删除、查看和应用 persona。
-- 新对话与无 persona 对话会稳定回退到默认 persona。
-- 模型调用前，服务端会统一注入 persona prompt 与 begin dialogs。
-- persona 可真实约束 skills 与 tools，而不是只展示字段。
-- persona 专属错误消息在请求失败时能真实生效。
-- 当前 persona 主链不再依赖 `builtin.persona-router` 才能成立。
-- 受影响测试、构建与 smoke 必须 fresh 通过。
+- 插件配置元数据协议已不再是扁平 `fields[]`。
+- 服务端能按新协议生成默认配置快照并做递归校验。
+- 前端插件详情页能按新协议渲染配置 UI，而不是只显示一组扁平输入框。
+- `hint / obvious_hint / invisible / condition / collapsed / options / editor_mode / _special` 至少在第一轮实现的范围内真实生效。
+- 现有插件配置读写接口仍可工作。
+- 受影响测试、构建与 smoke fresh 通过。
 
 ### 当前验收命令（阶段内持续维护）
 
-- `packages/server`: persona 相关定向 `jest`
-- `packages/web`: persona 相关定向 `vitest`
 - `packages/shared`: `npm run build`
 - `packages/plugin-sdk`: 受影响测试
+- `packages/server`: 插件配置相关定向 `jest`
 - `packages/server`: `npm run build`
+- `packages/web`: 插件配置相关定向 `vitest`
+- `packages/web`: `npm run build`
 - root: `npm run lint`
 - root: `npm run smoke:server`
-- 如人设页有真实 UI 改动，再补 `npm run smoke:web-ui`
-
-### 当前结论
-
-- 新鲜验收已通过：
-  - `packages/shared`: `npm run build`
-  - `packages/server`: persona 相关定向 `jest`
-  - `packages/server`: `npm run build`
-  - `packages/web`: persona 相关定向 `vitest`
-  - `packages/web`: `npm run build`
-  - root: `npm run smoke:server`
-  - root: `npm run smoke:web-ui`
-  - root: `npm run lint`
-- 独立 judge 已通过：
-  - agent `019d9f0c-fe7c-7e73-980f-bdaac5151964`
-  - 结论：`PASS`
-  - 未发现“persona owner 只是换壳平移”或新的阻断项
+- 如插件页有真实 UI 改动，再补 `npm run smoke:web-ui`
 
 ## 固定约束
 

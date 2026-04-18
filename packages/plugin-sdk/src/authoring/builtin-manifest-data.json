@@ -8,105 +8,155 @@
     "conversationTitleMaxMessages": 4,
     "providerRouterDefaultShortCircuitReply": "本轮请求已由 provider-router 直接处理。"
   },
-  "memoryContextConfigFields": [
-    {
-      "key": "limit",
-      "type": "number",
-      "description": "每次检索长期记忆的最大条数",
-      "defaultValue": 5
-    },
-    {
-      "key": "promptPrefix",
-      "type": "string",
-      "description": "记忆摘要写入系统提示词时的前缀",
-      "defaultValue": "与此用户相关的记忆"
+  "memoryContextConfigSchema": {
+    "type": "object",
+    "items": {
+      "limit": {
+        "type": "int",
+        "description": "每次检索长期记忆的最大条数",
+        "defaultValue": 5
+      },
+      "promptPrefix": {
+        "type": "string",
+        "description": "记忆摘要写入系统提示词时的前缀",
+        "defaultValue": "与此用户相关的记忆"
+      }
     }
-  ],
-  "kbContextConfigFields": [
-    {
-      "key": "limit",
-      "type": "number",
-      "description": "每次检索系统知识的最大条数",
-      "defaultValue": 3
-    },
-    {
-      "key": "promptPrefix",
-      "type": "string",
-      "description": "知识摘要写入系统提示词时的前缀",
-      "defaultValue": "与当前问题相关的系统知识"
+  },
+  "kbContextConfigSchema": {
+    "type": "object",
+    "items": {
+      "limit": {
+        "type": "int",
+        "description": "每次检索系统知识的最大条数",
+        "defaultValue": 3
+      },
+      "promptPrefix": {
+        "type": "string",
+        "description": "知识摘要写入系统提示词时的前缀",
+        "defaultValue": "与当前问题相关的系统知识"
+      }
     }
-  ],
-  "subagentDelegateConfigFields": [
-    {
-      "key": "targetProviderId",
-      "type": "string",
-      "description": "子代理默认使用的 provider ID"
-    },
-    {
-      "key": "targetModelId",
-      "type": "string",
-      "description": "子代理默认使用的 model ID"
-    },
-    {
-      "key": "allowedToolNames",
-      "type": "string",
-      "description": "允许子代理使用的工具名列表，使用英文逗号分隔"
+  },
+  "subagentDelegateConfigSchema": {
+    "type": "object",
+    "items": {
+      "llm": {
+        "type": "object",
+        "description": "模型设置",
+        "items": {
+          "targetProviderId": {
+            "type": "string",
+            "description": "子代理默认使用的 provider ID",
+            "specialType": "selectProvider"
+          },
+          "targetModelId": {
+            "type": "string",
+            "description": "子代理默认使用的 model ID"
+          }
+        }
+      },
+      "tools": {
+        "type": "object",
+        "description": "工具限制",
+        "hint": "留空表示允许子代理使用当前上下文中可见的全部工具。",
+        "collapsed": true,
+        "items": {
+          "allowedToolNames": {
+            "type": "list",
+            "description": "允许子代理使用的工具名列表",
+            "items": {
+              "type": "string"
+            },
+            "editorMode": true
+          }
+        }
+      }
     }
-  ],
-  "conversationTitleConfigFields": [
-    {
-      "key": "defaultTitle",
-      "type": "string",
-      "description": "仍命中该默认标题时才尝试自动改标题",
-      "defaultValue": "New Chat"
-    },
-    {
-      "key": "maxMessages",
-      "type": "number",
-      "description": "参与标题生成的最大消息条数",
-      "defaultValue": 4
+  },
+  "conversationTitleConfigSchema": {
+    "type": "object",
+    "items": {
+      "defaultTitle": {
+        "type": "string",
+        "description": "仍命中该默认标题时才尝试自动改标题",
+        "defaultValue": "New Chat"
+      },
+      "maxMessages": {
+        "type": "int",
+        "description": "参与标题生成的最大消息条数",
+        "defaultValue": 4
+      }
     }
-  ],
-  "providerRouterConfigFields": [
-    {
-      "key": "targetProviderId",
-      "type": "string",
-      "description": "命中路由时切换到的 provider ID"
-    },
-    {
-      "key": "targetModelId",
-      "type": "string",
-      "description": "命中路由时切换到的 model ID"
-    },
-    {
-      "key": "allowedToolNames",
-      "type": "string",
-      "description": "允许暴露给模型的工具名列表，使用英文逗号分隔"
-    },
-    {
-      "key": "shortCircuitKeyword",
-      "type": "string",
-      "description": "当最近一条用户消息包含该关键字时，直接返回 short-circuit"
-    },
-    {
-      "key": "shortCircuitReply",
-      "type": "string",
-      "description": "short-circuit 时直接写回给 assistant 的文本",
-      "defaultValue": "本轮请求已由 provider-router 直接处理。"
+  },
+  "providerRouterConfigSchema": {
+    "type": "object",
+    "items": {
+      "routing": {
+        "type": "object",
+        "description": "路由目标",
+        "items": {
+          "targetProviderId": {
+            "type": "string",
+            "description": "命中路由时切换到的 provider ID",
+            "specialType": "selectProvider"
+          },
+          "targetModelId": {
+            "type": "string",
+            "description": "命中路由时切换到的 model ID"
+          }
+        }
+      },
+      "tools": {
+        "type": "object",
+        "description": "工具过滤",
+        "hint": "留空表示不裁剪工具，继续向模型暴露当前上下文中的全部可用工具。",
+        "collapsed": true,
+        "items": {
+          "allowedToolNames": {
+            "type": "list",
+            "description": "允许暴露给模型的工具名列表",
+            "items": {
+              "type": "string"
+            },
+            "editorMode": true
+          }
+        }
+      },
+      "shortCircuit": {
+        "type": "object",
+        "description": "短路回复",
+        "hint": "配置关键字后，命中时将直接返回固定回复，不再继续请求模型。",
+        "obviousHint": true,
+        "collapsed": true,
+        "items": {
+          "shortCircuitKeyword": {
+            "type": "string",
+            "description": "当最近一条用户消息包含该关键字时，直接返回 short-circuit"
+          },
+          "shortCircuitReply": {
+            "type": "text",
+            "description": "short-circuit 时直接写回给 assistant 的文本",
+            "defaultValue": "本轮请求已由 provider-router 直接处理。"
+          }
+        }
+      }
     }
-  ],
-  "personaRouterConfigFields": [
-    {
-      "key": "targetPersonaId",
-      "type": "string",
-      "description": "命中路由后要切换到的 persona ID"
-    },
-    {
-      "key": "switchKeyword",
-      "type": "string",
-      "description": "当最近一条用户消息包含该关键字时，切换到目标 persona"
+  },
+  "personaRouterConfigSchema": {
+    "type": "object",
+    "items": {
+      "targetPersonaId": {
+        "type": "string",
+        "description": "命中路由后要切换到的 persona ID",
+        "specialType": "selectPersona"
+      },
+      "switchKeyword": {
+        "type": "string",
+        "description": "当最近一条用户消息包含该关键字时，切换到目标 persona"
+      }
     }
-  ],
+  },
   "memoryToolsManifestTools": [
     {
       "name": "save_memory",
@@ -270,8 +320,8 @@
     "id": "builtin.memory-context",
     "name": "记忆上下文",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "在模型调用前检索并注入用户长期记忆摘要的内建插件。",
+    "runtime": "local",
+    "description": "在模型调用前检索并注入用户长期记忆摘要的本地插件。",
     "permissions": ["memory:read", "config:read"],
     "tools": [],
     "hooks": [
@@ -281,28 +331,27 @@
       }
     ],
     "config": {
-      "fields": [
-        {
-          "key": "limit",
-          "type": "number",
+      "type": "object",
+      "items": {
+        "limit": {
+          "type": "int",
           "description": "每次检索长期记忆的最大条数",
           "defaultValue": 5
         },
-        {
-          "key": "promptPrefix",
+        "promptPrefix": {
           "type": "string",
           "description": "记忆摘要写入系统提示词时的前缀",
           "defaultValue": "与此用户相关的记忆"
         }
-      ]
+      }
     }
   },
   "kbContextManifest": {
     "id": "builtin.kb-context",
     "name": "知识库上下文",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "在模型调用前检索并注入系统知识摘要的内建插件。",
+    "runtime": "local",
+    "description": "在模型调用前检索并注入系统知识摘要的本地插件。",
     "permissions": ["kb:read", "config:read"],
     "tools": [],
     "hooks": [
@@ -312,28 +361,27 @@
       }
     ],
     "config": {
-      "fields": [
-        {
-          "key": "limit",
-          "type": "number",
+      "type": "object",
+      "items": {
+        "limit": {
+          "type": "int",
           "description": "每次检索系统知识的最大条数",
           "defaultValue": 3
         },
-        {
-          "key": "promptPrefix",
+        "promptPrefix": {
           "type": "string",
           "description": "知识摘要写入系统提示词时的前缀",
           "defaultValue": "与当前问题相关的系统知识"
         }
-      ]
+      }
     }
   },
   "conversationTitleManifest": {
     "id": "builtin.conversation-title",
     "name": "会话标题",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "在首次回复后为默认标题会话自动生成更合适标题的内建插件。",
+    "runtime": "local",
+    "description": "在首次回复后为默认标题会话自动生成更合适标题的本地插件。",
     "permissions": ["config:read", "conversation:read", "conversation:write", "llm:generate"],
     "tools": [],
     "hooks": [
@@ -343,28 +391,27 @@
       }
     ],
     "config": {
-      "fields": [
-        {
-          "key": "defaultTitle",
+      "type": "object",
+      "items": {
+        "defaultTitle": {
           "type": "string",
           "description": "仍命中该默认标题时才尝试自动改标题",
           "defaultValue": "New Chat"
         },
-        {
-          "key": "maxMessages",
-          "type": "number",
+        "maxMessages": {
+          "type": "int",
           "description": "参与标题生成的最大消息条数",
           "defaultValue": 4
         }
-      ]
+      }
     }
   },
   "providerRouterManifest": {
     "id": "builtin.provider-router",
     "name": "模型路由",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "按规则切换 provider/model、裁剪工具或直接短路回复的内建插件。",
+    "runtime": "local",
+    "description": "按规则切换 provider/model、裁剪工具或直接短路回复的本地插件。",
     "permissions": ["config:read", "provider:read"],
     "tools": [],
     "hooks": [
@@ -374,42 +421,66 @@
       }
     ],
     "config": {
-      "fields": [
-        {
-          "key": "targetProviderId",
-          "type": "string",
-          "description": "命中路由时切换到的 provider ID"
+      "type": "object",
+      "items": {
+        "routing": {
+          "type": "object",
+          "description": "路由目标",
+          "items": {
+            "targetProviderId": {
+              "type": "string",
+              "description": "命中路由时切换到的 provider ID",
+              "specialType": "selectProvider"
+            },
+            "targetModelId": {
+              "type": "string",
+              "description": "命中路由时切换到的 model ID"
+            }
+          }
         },
-        {
-          "key": "targetModelId",
-          "type": "string",
-          "description": "命中路由时切换到的 model ID"
+        "tools": {
+          "type": "object",
+          "description": "工具过滤",
+          "hint": "留空表示不裁剪工具，继续向模型暴露当前上下文中的全部可用工具。",
+          "collapsed": true,
+          "items": {
+            "allowedToolNames": {
+              "type": "list",
+              "description": "允许暴露给模型的工具名列表",
+              "items": {
+                "type": "string"
+              },
+              "editorMode": true
+            }
+          }
         },
-        {
-          "key": "allowedToolNames",
-          "type": "string",
-          "description": "允许暴露给模型的工具名列表，使用英文逗号分隔"
-        },
-        {
-          "key": "shortCircuitKeyword",
-          "type": "string",
-          "description": "当最近一条用户消息包含该关键字时，直接返回 short-circuit"
-        },
-        {
-          "key": "shortCircuitReply",
-          "type": "string",
-          "description": "short-circuit 时直接写回给 assistant 的文本",
-          "defaultValue": "本轮请求已由 provider-router 直接处理。"
+        "shortCircuit": {
+          "type": "object",
+          "description": "短路回复",
+          "hint": "配置关键字后，命中时将直接返回固定回复，不再继续请求模型。",
+          "obviousHint": true,
+          "collapsed": true,
+          "items": {
+            "shortCircuitKeyword": {
+              "type": "string",
+              "description": "当最近一条用户消息包含该关键字时，直接返回 short-circuit"
+            },
+            "shortCircuitReply": {
+              "type": "text",
+              "description": "short-circuit 时直接写回给 assistant 的文本",
+              "defaultValue": "本轮请求已由 provider-router 直接处理。"
+            }
+          }
         }
-      ]
+      }
     }
   },
   "personaRouterManifest": {
     "id": "builtin.persona-router",
     "name": "人设路由",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "按规则切换当前会话人设并同步改写系统提示词的内建插件。",
+    "runtime": "local",
+    "description": "按规则切换当前会话人设并同步改写系统提示词的本地插件。",
     "permissions": ["config:read", "persona:read", "persona:write"],
     "tools": [],
     "hooks": [
@@ -419,26 +490,26 @@
       }
     ],
     "config": {
-      "fields": [
-        {
-          "key": "targetPersonaId",
+      "type": "object",
+      "items": {
+        "targetPersonaId": {
           "type": "string",
-          "description": "命中路由后要切换到的 persona ID"
+          "description": "命中路由后要切换到的 persona ID",
+          "specialType": "selectPersona"
         },
-        {
-          "key": "switchKeyword",
+        "switchKeyword": {
           "type": "string",
           "description": "当最近一条用户消息包含该关键字时，切换到目标 persona"
         }
-      ]
+      }
     }
   },
   "cronHeartbeatManifest": {
     "id": "builtin.cron-heartbeat",
     "name": "定时心跳",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "用于验证统一 cron 插件协议链路的内建插件",
+    "runtime": "local",
+    "description": "用于验证统一 cron 插件协议链路的本地插件",
     "permissions": ["cron:read", "cron:write", "storage:read", "storage:write"],
     "tools": [],
     "hooks": [
@@ -457,10 +528,10 @@
   },
   "coreToolsManifest": {
     "id": "builtin.core-tools",
-    "name": "内建工具",
+    "name": "本地工具",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "提供时间、系统信息和计算器等基础能力的内建插件。",
+    "runtime": "local",
+    "description": "提供时间、系统信息和计算器等基础能力的本地插件。",
     "permissions": [],
     "tools": [
       {
@@ -491,8 +562,8 @@
     "id": "builtin.memory-tools",
     "name": "记忆工具",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "提供长期记忆写入与检索能力的内建插件。",
+    "runtime": "local",
+    "description": "提供长期记忆写入与检索能力的本地插件。",
     "permissions": ["memory:read", "memory:write"],
     "tools": [
       {
@@ -532,8 +603,8 @@
     "id": "builtin.automation-tools",
     "name": "自动化工具",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "提供自动化创建、事件触发、启停和执行能力的内建插件。",
+    "runtime": "local",
+    "description": "提供自动化创建、事件触发、启停和执行能力的本地插件。",
     "permissions": ["automation:read", "automation:write"],
     "tools": [
       {
@@ -610,8 +681,8 @@
     "id": "builtin.subagent-delegate",
     "name": "子代理委派",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "将当前任务委派给宿主子代理执行的内建插件。",
+    "runtime": "local",
+    "description": "将当前任务委派给宿主子代理执行的本地插件。",
     "permissions": ["config:read", "conversation:write", "subagent:run"],
     "tools": [
       {
@@ -643,31 +714,48 @@
     ],
     "hooks": [],
     "config": {
-      "fields": [
-        {
-          "key": "targetProviderId",
-          "type": "string",
-          "description": "子代理默认使用的 provider ID"
+      "type": "object",
+      "items": {
+        "llm": {
+          "type": "object",
+          "description": "模型设置",
+          "items": {
+            "targetProviderId": {
+              "type": "string",
+              "description": "子代理默认使用的 provider ID",
+              "specialType": "selectProvider"
+            },
+            "targetModelId": {
+              "type": "string",
+              "description": "子代理默认使用的 model ID"
+            }
+          }
         },
-        {
-          "key": "targetModelId",
-          "type": "string",
-          "description": "子代理默认使用的 model ID"
-        },
-        {
-          "key": "allowedToolNames",
-          "type": "string",
-          "description": "允许子代理使用的工具名列表，使用英文逗号分隔"
+        "tools": {
+          "type": "object",
+          "description": "工具限制",
+          "hint": "留空表示允许子代理使用当前上下文中可见的全部工具。",
+          "collapsed": true,
+          "items": {
+            "allowedToolNames": {
+              "type": "list",
+              "description": "允许子代理使用的工具名列表",
+              "items": {
+                "type": "string"
+              },
+              "editorMode": true
+            }
+          }
         }
-      ]
+      }
     }
   },
   "routeInspectorManifest": {
     "id": "builtin.route-inspector",
     "name": "路由探针",
     "version": "1.0.0",
-    "runtime": "builtin",
-    "description": "用于查看插件 Web Route 可见上下文的内建诊断插件。",
+    "runtime": "local",
+    "description": "用于查看插件 Web Route 可见上下文的本地诊断插件。",
     "permissions": ["conversation:read", "user:read"],
     "tools": [],
     "hooks": [],

@@ -14,17 +14,17 @@ describe('PluginPersistenceService', () => {
         id: 'builtin.ping',
         name: 'Builtin Ping',
         permissions: [],
-        runtime: 'builtin',
+        runtime: 'local',
         tools: [],
         version: '1.0.0',
         config: {
-          fields: [
-            {
-              key: 'limit',
-              type: 'number',
+          type: 'object',
+          items: {
+            limit: {
+              type: 'int',
               defaultValue: 5,
             },
-          ],
+          },
         },
       },
       pluginId: 'builtin.ping',
@@ -43,13 +43,13 @@ describe('PluginPersistenceService', () => {
     });
     expect(service.getPluginConfig('builtin.ping')).toEqual({
       schema: {
-        fields: [
-          {
-            key: 'limit',
-            type: 'number',
+        type: 'object',
+        items: {
+          limit: {
+            type: 'int',
             defaultValue: 5,
           },
-        ],
+        },
       },
       values: {
         limit: 5,
@@ -57,13 +57,13 @@ describe('PluginPersistenceService', () => {
     });
     expect(service.updatePluginConfig('builtin.ping', { limit: 8 })).toEqual({
       schema: {
-        fields: [
-          {
-            key: 'limit',
-            type: 'number',
+        type: 'object',
+        items: {
+          limit: {
+            type: 'int',
             defaultValue: 5,
           },
-        ],
+        },
       },
       values: {
         limit: 8,
@@ -127,7 +127,7 @@ describe('PluginPersistenceService', () => {
         id: 'builtin.ping',
         name: 'Builtin Ping',
         permissions: [],
-        runtime: 'builtin',
+        runtime: 'local',
         tools: [],
         version: '1.0.0',
       },
@@ -139,6 +139,227 @@ describe('PluginPersistenceService', () => {
       modelId: null,
       providerId: 'openai',
     })).toThrow(BadRequestException);
+  });
+
+  it('rejects config values that are outside declared options', () => {
+    const service = new PluginPersistenceService();
+
+    service.upsertPlugin({
+      connected: true,
+      defaultEnabled: true,
+      governance: { canDisable: true },
+      lastSeenAt: null,
+      manifest: {
+        id: 'builtin.schema-options',
+        name: 'Schema Options',
+        permissions: [],
+        runtime: 'local',
+        tools: [],
+        version: '1.0.0',
+        config: {
+          type: 'object',
+          items: {
+            locale: {
+              type: 'string',
+              options: [
+                { value: 'zh-CN', label: '简体中文' },
+                { value: 'en-US', label: 'English' },
+              ],
+            },
+            tags: {
+              type: 'list',
+              renderType: 'select',
+              options: [
+                { value: 'safe', label: '安全' },
+                { value: 'fast', label: '快速' },
+              ],
+            },
+          },
+        },
+      },
+      pluginId: 'builtin.schema-options',
+    });
+
+    expect(() => service.updatePluginConfig('builtin.schema-options', {
+      locale: 'ja-JP',
+      tags: ['safe'],
+    })).toThrow(new BadRequestException('配置字段 locale 必须命中声明的 options'));
+
+    expect(() => service.updatePluginConfig('builtin.schema-options', {
+      locale: 'zh-CN',
+      tags: ['safe', 'unknown'],
+    })).toThrow(new BadRequestException('配置字段 tags.1 必须命中声明的 options'));
+  });
+
+  it('builds nested defaults and strips legacy unknown keys from config snapshots', () => {
+    const service = new PluginPersistenceService();
+
+    service.upsertPlugin({
+      connected: true,
+      configValues: {
+        advanced: {
+          mode: 'manual',
+          staleNested: 'legacy',
+        },
+        staleRoot: 'legacy',
+      },
+      defaultEnabled: true,
+      governance: { canDisable: true },
+      lastSeenAt: null,
+      manifest: {
+        id: 'builtin.object-tree',
+        name: 'Object Tree',
+        permissions: [],
+        runtime: 'local',
+        tools: [],
+        version: '1.0.0',
+        config: {
+          type: 'object',
+          items: {
+            advanced: {
+              type: 'object',
+              items: {
+                enabled: {
+                  type: 'bool',
+                  defaultValue: false,
+                },
+                mode: {
+                  type: 'string',
+                  defaultValue: 'auto',
+                },
+              },
+            },
+          },
+        },
+      },
+      pluginId: 'builtin.object-tree',
+    });
+
+    expect(service.getPluginConfig('builtin.object-tree')).toEqual({
+      schema: {
+        type: 'object',
+        items: {
+          advanced: {
+            type: 'object',
+            items: {
+              enabled: {
+                type: 'bool',
+                defaultValue: false,
+              },
+              mode: {
+                type: 'string',
+                defaultValue: 'auto',
+              },
+            },
+          },
+        },
+      },
+      values: {
+        advanced: {
+          enabled: false,
+          mode: 'manual',
+        },
+      },
+    });
+
+    expect(() => service.updatePluginConfig('builtin.object-tree', {
+      advanced: {
+        enabled: true,
+        staleNested: 'legacy',
+      },
+    })).toThrow(new BadRequestException('未知配置字段: advanced.staleNested'));
+  });
+
+  it('recursively resolves list item defaults and validates object items inside lists', () => {
+    const service = new PluginPersistenceService();
+
+    service.upsertPlugin({
+      connected: true,
+      defaultEnabled: true,
+      governance: { canDisable: true },
+      lastSeenAt: null,
+      manifest: {
+        id: 'builtin.list-tree',
+        name: 'List Tree',
+        permissions: [],
+        runtime: 'local',
+        tools: [],
+        version: '1.0.0',
+        config: {
+          type: 'object',
+          items: {
+            rules: {
+              type: 'list',
+              defaultValue: [
+                {
+                  enabled: false,
+                },
+              ],
+              items: {
+                type: 'object',
+                items: {
+                  enabled: {
+                    type: 'bool',
+                    defaultValue: true,
+                  },
+                  name: {
+                    type: 'string',
+                    defaultValue: 'default-rule',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      pluginId: 'builtin.list-tree',
+    });
+
+    expect(service.getPluginConfig('builtin.list-tree')).toEqual({
+      schema: {
+        type: 'object',
+        items: {
+          rules: {
+            type: 'list',
+            defaultValue: [
+              {
+                enabled: false,
+              },
+            ],
+            items: {
+              type: 'object',
+              items: {
+                enabled: {
+                  type: 'bool',
+                  defaultValue: true,
+                },
+                name: {
+                  type: 'string',
+                  defaultValue: 'default-rule',
+                },
+              },
+            },
+          },
+        },
+      },
+      values: {
+        rules: [
+          {
+            enabled: false,
+            name: 'default-rule',
+          },
+        ],
+      },
+    });
+
+    expect(() => service.updatePluginConfig('builtin.list-tree', {
+      rules: [
+        {
+          enabled: true,
+          extra: 'legacy',
+        },
+      ],
+    })).toThrow(new BadRequestException('未知配置字段: rules.0.extra'));
   });
 
   it('rejects deleting connected plugins and deletes offline plugins', () => {
@@ -153,7 +374,7 @@ describe('PluginPersistenceService', () => {
         id: 'builtin.ping',
         name: 'Builtin Ping',
         permissions: [],
-        runtime: 'builtin',
+        runtime: 'local',
         tools: [],
         version: '1.0.0',
       },

@@ -159,7 +159,7 @@ describe('RuntimePluginGovernanceService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: [],
@@ -193,7 +193,7 @@ describe('RuntimePluginGovernanceService', () => {
       accepted: true,
       action: 'reload',
       pluginId: 'builtin.memory-context',
-      message: '已重新装载内建插件',
+      message: '已重新装载本地插件',
     });
     expect(pluginBootstrapService.getPlugin('builtin.memory-context')).toMatchObject({
       connected: true,
@@ -231,7 +231,7 @@ describe('RuntimePluginGovernanceService', () => {
           id: 'builtin.subagent-observer',
           name: 'Builtin Subagent Observer',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },

@@ -1,8 +1,10 @@
 import type {
   JsonObject,
+  JsonValue,
   PluginActionName,
   PluginCommandConflict,
   PluginCommandInfo,
+  PluginConfigNodeSchema,
   PluginConfigSnapshot,
   PluginInfo,
 } from '@garlic-claw/shared';
@@ -115,20 +117,54 @@ export function buildPluginCommandConflicts(commands: PluginCommandInfo[]): Plug
 }
 
 function resolvePluginConfigValues(record: RegisteredPluginRecord): JsonObject {
-  const values: JsonObject = {};
-  for (const field of record.manifest.config?.fields ?? []) {
-    if (typeof record.configValues?.[field.key] !== 'undefined') {
-      values[field.key] = record.configValues[field.key];
-      continue;
-    }
-    if (typeof field.defaultValue !== 'undefined') {
-      values[field.key] = field.defaultValue;
-    }
+  return resolveConfigNodeValue(
+    record.manifest.config ?? null,
+    record.configValues ?? {},
+  ) as JsonObject;
+}
+
+function resolveConfigNodeValue(
+  schema: PluginConfigNodeSchema | null,
+  currentValue: JsonValue | undefined,
+): JsonValue | undefined {
+  if (!schema) {
+    return currentValue;
   }
-  for (const [key, value] of Object.entries(record.configValues ?? {})) {
-    if (!(key in values)) {
-      values[key] = value;
+
+  if (schema.type === 'object') {
+    const source = currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)
+      ? currentValue as JsonObject
+      : {};
+    const result: JsonObject = {};
+
+    for (const [key, childSchema] of Object.entries(schema.items)) {
+      const childValue = resolveConfigNodeValue(childSchema, source[key]);
+      if (typeof childValue !== 'undefined') {
+        result[key] = childValue;
+      }
     }
+
+    return result;
   }
-  return values;
+
+  if (schema.type === 'list') {
+    const sourceList = Array.isArray(currentValue)
+      ? currentValue
+      : Array.isArray(schema.defaultValue)
+        ? schema.defaultValue
+        : null;
+    if (sourceList) {
+      const itemSchema = schema.items;
+      if (!itemSchema) {
+        return sourceList;
+      }
+      return sourceList.map((item) => resolveConfigNodeValue(itemSchema, item) ?? null);
+    }
+    return typeof schema.defaultValue !== 'undefined' ? schema.defaultValue : currentValue;
+  }
+
+  if (typeof currentValue !== 'undefined') {
+    return currentValue;
+  }
+  return typeof schema.defaultValue !== 'undefined' ? schema.defaultValue : undefined;
 }
