@@ -41,6 +41,7 @@ function createModel(providerId: string, id: string, inputImage: boolean) {
       url: 'https://example.com/v1/chat/completions',
       npm: '@example/sdk',
     },
+    contextLength: 128 * 1024,
   }
 }
 

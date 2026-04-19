@@ -73,8 +73,6 @@ export function deleteConversationMessageRecord(conversationId: string, messageI
 export async function stopConversationMessageRecord(
   conversationId: string,
   messageId: string,
-): Promise<ChatMessage> {
-  return dbMessageToChat(
-    await stopConversationMessage(conversationId, messageId),
-  )
+): Promise<{ message: string }> {
+  return stopConversationMessage(conversationId, messageId)
 }

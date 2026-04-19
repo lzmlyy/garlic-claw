@@ -3,6 +3,7 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { AiModelExecutionService } from '../ai/ai-model-execution.service';
 import { SkillSessionService } from '../execution/skill/skill-session.service';
 import { ToolRegistryService } from '../execution/tool/tool-registry.service';
+import { PersonaService } from '../persona/persona.service';
 import { RuntimeHostConversationRecordService } from '../runtime/host/runtime-host-conversation-record.service';
 import { RuntimeHostPluginDispatchService } from '../runtime/host/runtime-host-plugin-dispatch.service';
 import { asJsonValue, DEFAULT_PROVIDER_ID, DEFAULT_PROVIDER_MODEL_ID } from '../runtime/host/runtime-host-values';
@@ -15,7 +16,7 @@ export type ConversationStreamPlan = ResolvedConversationTaskStreamSource & { re
 
 @Injectable()
 export class ConversationMessagePlanningService {
-  constructor(private readonly aiModelExecutionService: AiModelExecutionService, private readonly aiVisionService: AiVisionService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly skillSessionService: SkillSessionService, private readonly toolRegistryService: ToolRegistryService, @Inject(RuntimeHostPluginDispatchService) private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService) {}
+  constructor(private readonly aiModelExecutionService: AiModelExecutionService, private readonly aiVisionService: AiVisionService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly personaService: PersonaService, private readonly skillSessionService: SkillSessionService, private readonly toolRegistryService: ToolRegistryService, @Inject(RuntimeHostPluginDispatchService) private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService) {}
 
   async applyMessageReceived(input: { activePersonaId?: string; content: string; conversationId: string; modelId: string; parts: ChatMessagePart[]; providerId: string; userId?: string }) {
     return this.applyConversationHooks(
@@ -27,13 +28,33 @@ export class ConversationMessagePlanningService {
     );
   }
 
-  async createStreamPlan(input: { activePersonaId?: string; abortSignal: AbortSignal; conversationId: string; messageId: string; modelId: string; providerId: string; userId?: string }): Promise<ConversationStreamPlan> {
-    const beforeModel = await this.applyBeforeModel({ activePersonaId: input.activePersonaId, conversationId: input.conversationId, messages: await this.buildModelMessages(input.conversationId, input.messageId), modelId: input.modelId, providerId: input.providerId, userId: input.userId });
+  async createStreamPlan(input: { activePersonaId?: string; abortSignal: AbortSignal; conversationId: string; messageId: string; modelId: string; persona?: { beginDialogs: Array<{ content: string; role: 'assistant' | 'user' }>; customErrorMessage: string | null; personaId: string; prompt: string; skillIds: string[] | null; toolNames: string[] | null }; providerId: string; userId?: string }): Promise<ConversationStreamPlan> {
+    const persona = input.persona ?? this.personaService.readCurrentPersona({
+      context: {
+        activePersonaId: input.activePersonaId,
+        conversationId: input.conversationId,
+        source: 'http-route',
+        ...(input.userId ? { userId: input.userId } : {}),
+      },
+      conversationId: input.conversationId,
+    });
+    const beforeModel = await this.applyBeforeModel({
+      activePersonaId: persona.personaId,
+      conversationId: input.conversationId,
+      messages: [...persona.beginDialogs, ...await this.buildModelMessages(input.conversationId, input.messageId)],
+      modelId: input.modelId,
+      providerId: input.providerId,
+      systemPrompt: persona.prompt,
+      userId: input.userId,
+    });
     if (!beforeModel) {throw new BadRequestException('Invalid before-model hook result');}
     if (beforeModel.action === 'short-circuit') {return { modelId: beforeModel.modelId, providerId: beforeModel.providerId, responseSource: 'short-circuit', shortCircuitParts: beforeModel.assistantParts, stream: createShortCircuitStream(beforeModel.assistantContent) };}
     if (beforeModel.action !== 'continue') {throw new BadRequestException('Invalid before-model hook result');}
-    const skillContext = await this.skillSessionService.getConversationSkillContext(input.conversationId);
-    const tools = await this.toolRegistryService.buildToolSet({ allowedToolNames: skillContext.allowedToolNames ?? undefined, context: createConversationHookContext({ activePersonaId: input.activePersonaId, conversationId: input.conversationId, modelId: beforeModel.modelId, providerId: beforeModel.providerId, userId: input.userId }) });
+    const skillContext = await this.skillSessionService.getConversationSkillContext(input.conversationId, {
+      allowedSkillIds: persona.skillIds,
+    });
+    const allowedToolNames = mergeAllowedToolNames(skillContext.allowedToolNames, persona.toolNames);
+    const tools = await this.toolRegistryService.buildToolSet({ allowedToolNames: allowedToolNames ?? undefined, context: createConversationHookContext({ activePersonaId: persona.personaId, conversationId: input.conversationId, modelId: beforeModel.modelId, providerId: beforeModel.providerId, userId: input.userId }) });
     const modelId = beforeModel.modelId === DEFAULT_PROVIDER_MODEL_ID ? undefined : beforeModel.modelId;
     const providerId = beforeModel.providerId === DEFAULT_PROVIDER_ID ? undefined : beforeModel.providerId;
     const stream = this.aiModelExecutionService.streamText({
@@ -43,7 +64,7 @@ export class ConversationMessagePlanningService {
       messages: beforeModel.messages,
       ...(providerId ? { providerId } : {}),
       ...((beforeModel.systemPrompt || skillContext.systemPrompt)
-        ? { system: [skillContext.systemPrompt, beforeModel.systemPrompt].filter(Boolean).join('\n\n') }
+        ? { system: [beforeModel.systemPrompt, skillContext.systemPrompt].filter(Boolean).join('\n\n') }
         : {}),
       ...(tools ? { tools } : {}),
     });
@@ -68,7 +89,7 @@ export class ConversationMessagePlanningService {
     return Promise.all(this.runtimeHostConversationRecordService.requireConversation(conversationId).messages.filter((entry) => entry.id !== messageId && (entry.role === 'assistant' || entry.role === 'user')).map(async (message) => ({ content: Array.isArray(message.parts) ? await this.aiVisionService.resolveMessageParts(conversationId, message.parts as unknown as ChatMessagePart[]) : typeof message.content === 'string' ? message.content : '', role: message.role === 'assistant' ? 'assistant' : 'user' })));
   }
 
-  private async applyBeforeModel(input: { activePersonaId?: string; conversationId: string; messages: Array<{ content: string | ChatMessagePart[]; role: 'assistant' | 'user' }>; modelId: string; providerId: string; userId?: string }) {
+  private async applyBeforeModel(input: { activePersonaId?: string; conversationId: string; messages: Array<{ content: string | ChatMessagePart[]; role: 'assistant' | 'user' }>; modelId: string; providerId: string; systemPrompt: string; userId?: string }) {
     const context = createConversationHookContext(input);
     const availableTools = await this.toolRegistryService.listAvailableTools({ context });
     const result = await runDispatchableHookChain({
@@ -76,7 +97,7 @@ export class ConversationMessagePlanningService {
       hookName: 'chat:before-model',
       kernel: this.runtimeHostPluginDispatchService,
       mapPayload: (payload) => asJsonValue({ context, request: { availableTools, messages: payload.messages, modelId: payload.modelId, providerId: payload.providerId, systemPrompt: payload.systemPrompt } }),
-      initialState: { action: 'continue' as const, ...input, systemPrompt: '' },
+      initialState: { action: 'continue' as const, ...input },
       readContext: () => context,
     });
     return 'shortCircuitResult' in result ? result.shortCircuitResult : result.state;
@@ -111,6 +132,14 @@ export function createShortCircuitStream(content: string) {
     finishReason: 'short-circuit',
     fullStream: (async function* () { if (normalized) {yield { text: normalized, type: 'text-delta' as const };} })(),
   };
+}
+
+function mergeAllowedToolNames(left: string[] | null, right: string[] | null): string[] | null {
+  if (left === null && right === null) {return null;}
+  if (left === null) {return right ? [...right] : [];}
+  if (right === null) {return [...left];}
+  const rightSet = new Set(right);
+  return left.filter((toolName) => rightSet.has(toolName));
 }
 
 function createConversationHookContext(input: { activePersonaId?: string; conversationId?: string; modelId?: string; providerId?: string; userId?: string }): PluginCallContext {

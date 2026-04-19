@@ -1,4 +1,4 @@
-import type { ChatMessagePart, ChatMessageStatus, JsonObject, JsonValue, PluginCallContext } from '@garlic-claw/shared';
+import type { ChatMessageMetadata, ChatMessagePart, ChatMessageStatus, JsonObject, JsonValue, PluginCallContext } from '@garlic-claw/shared';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { RuntimeHostConversationRecordService, serializeConversationMessage } from './runtime-host-conversation-record.service';
@@ -12,6 +12,7 @@ export class RuntimeHostConversationMessageService {
 
   private createMessageRecord(input: MessageWriteInput, timestamp: string): JsonObject {
     const message: JsonObject = { content: input.content ?? '', createdAt: timestamp, id: randomUUID(), role: input.role, status: input.status, updatedAt: timestamp };
+    if (input.metadata) {message.metadataJson = JSON.stringify(input.metadata);}
     if (input.parts?.length) {message.parts = asJsonValue(input.parts) as unknown as JsonObject['parts'];}
     if (input.provider) {message.provider = input.provider;}
     if (input.model) {message.model = input.model;}
@@ -79,6 +80,7 @@ export class RuntimeHostConversationMessageService {
     if ('parts' in patch) {next.parts = asJsonValue(patch.parts ?? []) as unknown as JsonObject['parts'];}
     if ('provider' in patch) {next.provider = patch.provider ?? null;}
     if ('status' in patch) {next.status = patch.status ?? next.status;}
+    if ('metadata' in patch) {next.metadataJson = patch.metadata ? JSON.stringify(patch.metadata) : null;}
     if ('toolCalls' in patch) {next.toolCalls = patch.toolCalls ? asJsonValue(patch.toolCalls) as unknown as JsonObject['toolCalls'] : null;}
     if ('toolResults' in patch) {next.toolResults = patch.toolResults ? asJsonValue(patch.toolResults) as unknown as JsonObject['toolResults'] : null;}
     next.updatedAt = new Date().toISOString();
@@ -128,8 +130,8 @@ export class RuntimeHostConversationMessageService {
   }
 }
 
-type MessageWriteInput = { content?: string; model?: string | null; parts?: ChatMessagePart[]; provider?: string | null; role: 'assistant' | 'user'; status: 'completed' | 'pending'; target?: { id: string; label: string; type: 'conversation' } };
-type MessagePatch = { content?: string; error?: string | null; model?: string | null; parts?: ChatMessagePart[]; provider?: string | null; status?: ChatMessageStatus; toolCalls?: JsonValue[] | null; toolResults?: JsonValue[] | null };
+type MessageWriteInput = { content?: string; metadata?: ChatMessageMetadata | null; model?: string | null; parts?: ChatMessagePart[]; provider?: string | null; role: 'assistant' | 'user'; status: 'completed' | 'pending'; target?: { id: string; label: string; type: 'conversation' } };
+type MessagePatch = { content?: string; error?: string | null; metadata?: ChatMessageMetadata | null; model?: string | null; parts?: ChatMessagePart[]; provider?: string | null; status?: ChatMessageStatus; toolCalls?: JsonValue[] | null; toolResults?: JsonValue[] | null };
 type HookMessage = { content: string; model: string | null; parts: ChatMessagePart[]; provider: string | null; role: 'assistant' | 'user'; status: JsonValue };
 
 function readStoredHookMessage(message: JsonObject): HookMessage {

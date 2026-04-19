@@ -6,6 +6,7 @@ import type { AiSettingsFile } from '../../src/ai-management/ai-management.types
 
 jest.mock('../../src/ai-management/ai-management-settings.store', () => {
   const settings: AiSettingsFile = {
+    models: [],
     providers: [],
     visionFallback: {
       enabled: false,
@@ -21,6 +22,14 @@ jest.mock('../../src/ai-management/ai-management-settings.store', () => {
     loadAiSettings: jest.fn(() => settings),
     resolveAiSettingsPath: jest.fn(() => 'memory://ai-settings.json'),
     saveAiSettings: jest.fn((_path: string, next: AiSettingsFile) => {
+      settings.models = next.models.map((model) => ({
+        ...model,
+        capabilities: {
+          ...model.capabilities,
+          input: { ...model.capabilities.input },
+          output: { ...model.capabilities.output },
+        },
+      }));
       settings.providers = next.providers.map((provider) => ({ ...provider, models: [...provider.models] }));
       settings.visionFallback = { ...next.visionFallback };
       settings.hostModelRouting = JSON.parse(JSON.stringify(next.hostModelRouting));
@@ -31,6 +40,7 @@ jest.mock('../../src/ai-management/ai-management-settings.store', () => {
 describe('AiManagementService', () => {
   beforeEach(() => {
     const loadAiSettings = settingsStore.loadAiSettings as unknown as jest.Mock<AiSettingsFile, []>;
+    loadAiSettings().models = [];
     loadAiSettings().providers = [];
     loadAiSettings().visionFallback = {
       enabled: false,
@@ -54,7 +64,7 @@ describe('AiManagementService', () => {
     ]);
   });
 
-  it('stores providers, hydrates models and updates capabilities', () => {
+  it('stores model metadata persistently, including capabilities and context length', () => {
     const service = new AiManagementService(new AiProviderSettingsService());
 
     const provider = service.upsertProvider('openai-main', {
@@ -81,13 +91,16 @@ describe('AiManagementService', () => {
       }),
     ]);
     expect(service.listModels('openai-main')).toEqual([
-      expect.objectContaining({ id: 'gpt-4o-mini', providerId: 'openai-main' }),
-      expect.objectContaining({ id: 'gpt-4.1-mini', providerId: 'openai-main' }),
+      expect.objectContaining({ contextLength: 128 * 1024, id: 'gpt-4o-mini', providerId: 'openai-main' }),
+      expect.objectContaining({ contextLength: 128 * 1024, id: 'gpt-4.1-mini', providerId: 'openai-main' }),
     ]);
     expect(
-      service.updateModelCapabilities('openai-main', 'gpt-4o-mini', {
-        input: { image: true },
-        reasoning: true,
+      service.upsertModel('openai-main', 'gpt-4o-mini', {
+        capabilities: {
+          input: { image: true },
+          reasoning: true,
+        },
+        contextLength: 256 * 1024,
       }),
     ).toEqual(
       expect.objectContaining({
@@ -95,6 +108,63 @@ describe('AiManagementService', () => {
           input: expect.objectContaining({ image: true }),
           reasoning: true,
         }),
+        contextLength: 256 * 1024,
+      }),
+    );
+
+    const reloaded = new AiManagementService(new AiProviderSettingsService());
+    expect(reloaded.getProviderModel('openai-main', 'gpt-4o-mini')).toEqual(
+      expect.objectContaining({
+        capabilities: expect.objectContaining({
+          input: expect.objectContaining({ image: true }),
+          reasoning: true,
+        }),
+        contextLength: 256 * 1024,
+        id: 'gpt-4o-mini',
+        providerId: 'openai-main',
+      }),
+    );
+  });
+
+  it('removes stale persisted model metadata when a provider model list is replaced', () => {
+    const providerSettings = new AiProviderSettingsService();
+    const service = new AiManagementService(providerSettings);
+
+    service.upsertProvider('openai-main', {
+      apiKey: 'openai-key',
+      driver: 'openai',
+      mode: 'catalog',
+      models: ['gpt-4o-mini', 'gpt-4.1-mini'],
+      name: 'OpenAI',
+    });
+    service.listModels('openai-main');
+    service.upsertModel('openai-main', 'gpt-4o-mini', {
+      contextLength: 256 * 1024,
+    });
+
+    service.upsertProvider('openai-main', {
+      apiKey: 'openai-key',
+      driver: 'openai',
+      mode: 'catalog',
+      models: ['gpt-4.1-mini'],
+      name: 'OpenAI',
+    });
+
+    expect(providerSettings.listPersistedModels('openai-main').map((entry) => entry.id)).toEqual(['gpt-4.1-mini']);
+
+    service.upsertProvider('openai-main', {
+      apiKey: 'openai-key',
+      driver: 'openai',
+      mode: 'catalog',
+      models: ['gpt-4o-mini', 'gpt-4.1-mini'],
+      name: 'OpenAI',
+    });
+
+    expect(service.getProviderModel('openai-main', 'gpt-4o-mini')).toEqual(
+      expect.objectContaining({
+        contextLength: 128 * 1024,
+        id: 'gpt-4o-mini',
+        providerId: 'openai-main',
       }),
     );
   });

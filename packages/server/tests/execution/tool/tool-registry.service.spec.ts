@@ -7,6 +7,8 @@ import { BuiltinPluginRegistryService } from '../../../src/plugin/builtin/builti
 import { PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
 import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
 import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
+import { PersonaService } from '../../../src/persona/persona.service';
+import { PersonaStoreService } from '../../../src/persona/persona-store.service';
 import { RuntimeGatewayConnectionLifecycleService } from '../../../src/runtime/gateway/runtime-gateway-connection-lifecycle.service';
 import { RuntimeGatewayRemoteTransportService } from '../../../src/runtime/gateway/runtime-gateway-remote-transport.service';
 import { RuntimeHostConversationMessageService } from '../../../src/runtime/host/runtime-host-conversation-message.service';
@@ -146,7 +148,7 @@ describe('ToolRegistryService', () => {
       accepted: true,
       action,
       pluginId,
-      message: action === 'health-check' ? '插件健康检查通过' : '已重新装载内建插件',
+      message: action === 'health-check' ? '插件健康检查通过' : '已重新装载本地插件',
     })) as never;
 
     await expect(
@@ -181,7 +183,7 @@ describe('ToolRegistryService', () => {
       action: 'reload',
       sourceKind: 'plugin',
       sourceId: 'builtin.memory-tools',
-      message: '已重新装载内建插件',
+      message: '已重新装载本地插件',
     });
   });
 
@@ -457,7 +459,7 @@ function createFixture() {
     fallback: {
       id: 'builtin.memory-tools',
       name: '记忆工具',
-      runtime: 'builtin',
+      runtime: 'local',
     },
     manifest: {
       permissions: [],
@@ -540,6 +542,7 @@ function createFixture() {
     new RuntimeHostPluginRuntimeService(),
     runtimeHostSubagentRunnerService,
     new RuntimeHostUserContextService(),
+    new PersonaService(new PersonaStoreService(), runtimeHostConversationRecordService),
   );
   runtimeHostService.onModuleInit();
   const runtimePluginGovernanceService = new RuntimePluginGovernanceService(

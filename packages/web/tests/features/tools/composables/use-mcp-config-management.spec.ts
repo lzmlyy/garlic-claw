@@ -16,7 +16,7 @@ describe('useMcpConfigManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(mcpData.loadMcpConfigSnapshot).mockResolvedValue({
-      configPath: '.mcp/mcp.json',
+      configPath: 'mcp/mcp.json',
       servers: [
         {
           name: 'weather-server',
@@ -60,7 +60,7 @@ describe('useMcpConfigManagement', () => {
     mount(Harness)
     await flushPromises()
 
-    expect(state.snapshot.value.configPath).toBe('.mcp/mcp.json')
+    expect(state.snapshot.value.configPath).toBe('mcp/mcp.json')
     expect(state.servers.value).toHaveLength(1)
     expect(state.selectedServer.value?.name).toBe('weather-server')
 

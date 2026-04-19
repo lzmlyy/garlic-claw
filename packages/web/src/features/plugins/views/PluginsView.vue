@@ -48,11 +48,29 @@
             :saving="savingConfig"
             @save="saveConfig"
           />
+          <PluginLlmPreferencePanel
+            v-if="selectedPluginUsesLlm"
+            :preference="llmPreference"
+            :providers="llmProviders"
+            :options="llmOptions"
+            :saving="savingLlmPreference"
+            @save="saveLlmPreference"
+          />
           <PluginScopeEditor
             :plugin="selectedPlugin"
             :scope="scopeSettings"
             :saving="savingScope"
             @save="saveScope"
+          />
+          <ToolGovernancePanel
+            class="detail-span"
+            :source-id="selectedPlugin.name"
+            source-kind="plugin"
+            title="插件工具治理"
+            description="当前插件声明的宿主工具都在这里控制启用状态和治理动作。"
+            :show-source-list="false"
+            empty-title="当前插件没有工具源"
+            empty-description="这个插件目前没有暴露宿主工具，或尚未连上运行时。"
           />
           <PluginEventLog
             class="detail-span"
@@ -97,7 +115,7 @@
       <section v-else class="plugin-empty">
         <span class="empty-kicker">等待插件接入</span>
         <h2>暂无插件</h2>
-        <p>启动内建插件或远程插件后，就可以在这里统一查看扩展面、健康快照和治理动作。</p>
+        <p>启动本地插件或远程插件后，就可以在这里统一查看扩展面、健康快照和治理动作。</p>
       </section>
     </div>
   </div>
@@ -113,6 +131,7 @@ import PluginConversationSessionList from '@/features/plugins/components/PluginC
 import PluginCronList from '@/features/plugins/components/PluginCronList.vue'
 import PluginDetailOverview from '@/features/plugins/components/PluginDetailOverview.vue'
 import PluginEventLog from '@/features/plugins/components/PluginEventLog.vue'
+import PluginLlmPreferencePanel from '@/features/plugins/components/PluginLlmPreferencePanel.vue'
 import PluginPageHero from '@/features/plugins/components/PluginPageHero.vue'
 import PluginRouteList from '@/features/plugins/components/PluginRouteList.vue'
 import PluginScopeEditor from '@/features/plugins/components/PluginScopeEditor.vue'
@@ -121,8 +140,10 @@ import PluginStoragePanel from '@/features/plugins/components/PluginStoragePanel
 import {
   hasPluginIssue,
   pluginAttentionWeight,
+  pluginUsesHostLlm,
 } from '@/features/plugins/composables/plugin-management.helpers'
 import { usePluginManagement } from '@/features/plugins/composables/use-plugin-management'
+import ToolGovernancePanel from '@/features/tools/components/ToolGovernancePanel.vue'
 
 const route = useRoute()
 const preferredPluginName = computed(() => {
@@ -136,6 +157,7 @@ const {
   loading,
   detailLoading,
   savingConfig,
+  savingLlmPreference,
   savingStorage,
   savingScope,
   eventLoading,
@@ -150,6 +172,9 @@ const {
   selectedPluginName,
   selectedPlugin,
   configSnapshot,
+  llmPreference,
+  llmProviders,
+  llmOptions,
   conversationSessions,
   cronJobs,
   scopeSettings,
@@ -169,6 +194,7 @@ const {
   deleteCronJob,
   finishConversationSession,
   saveConfig,
+  saveLlmPreference,
   saveStorageEntry,
   saveScope,
   runAction,
@@ -186,6 +212,9 @@ const selectedPluginHealth = computed<PluginHealthSnapshot | null>(() =>
 )
 const selectedPluginActions = computed(() =>
   selectedPlugin.value ? pluginActions(selectedPlugin.value) : [],
+)
+const selectedPluginUsesLlm = computed(() =>
+  selectedPlugin.value ? pluginUsesHostLlm(selectedPlugin.value) : false,
 )
 const selectedCronJobs = computed(() =>
   cronJobs.value.length > 0 ? cronJobs.value : selectedPlugin.value?.crons ?? [],
@@ -206,11 +235,11 @@ const attentionPlugins = computed(() =>
 const onlinePluginCount = computed(() =>
   plugins.value.filter((plugin) => plugin.connected).length,
 )
-const builtinPluginCount = computed(() =>
-  plugins.value.filter((plugin) => (plugin.runtimeKind ?? 'remote') === 'builtin').length,
+const localPluginCount = computed(() =>
+  plugins.value.filter((plugin) => (plugin.runtimeKind ?? 'remote') === 'local').length,
 )
 const remotePluginCount = computed(() =>
-  Math.max(plugins.value.length - builtinPluginCount.value, 0),
+  Math.max(plugins.value.length - localPluginCount.value, 0),
 )
 const attentionPluginCount = computed(() =>
   plugins.value.filter((plugin) => needsAttention(plugin)).length,
@@ -235,8 +264,8 @@ const overviewCards = computed(() => {
       label: '已接入插件',
       value: String(total),
       note: total > 0
-        ? `内建 ${builtinPluginCount.value} · 远程 ${remotePluginCount.value}`
-        : '内建与远程插件都会汇聚到这里',
+        ? `本地 ${localPluginCount.value} · 远程 ${remotePluginCount.value}`
+        : '本地与远程插件都会汇聚到这里',
       tone: 'accent',
     },
     {
@@ -314,7 +343,7 @@ function healthText(health: PluginHealthSnapshot | null | undefined): string {
  * @returns 运行形态标签
  */
 function runtimeKindLabel(plugin: PluginInfo): string {
-  return (plugin.runtimeKind ?? 'remote') === 'builtin' ? '内建插件' : '远程插件'
+  return (plugin.runtimeKind ?? 'remote') === 'local' ? '本地插件' : '远程插件'
 }
 
 /**

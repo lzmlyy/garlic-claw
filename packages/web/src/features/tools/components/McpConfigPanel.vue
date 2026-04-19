@@ -4,7 +4,7 @@
       <div>
         <span class="panel-kicker">MCP Config</span>
         <h3>MCP 配置</h3>
-        <p>管理 `.mcp/mcp.json` 中的 server 定义，保存后会自动重载运行时。</p>
+        <p>管理 `mcp/mcp.json` 中的 server 定义，保存后会自动重载运行时。</p>
       </div>
       <div class="mcp-config-actions">
         <button

@@ -7,6 +7,9 @@ export const DEFAULT_PROVIDER_MODEL_ID = 'builtin.default.general';
 export const SCOPED_STORE_PREFIX = '__gc_scope__:';
 
 export type RuntimeHostScope = 'conversation' | 'plugin' | 'user';
+export type AssistantCustomBlockEntry =
+  | { key: string; kind: 'json'; value: JsonValue }
+  | { key: string; kind: 'text'; value: string };
 
 export function cloneJsonValue<T>(value: T): T {
   return structuredClone(value);
@@ -75,6 +78,62 @@ export function readAssistantStreamPart(rawPart: unknown):
       : { output: rawPart.output as JsonValue, toolCallId: rawPart.toolCallId, toolName: rawPart.toolName, type: 'tool-result' };
   }
   return null;
+}
+
+export function readAssistantRawCustomBlocks(
+  rawPart: unknown,
+): AssistantCustomBlockEntry[] {
+  if (!isRecord(rawPart) || rawPart.type !== 'raw' || !isRecord(rawPart.rawValue)) {
+    return [];
+  }
+  const choices = Array.isArray(rawPart.rawValue.choices) ? rawPart.rawValue.choices : [];
+  const choice = choices[0];
+  if (!isRecord(choice) || !isRecord(choice.delta)) {
+    return [];
+  }
+  return Object.entries(choice.delta).reduce<AssistantCustomBlockEntry[]>((blocks, [key, value]) => {
+    if (isKnownAssistantDeltaKey(key)) {
+      return blocks;
+    }
+    if (typeof value === 'string') {
+      if (value.length > 0) {
+        blocks.push({ key, kind: 'text', value });
+      }
+      return blocks;
+    }
+    if (isJsonValue(value)) {
+      blocks.push({ key, kind: 'json', value });
+    }
+    return blocks;
+  }, []);
+}
+
+export function readAssistantResponseCustomBlocks(
+  responseBody: unknown,
+): AssistantCustomBlockEntry[] {
+  if (!isRecord(responseBody)) {
+    return [];
+  }
+  const choices = Array.isArray(responseBody.choices) ? responseBody.choices : [];
+  const choice = choices[0];
+  if (!isRecord(choice) || !isRecord(choice.message)) {
+    return [];
+  }
+  return Object.entries(choice.message).reduce<AssistantCustomBlockEntry[]>((blocks, [key, value]) => {
+    if (isKnownAssistantDeltaKey(key)) {
+      return blocks;
+    }
+    if (typeof value === 'string') {
+      if (value.length > 0) {
+        blocks.push({ key, kind: 'text', value });
+      }
+      return blocks;
+    }
+    if (isJsonValue(value)) {
+      blocks.push({ key, kind: 'json', value });
+    }
+    return blocks;
+  }, []);
 }
 
 export function readMessageTarget(value: unknown): { id: string; type: 'conversation' } | null {
@@ -157,4 +216,13 @@ function isJsonValue(value: unknown): value is JsonValue {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isKnownAssistantDeltaKey(key: string): boolean {
+  return key === 'content'
+    || key === 'role'
+    || key === 'tool_calls'
+    || key === 'function_call'
+    || key === 'refusal'
+    || key === 'audio';
 }

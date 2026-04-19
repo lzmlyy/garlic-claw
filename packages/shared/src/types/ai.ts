@@ -69,10 +69,26 @@ export interface AiModelConfig {
   name: string;
   /** 模型能力。 */
   capabilities: AiModelCapabilities;
+  /** 上下文长度。 */
+  contextLength: number;
   /** API 元信息。 */
   api: AiModelApiConfig;
   /** 生命周期状态。 */
   status?: 'alpha' | 'beta' | 'active' | 'deprecated';
+}
+
+/**
+ * 统一 AI token 使用量。
+ */
+export interface AiModelUsage {
+  /** 输入 token 数。 */
+  inputTokens: number;
+  /** 输出 token 数。 */
+  outputTokens: number;
+  /** 总 token 数。 */
+  totalTokens: number;
+  /** 使用量来源。 */
+  source: 'estimated' | 'provider';
 }
 
 /**

@@ -22,6 +22,7 @@ vi.mock('@/features/ai-settings/composables/provider-settings.data', () => ({
   addProviderModel: vi.fn(),
   importDiscoveredProviderModels: vi.fn(),
   deleteProviderModel: vi.fn(),
+  saveProviderModelContextLength: vi.fn(),
   saveProviderDefaultModel: vi.fn(),
   saveProviderModelCapabilities: vi.fn(),
   discoverProviderModels: vi.fn(),
@@ -79,6 +80,7 @@ function createModel(id: string, providerId: string): AiModelConfig {
       url: 'https://example.com/v1/chat/completions',
       npm: '@example/sdk',
     },
+    contextLength: 128 * 1024,
   }
 }
 
@@ -429,6 +431,65 @@ describe('useProviderSettings', () => {
       'provider-a-model',
       'provider-a-extra-model',
     ])
+  })
+
+  it('saves context length through the formal model API and then reloads the selected provider', async () => {
+    const initialSelection = createSelectionData('provider-a')
+    const reloadedSelection = {
+      ...initialSelection,
+      models: [
+        {
+          ...initialSelection.models[0],
+          contextLength: 65_536,
+        },
+      ],
+    }
+
+    vi.mocked(providerData.loadProviderSettingsBaseData).mockResolvedValue({
+      catalog: [],
+      providers: [createProviderSummary('provider-a', 'Provider A')],
+      visionConfig: { enabled: false },
+      hostModelRoutingConfig: {
+        fallbackChatModels: [],
+        utilityModelRoles: {},
+      },
+    })
+    vi.mocked(providerData.loadProviderSelectionData)
+      .mockResolvedValueOnce(initialSelection)
+      .mockResolvedValueOnce(reloadedSelection)
+    vi.mocked(providerData.loadProviderModelOptions)
+      .mockResolvedValueOnce({
+        visionOptions: [],
+        hostModelRoutingOptions: [],
+        modelsByProviderId: {
+          'provider-a': initialSelection.models,
+        },
+      })
+      .mockResolvedValueOnce({
+        visionOptions: [],
+        hostModelRoutingOptions: [],
+        modelsByProviderId: {
+          'provider-a': reloadedSelection.models,
+        },
+      })
+    vi.mocked(providerData.saveProviderModelContextLength).mockResolvedValue(
+      reloadedSelection.models[0],
+    )
+
+    const state = await mountProviderSettingsHarness()
+    await state.updateContextLength({
+      modelId: 'provider-a-model',
+      contextLength: 65_536,
+    })
+
+    expect(providerData.saveProviderModelContextLength).toHaveBeenCalledWith(
+      'provider-a',
+      'provider-a-model',
+      65_536,
+    )
+    expect(providerData.loadProviderSelectionData).toHaveBeenCalledTimes(2)
+    expect(providerData.loadProviderSelectionData).toHaveBeenNthCalledWith(2, 'provider-a')
+    expect(state.selectedModels.value[0]?.contextLength).toBe(65_536)
   })
 
   it('reuses cached models from other providers when rebuilding options after selected models change', async () => {

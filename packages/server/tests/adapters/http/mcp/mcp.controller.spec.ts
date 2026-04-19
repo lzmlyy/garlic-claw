@@ -18,7 +18,7 @@ describe('McpController', () => {
 
   it('lists MCP server config snapshot', async () => {
     mcpService.getSnapshot.mockResolvedValue({
-      configPath: '.mcp/mcp.json',
+      configPath: 'mcp/mcp.json',
       servers: [
         {
           name: 'weather-server',
@@ -30,7 +30,7 @@ describe('McpController', () => {
     });
 
     await expect(controller.listServers()).resolves.toEqual({
-      configPath: '.mcp/mcp.json',
+      configPath: 'mcp/mcp.json',
       servers: [
         expect.objectContaining({
           name: 'weather-server',

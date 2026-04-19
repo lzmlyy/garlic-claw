@@ -21,7 +21,15 @@
           class="message"
           :class="row.message.role"
         >
-          <div class="message-role">{{ getRoleLabel(row.message) }}</div>
+          <div class="message-role" :title="readRoleTitle(row.message)">
+            <img
+              v-if="shouldRenderAssistantAvatar(row.message) && assistantPersona?.avatar"
+              :src="assistantPersona.avatar"
+              :alt="readAssistantPersonaAlt()"
+              class="message-role-avatar-image"
+            />
+            <span v-else>{{ getRoleLabel(row.message) }}</span>
+          </div>
           <div class="message-main">
             <div class="message-body">
               <div class="message-meta">
@@ -74,6 +82,37 @@
               </div>
 
               <template v-else>
+                <div
+                  v-if="assistantCustomBlocks(row.message).length"
+                  class="message-custom-blocks"
+                >
+                  <details
+                    v-for="block in assistantCustomBlocks(row.message)"
+                    :key="`${row.key}-custom-${block.id}`"
+                    class="message-custom-block"
+                    :data-kind="block.kind"
+                    @toggle="handleRenderedContentChange"
+                  >
+                    <summary class="message-custom-block-summary">
+                      <span class="message-custom-block-title">
+                        {{ block.title }}
+                      </span>
+                      <span class="message-custom-block-kind">
+                        {{ customBlockKindLabel(block) }}
+                      </span>
+                    </summary>
+                    <div class="message-custom-block-body">
+                      <div
+                        v-if="block.kind === 'text'"
+                        class="message-custom-block-text"
+                        v-html="renderMarkdown(block.text)"
+                      ></div>
+                      <pre v-else class="message-custom-block-json">{{
+                        formatJsonBlock(block)
+                      }}</pre>
+                    </div>
+                  </details>
+                </div>
                 <div v-if="row.message.parts?.length" class="message-parts">
                   <template
                     v-for="(part, partIndex) in row.message.parts"
@@ -209,7 +248,7 @@ import {
   watch,
 } from "vue";
 
-import type { ChatMessagePart } from "@garlic-claw/shared";
+import type { ChatMessageCustomBlock, ChatMessagePart } from "@garlic-claw/shared";
 import type { ChatMessage } from "@/features/chat/store/chat";
 
 interface VisibleMessageRow {
@@ -225,6 +264,10 @@ const PLAIN_RENDER_THRESHOLD = 24;
 const FALLBACK_VIEWPORT_HEIGHT = 720;
 
 const props = defineProps<{
+  assistantPersona?: {
+    avatar: string | null;
+    name: string;
+  } | null;
   loading: boolean;
   messages: ChatMessage[];
 }>();
@@ -478,6 +521,7 @@ function estimateMessageSize(message: ChatMessage | undefined) {
       imageCount * 220 +
       toolCallCount * 80 +
       toolResultCount * 80 +
+      assistantCustomBlocks(message).length * 96 +
       (message.error ? 72 : 0) +
       (shouldShowVisionFallbackDetails(message) ? 120 : 0),
   );
@@ -502,7 +546,28 @@ function renderMarkdown(text: string): string {
 }
 
 function getRoleLabel(message: ChatMessage): string {
-  return message.role === "user" ? "用户" : "AI";
+  if (message.role === "user") {
+    return "用户";
+  }
+
+  const assistantName = props.assistantPersona?.name?.trim();
+  return assistantName ? assistantName.slice(0, 1) : "AI";
+}
+
+function readRoleTitle(message: ChatMessage): string {
+  if (message.role === "user") {
+    return "用户";
+  }
+
+  return props.assistantPersona?.name?.trim() || "AI";
+}
+
+function shouldRenderAssistantAvatar(message: ChatMessage): boolean {
+  return message.role === "assistant";
+}
+
+function readAssistantPersonaAlt(): string {
+  return `${props.assistantPersona?.name?.trim() || "AI"} 头像`;
 }
 
 function startEdit(message: ChatMessage) {
@@ -556,6 +621,20 @@ function extractEditableText(message: ChatMessage): string {
 
 function hasEditableImages(message: ChatMessage): boolean {
   return Boolean(message.parts?.some((part) => part.type === "image"));
+}
+
+function assistantCustomBlocks(message: ChatMessage): ChatMessageCustomBlock[] {
+  return message.role === "assistant" ? message.metadata?.customBlocks ?? [] : [];
+}
+
+function customBlockKindLabel(block: ChatMessageCustomBlock): string {
+  return block.kind === "json" ? "JSON" : "文本";
+}
+
+function formatJsonBlock(
+  block: Extract<ChatMessageCustomBlock, { kind: "json" }>,
+): string {
+  return JSON.stringify(block.data, null, 2);
 }
 
 function visionFallbackChipLabel(message: ChatMessage): string | null {

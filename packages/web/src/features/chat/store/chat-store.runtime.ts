@@ -185,6 +185,11 @@ export function applySseEvent(
         content: event.content,
         ...(event.parts ? { parts: event.parts } : {}),
       }))
+    case 'message-metadata':
+      return updateMessageState(messages, event.messageId, (message) => ({
+        ...message,
+        metadata: event.metadata,
+      }))
     case 'finish':
       return updateMessageState(messages, event.messageId, (message) => ({
         ...message,

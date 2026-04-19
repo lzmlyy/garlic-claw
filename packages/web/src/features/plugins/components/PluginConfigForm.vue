@@ -3,7 +3,7 @@
     <div class="section-header">
       <div>
         <h3>插件配置</h3>
-        <p>按照插件声明的 schema 统一保存配置。</p>
+        <p>宿主按插件声明的配置元数据统一渲染，不再依赖扁平字段表单。</p>
       </div>
       <button
         type="button"
@@ -17,43 +17,19 @@
     </div>
 
     <p v-if="formError" class="section-error">{{ formError }}</p>
-    <p v-if="!hasSchema" class="section-empty">当前插件没有声明配置 schema。</p>
+    <p v-else-if="sourceError" class="section-error">{{ sourceError }}</p>
+    <p v-if="!hasSchema" class="section-empty">当前插件没有声明配置元数据。</p>
 
-    <div v-else class="config-form">
-      <label
-        v-for="field in fields"
-        :key="field.key"
-        class="config-field"
-      >
-        <span class="field-label">
-          {{ field.key }}
-          <small v-if="field.required">必填</small>
-        </span>
-        <span v-if="field.description" class="field-description">{{ field.description }}</span>
-
-        <textarea
-          v-if="field.type === 'object' || field.type === 'array'"
-          v-model="draft[field.key]"
-          rows="6"
-        />
-        <input
-          v-else-if="field.type === 'number'"
-          v-model="draft[field.key]"
-          type="number"
-        />
-        <label v-else-if="field.type === 'boolean'" class="checkbox-field">
-          <input
-            v-model="booleanDraft[field.key]"
-            type="checkbox"
-          >
-          <span>{{ booleanDraft[field.key] ? '已启用' : '已关闭' }}</span>
-        </label>
-        <input
-          v-else
-          v-model="draft[field.key]"
-          :type="field.secret ? 'password' : 'text'"
-        />
-      </label>
+    <div v-else-if="rootSchema" class="config-layout">
+      <PluginConfigNodeRenderer
+        is-root
+        node-key="root"
+        :node-schema="rootSchema"
+        :model-value="draft"
+        :root-values="draft"
+        :special-options="specialOptions"
+        @update:model-value="applyDraft"
+      />
     </div>
   </section>
 </template>
@@ -61,12 +37,19 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 import disketteBold from '@iconify-icons/solar/diskette-bold'
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type {
+  AiProviderSummary,
+  JsonObject,
   JsonValue,
-  PluginConfigFieldSchema,
+  PluginConfigNodeSchema,
+  PluginConfigSchema,
   PluginConfigSnapshot,
+  PluginPersonaSummary,
 } from '@garlic-claw/shared'
+import { listAiProviders } from '@/features/ai-settings/api/ai'
+import { listPersonas } from '@/features/personas/api/personas'
+import PluginConfigNodeRenderer from '@/features/plugins/components/PluginConfigNodeRenderer.vue'
 
 const props = defineProps<{
   snapshot: PluginConfigSnapshot | null
@@ -77,147 +60,157 @@ const emit = defineEmits<{
   (event: 'save', values: PluginConfigSnapshot['values']): void
 }>()
 
-const draft = ref<Record<string, string>>({})
-const booleanDraft = ref<Record<string, boolean>>({})
+const draft = ref<JsonObject>({})
 const formError = ref<string | null>(null)
+const sourceError = ref<string | null>(null)
+const specialOptions = reactive<{
+  personas: PluginPersonaSummary[]
+  providers: AiProviderSummary[]
+}>({
+  personas: [],
+  providers: [],
+})
 
-const fields = computed(() => props.snapshot?.schema?.fields ?? [])
-const hasSchema = computed(() => fields.value.length > 0)
+const rootSchema = computed<PluginConfigSchema | undefined>(() => props.snapshot?.schema ?? undefined)
+const hasSchema = computed(() => !!rootSchema.value)
 
 watch(
   () => props.snapshot,
   (snapshot) => {
     formError.value = null
-    const nextDraft: Record<string, string> = {}
-    const nextBooleanDraft: Record<string, boolean> = {}
-
-    for (const field of snapshot?.schema?.fields ?? []) {
-      const value = snapshot?.values[field.key] ?? field.defaultValue
-      if (field.type === 'boolean') {
-        nextBooleanDraft[field.key] = Boolean(value)
-        continue
-      }
-
-      nextDraft[field.key] = stringifyFieldValue(field, value)
-    }
-
-    draft.value = nextDraft
-    booleanDraft.value = nextBooleanDraft
+    draft.value = resolveDraftValues(snapshot)
   },
   { immediate: true },
 )
 
-/**
- * 提交当前配置草稿。
- */
+watch(
+  rootSchema,
+  async (nextSchema) => {
+    sourceError.value = null
+    if (!nextSchema) {
+      specialOptions.providers = []
+      specialOptions.personas = []
+      return
+    }
+
+    try {
+      const [providers, personas] = await Promise.all([
+        schemaNeedsProviderOptions(nextSchema) ? listAiProviders() : Promise.resolve([]),
+        schemaNeedsPersonaOptions(nextSchema) ? listPersonas() : Promise.resolve([]),
+      ])
+      specialOptions.providers = providers
+      specialOptions.personas = personas
+    } catch (error) {
+      specialOptions.providers = []
+      specialOptions.personas = []
+      sourceError.value = error instanceof Error ? error.message : '加载配置选择器数据失败'
+    }
+  },
+  { immediate: true },
+)
+
+function applyDraft(nextValue: JsonValue | undefined) {
+  draft.value = isJsonObject(nextValue) ? copyJsonObject(nextValue) : {}
+}
+
 function submit() {
   try {
-    emit('save', buildConfigPayload(fields.value, draft.value, booleanDraft.value))
+    emit('save', rootSchema.value ? copyJsonObject(resolveConfigObjectValue(rootSchema.value, draft.value)) : {})
     formError.value = null
   } catch (error) {
     formError.value = error instanceof Error ? error.message : '配置格式无效'
   }
 }
 
-/**
- * 把字段当前值转成适合输入框编辑的文本。
- * @param field schema 字段
- * @param value 当前值
- * @returns 输入框文本
- */
-function stringifyFieldValue(
-  field: PluginConfigFieldSchema,
-  value: JsonValue | undefined,
-): string {
-  if (value === undefined || value === null) {
-    return ''
+function resolveDraftValues(snapshot: PluginConfigSnapshot | null): JsonObject {
+  if (!snapshot?.schema) {
+    return copyJsonObject(snapshot?.values)
   }
-  if (field.type === 'object' || field.type === 'array') {
-    return JSON.stringify(value, null, 2)
-  }
-
-  return String(value)
+  return copyJsonObject(resolveConfigObjectValue(snapshot.schema, snapshot.values))
 }
 
-/**
- * 把表单草稿转回配置载荷。
- * @param schemaFields schema 字段列表
- * @param stringDraft 字符串型草稿
- * @param boolDraft 布尔型草稿
- * @returns 可直接提交的配置对象
- */
-function buildConfigPayload(
-  schemaFields: PluginConfigFieldSchema[],
-  stringDraft: Record<string, string>,
-  boolDraft: Record<string, boolean>,
-): PluginConfigSnapshot['values'] {
-  const result: PluginConfigSnapshot['values'] = {}
-
-  for (const field of schemaFields) {
-    if (field.type === 'boolean') {
-      result[field.key] = boolDraft[field.key] ?? false
-      continue
-    }
-
-    const raw = (stringDraft[field.key] ?? '').trim()
-    if (!raw) {
-      if (field.required) {
-        throw new Error(`${field.key} 为必填项`)
-      }
-      continue
-    }
-
-    switch (field.type) {
-      case 'number': {
-        const parsed = Number(raw)
-        if (Number.isNaN(parsed)) {
-          throw new Error(`${field.key} 必须是数字`)
-        }
-        result[field.key] = parsed
-        break
-      }
-      case 'array': {
-        const parsed = parseStructuredField(field.key, raw, 'array')
-        if (!Array.isArray(parsed)) {
-          throw new Error(`${field.key} 必须是 JSON 数组`)
-        }
-        result[field.key] = parsed
-        break
-      }
-      case 'object': {
-        const parsed = parseStructuredField(field.key, raw, 'object')
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          throw new Error(`${field.key} 必须是 JSON 对象`)
-        }
-        result[field.key] = parsed
-        break
-      }
-      default:
-        result[field.key] = raw
-        break
-    }
-  }
-
-  return result
+function copyJsonObject(value: JsonObject | undefined): JsonObject {
+  return JSON.parse(JSON.stringify(value ?? {})) as JsonObject
 }
 
-/**
- * 解析配置表单中的结构化 JSON 字段。
- * @param key 字段名
- * @param raw 原始输入文本
- * @param expected 期望结构
- * @returns 解析后的 JSON 值
- */
-function parseStructuredField(
-  key: string,
-  raw: string,
-  expected: 'array' | 'object',
-): JsonValue {
-  try {
-    return JSON.parse(raw) as JsonValue
-  } catch {
-    throw new Error(`${key} 必须是有效 JSON ${expected === 'array' ? '数组' : '对象'}`)
+function resolveConfigObjectValue(
+  schema: PluginConfigSchema,
+  currentValue: JsonObject | undefined,
+): JsonObject {
+  return (resolveConfigNodeValue(schema, currentValue) ?? {}) as JsonObject
+}
+
+function resolveConfigNodeValue(
+  schema: PluginConfigNodeSchema,
+  currentValue: JsonValue | undefined,
+): JsonValue | undefined {
+  if (schema.type === 'object') {
+    const source = isJsonObject(currentValue) ? currentValue : {}
+    const result: JsonObject = {}
+
+    for (const [key, childSchema] of Object.entries(schema.items)) {
+      const childValue = resolveConfigNodeValue(childSchema, source[key])
+      if (typeof childValue !== 'undefined') {
+        result[key] = childValue
+      }
+    }
+
+    return result
   }
+
+  if (schema.type === 'list') {
+    const sourceList = Array.isArray(currentValue)
+      ? currentValue
+      : Array.isArray(schema.defaultValue)
+        ? schema.defaultValue
+        : null
+    if (!sourceList) {
+      return typeof schema.defaultValue !== 'undefined'
+        ? schema.defaultValue
+        : undefined
+    }
+    const itemSchema = schema.items
+    if (!itemSchema) {
+      return sourceList
+    }
+    return sourceList.map((item) => resolveConfigNodeValue(itemSchema, item) ?? null)
+  }
+
+  if (typeof currentValue !== 'undefined') {
+    return currentValue
+  }
+
+  return typeof schema.defaultValue !== 'undefined'
+    ? schema.defaultValue
+    : undefined
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function schemaNeedsProviderOptions(configSchema: PluginConfigSchema): boolean {
+  return schemaUsesSpecialType(configSchema, ['selectProvider', 'selectProviders'])
+}
+
+function schemaNeedsPersonaOptions(configSchema: PluginConfigSchema): boolean {
+  return schemaUsesSpecialType(configSchema, ['selectPersona', 'personaPool'])
+}
+
+function schemaUsesSpecialType(
+  node: PluginConfigNodeSchema,
+  targetTypes: string[],
+): boolean {
+  if (node.specialType && targetTypes.includes(node.specialType)) {
+    return true
+  }
+  if (node.type === 'object') {
+    return Object.values(node.items).some((child) => schemaUsesSpecialType(child, targetTypes))
+  }
+  if (node.type === 'list' && node.items) {
+    return schemaUsesSpecialType(node.items, targetTypes)
+  }
+  return false
 }
 </script>
 
@@ -282,40 +275,8 @@ function parseStructuredField(
   font-size: 0.9rem;
 }
 
-.config-form {
+.config-layout {
   display: grid;
-  gap: 12px;
-}
-
-.config-field {
-  display: grid;
-  gap: 6px;
-}
-
-.field-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.field-label small {
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-.field-description {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-}
-
-.checkbox-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.checkbox-field input {
-  width: auto;
+  gap: 14px;
 }
 </style>

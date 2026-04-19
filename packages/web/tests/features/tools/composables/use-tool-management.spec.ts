@@ -27,7 +27,7 @@ function createFixtures() {
         totalTools: 1,
         enabledTools: 1,
         pluginId: 'builtin.memory-tools',
-        runtimeKind: 'builtin' as const,
+        runtimeKind: 'local' as const,
         supportedActions: ['health-check', 'reload'],
       },
       {
@@ -58,7 +58,7 @@ function createFixtures() {
         lastError: null,
         lastCheckedAt: '2026-03-30T16:00:00.000Z',
         pluginId: 'builtin.memory-tools',
-        runtimeKind: 'builtin' as const,
+        runtimeKind: 'local' as const,
       },
       {
         toolId: 'mcp:weather-server:get_forecast',

@@ -5,7 +5,7 @@ import {
   type AiProviderMode,
   type ProviderProtocolDriver,
 } from '@garlic-claw/shared';
-import type { StoredAiProviderConfig } from './ai-management.types';
+import type { StoredAiModelConfig, StoredAiProviderConfig } from './ai-management.types';
 
 const PROVIDER_PROTOCOL_DRIVERS: ProviderProtocolDriver[] = [
   'openai',
@@ -14,6 +14,8 @@ const PROVIDER_PROTOCOL_DRIVERS: ProviderProtocolDriver[] = [
 ];
 
 const PROVIDER_PROTOCOL_DRIVER_SET = new Set<string>(PROVIDER_PROTOCOL_DRIVERS);
+
+export const DEFAULT_AI_MODEL_CONTEXT_LENGTH = 128 * 1024;
 
 export type ModelCapabilitiesUpdate = Partial<
   Omit<AiModelCapabilities, 'input' | 'output'>
@@ -68,6 +70,7 @@ export function createAiModelConfig(
       input: { text: true, image: false },
       output: { text: true, image: false },
     },
+    contextLength: DEFAULT_AI_MODEL_CONTEXT_LENGTH,
     api: {
       id: modelId,
       url: provider.baseUrl ?? resolved?.defaultBaseUrl ?? '',
@@ -78,6 +81,17 @@ export function createAiModelConfig(
           : '@ai-sdk/openai',
     },
     status: 'active',
+  };
+}
+
+export function createStoredAiModelConfig(model: AiModelConfig): StoredAiModelConfig {
+  return {
+    capabilities: mergeAiCapabilities(model.capabilities, {}),
+    contextLength: model.contextLength,
+    id: model.id,
+    name: model.name,
+    providerId: model.providerId,
+    ...(model.status ? { status: model.status } : {}),
   };
 }
 

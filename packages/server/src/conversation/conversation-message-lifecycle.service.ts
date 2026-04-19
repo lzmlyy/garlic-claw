@@ -5,13 +5,14 @@ import { RuntimeHostConversationRecordService, serializeConversationMessage } fr
 import { DEFAULT_PROVIDER_ID, DEFAULT_PROVIDER_MODEL_ID } from '../runtime/host/runtime-host-values';
 import { RuntimeHostPluginDispatchService } from '../runtime/host/runtime-host-plugin-dispatch.service';
 import { SkillSessionService } from '../execution/skill/skill-session.service';
+import { PersonaService } from '../persona/persona.service';
 import { ConversationTaskService } from './conversation-task.service';
 import { ConversationMessagePlanningService, createShortCircuitStream, type ConversationResponseSource } from './conversation-message-planning.service';
 
 @Injectable()
 // Keep lifecycle orchestration and hook mutation together to avoid recreating the removed single-consumer hook owner.
 export class ConversationMessageLifecycleService {
-  constructor(private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly conversationTaskService: ConversationTaskService, private readonly conversationMessagePlanningService: ConversationMessagePlanningService, private readonly skillSessionService: SkillSessionService, @Inject(RuntimeHostPluginDispatchService) private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService) {}
+  constructor(private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly conversationTaskService: ConversationTaskService, private readonly conversationMessagePlanningService: ConversationMessagePlanningService, private readonly skillSessionService: SkillSessionService, private readonly personaService: PersonaService, @Inject(RuntimeHostPluginDispatchService) private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService) {}
 
   async retryMessageGeneration(conversationId: string, messageId: string, dto: RetryMessagePayload, userId?: string) {
     const conversation = this.runtimeHostConversationRecordService.requireConversation(conversationId, userId);
@@ -100,11 +101,22 @@ export class ConversationMessageLifecycleService {
   private startConversationTask(input: { activePersonaId?: string; conversationId: string; messageId: string; modelId: string; providerId: string; shortCircuitContent?: string; shortCircuitParts?: ChatMessagePart[]; userId?: string }): void {
     let responseSource: ConversationResponseSource = 'model';
     let shortCircuitParts: ChatMessagePart[] | null = null;
+    let customErrorMessage: string | null = null;
 
     this.conversationTaskService.startTask({
       assistantMessageId: input.messageId,
       conversationId: input.conversationId,
       createStream: async (abortSignal) => {
+        const persona = this.personaService.readCurrentPersona({
+          context: {
+            activePersonaId: input.activePersonaId,
+            conversationId: input.conversationId,
+            source: 'http-route',
+            ...(input.userId ? { userId: input.userId } : {}),
+          },
+          conversationId: input.conversationId,
+        });
+        customErrorMessage = persona.customErrorMessage;
         if (input.shortCircuitContent) {
           responseSource = 'short-circuit';
           shortCircuitParts = input.shortCircuitParts ?? [];
@@ -120,6 +132,7 @@ export class ConversationMessageLifecycleService {
           conversationId: input.conversationId,
           messageId: input.messageId,
           modelId: input.modelId,
+          persona,
           providerId: input.providerId,
           userId: input.userId,
         });
@@ -129,6 +142,7 @@ export class ConversationMessageLifecycleService {
       },
       modelId: input.modelId,
       onComplete: async (result) => this.conversationMessagePlanningService.finalizeTaskResult(result, responseSource, shortCircuitParts),
+      resolveErrorMessage: () => customErrorMessage,
       onSent: async (result) => {
         const conversation = this.runtimeHostConversationRecordService.requireConversation(result.conversationId);
         await this.conversationMessagePlanningService.broadcastAfterSend({ activePersonaId: conversation.activePersonaId, conversationId: result.conversationId, userId: conversation.userId }, result, responseSource);

@@ -1,4 +1,5 @@
 import type {
+  AiProviderSummary,
   PluginActionName,
   PluginConfigSnapshot,
   PluginConversationSessionInfo,
@@ -6,10 +7,15 @@ import type {
   PluginEventQuery,
   PluginHealthSnapshot,
   PluginInfo,
+  PluginLlmPreference,
   PluginScopeSettings,
   PluginStorageEntry,
   PluginCronJobSummary,
 } from '@garlic-claw/shared'
+import {
+  listAiModels,
+  listAiProviders,
+} from '@/features/ai-settings/api/ai'
 import {
   deletePlugin,
   deletePluginCron,
@@ -18,17 +24,22 @@ import {
   getPluginConfig,
   getPluginCrons,
   getPluginHealth,
+  getPluginLlmPreference,
   getPluginScope,
   listPluginConversationSessions,
   listPluginEvents,
   listPlugins,
+  type PluginLlmRouteOption,
   listPluginStorage,
   runPluginAction,
   setPluginStorage,
   updatePluginConfig,
+  updatePluginLlmPreference,
   updatePluginScope,
 } from '@/features/plugins/api/plugins'
 import { getErrorMessage } from '@/utils/error'
+
+export type { PluginLlmRouteOption } from '@/features/plugins/api/plugins'
 
 export interface PluginDetailSnapshot {
   configSnapshot: PluginConfigSnapshot
@@ -36,6 +47,9 @@ export interface PluginDetailSnapshot {
   cronJobs: PluginCronJobSummary[]
   scopeSettings: PluginScopeSettings
   healthSnapshot: PluginHealthSnapshot
+  llmPreference: PluginLlmPreference
+  llmProviders: AiProviderSummary[]
+  llmOptions: PluginLlmRouteOption[]
   eventResult: PluginEventListResult
   storageEntries: PluginStorageEntry[]
 }
@@ -62,6 +76,8 @@ export async function loadPluginDetailSnapshot(
     cronJobs,
     scopeSettings,
     healthSnapshot,
+    llmPreference,
+    llmRouteSnapshot,
     eventResult,
     storageEntries,
   ] = await Promise.all([
@@ -70,6 +86,8 @@ export async function loadPluginDetailSnapshot(
     getPluginCrons(pluginName),
     getPluginScope(pluginName),
     getPluginHealth(pluginName),
+    getPluginLlmPreference(pluginName),
+    loadPluginLlmRouteSnapshot(),
     listPluginEvents(pluginName, eventQuery),
     listPluginStorage(pluginName, storagePrefix || undefined),
   ])
@@ -80,6 +98,9 @@ export async function loadPluginDetailSnapshot(
     cronJobs,
     scopeSettings,
     healthSnapshot,
+    llmPreference,
+    llmProviders: llmRouteSnapshot.providers,
+    llmOptions: llmRouteSnapshot.options,
     eventResult,
     storageEntries,
   }
@@ -104,6 +125,13 @@ export function savePluginConfig(
   values: PluginConfigSnapshot['values'],
 ) {
   return updatePluginConfig(pluginName, values)
+}
+
+export function savePluginLlmPreference(
+  pluginName: string,
+  preference: PluginLlmPreference,
+) {
+  return updatePluginLlmPreference(pluginName, preference)
 }
 
 export function savePluginStorageEntry(
@@ -187,4 +215,28 @@ export function dedupeEventLogs(events: PluginEventListResult['items']) {
  */
 export function toErrorMessage(error: unknown, fallback: string): string {
   return getErrorMessage(error, fallback)
+}
+
+async function loadPluginLlmRouteSnapshot(): Promise<{
+  providers: AiProviderSummary[]
+  options: PluginLlmRouteOption[]
+}> {
+  const providers = await listAiProviders()
+  const modelGroups = await Promise.all(
+    providers.map(async (provider) => ({
+      models: await listAiModels(provider.id),
+      provider,
+    })),
+  )
+
+  return {
+    providers,
+    options: modelGroups.flatMap(({ models, provider }) =>
+      models.map((model) => ({
+        providerId: provider.id,
+        modelId: model.id,
+        label: `${provider.name} · ${model.name || model.id}`,
+      })),
+    ),
+  }
 }

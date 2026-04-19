@@ -4,6 +4,7 @@ import { RuntimeHostConversationMessageService } from '../../src/runtime/host/ru
 import { RuntimeHostConversationRecordService } from '../../src/runtime/host/runtime-host-conversation-record.service';
 import { ConversationMessageLifecycleService } from '../../src/conversation/conversation-message-lifecycle.service';
 import { ConversationTaskService } from '../../src/conversation/conversation-task.service';
+import type { PersonaService } from '../../src/persona/persona.service';
 
 describe('ConversationMessageLifecycleService', () => {
   const aiModelExecutionService = { streamText: jest.fn() };
@@ -23,6 +24,9 @@ describe('ConversationMessageLifecycleService', () => {
     invokeHook: jest.fn(),
     listPlugins: jest.fn().mockReturnValue([]),
   };
+  const personaService = {
+    readCurrentPersona: jest.fn(),
+  };
 
   let conversationTaskService: ConversationTaskService;
   let conversationId: string;
@@ -33,7 +37,25 @@ describe('ConversationMessageLifecycleService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    aiModelExecutionService.streamText.mockReset();
+    aiVisionService.resolveImageText.mockReset();
+    aiVisionService.resolveMessageParts.mockReset();
+    skillSessionService.getConversationSkillContext.mockReset();
+    skillSessionService.tryHandleMessage.mockReset();
+    toolRegistryService.buildToolSet.mockReset();
+    toolRegistryService.listAvailableTools.mockReset();
+    runtimeHostPluginDispatchService.invokeHook.mockReset();
+    runtimeHostPluginDispatchService.listPlugins.mockReset();
+    personaService.readCurrentPersona.mockReset();
     aiVisionService.resolveMessageParts.mockImplementation(async (_conversationId, parts) => parts);
+    skillSessionService.getConversationSkillContext.mockResolvedValue({
+      allowedToolNames: null,
+      systemPrompt: '',
+    });
+    skillSessionService.tryHandleMessage.mockResolvedValue(null);
+    toolRegistryService.buildToolSet.mockResolvedValue(undefined);
+    toolRegistryService.listAvailableTools.mockResolvedValue([]);
+    runtimeHostPluginDispatchService.listPlugins.mockReturnValue([]);
     runtimeHostConversationRecordService = new RuntimeHostConversationRecordService();
     runtimeHostConversationMessageService = new RuntimeHostConversationMessageService(
       runtimeHostConversationRecordService,
@@ -43,6 +65,7 @@ describe('ConversationMessageLifecycleService', () => {
       aiModelExecutionService as never,
       aiVisionService as never,
       runtimeHostConversationRecordService,
+      personaService as never,
       skillSessionService as never,
       toolRegistryService as never,
       runtimeHostPluginDispatchService as never,
@@ -53,9 +76,26 @@ describe('ConversationMessageLifecycleService', () => {
       conversationTaskService,
       conversationMessagePlanningService,
       skillSessionService as never,
+      personaService as never,
       runtimeHostPluginDispatchService as never,
     );
     conversationId = (runtimeHostConversationRecordService.createConversation({ title: 'Conversation conversation-1', userId: 'user-1' }) as { id: string }).id;
+    personaService.readCurrentPersona.mockReturnValue({
+      avatar: null,
+      beginDialogs: [],
+      createdAt: '2026-04-10T00:00:00.000Z',
+      customErrorMessage: null,
+      description: '默认人格',
+      id: 'builtin.default-assistant',
+      isDefault: true,
+      name: 'Default Assistant',
+      personaId: 'builtin.default-assistant',
+      prompt: 'You are Garlic Claw.',
+      skillIds: null,
+      source: 'default',
+      toolNames: null,
+      updatedAt: '2026-04-10T00:00:00.000Z',
+    } satisfies ReturnType<PersonaService['readCurrentPersona']>);
   });
 
   it('uses ai model streaming instead of echoing the input back to the assistant message', async () => {
@@ -254,6 +294,22 @@ describe('ConversationMessageLifecycleService', () => {
   it('includes user and active persona in hook context payloads', async () => {
     aiModelExecutionService.streamText.mockReturnValue(streamed('gpt-5.4', 'openai', '模型回复'));
     runtimeHostConversationRecordService.rememberConversationActivePersona(conversationId, 'persona-1');
+    personaService.readCurrentPersona.mockReturnValue({
+      avatar: null,
+      beginDialogs: [],
+      createdAt: '2026-04-18T00:00:00.000Z',
+      customErrorMessage: null,
+      description: '上下文人格',
+      id: 'persona-1',
+      isDefault: false,
+      name: 'Persona 1',
+      personaId: 'persona-1',
+      prompt: '你是 persona-1。',
+      skillIds: null,
+      source: 'conversation',
+      toolNames: null,
+      updatedAt: '2026-04-18T00:00:00.000Z',
+    });
     runtimeHostPluginDispatchService.listPlugins.mockReturnValue([plugin('builtin.before-model-recorder', ['chat:before-model'])]);
     runtimeHostPluginDispatchService.invokeHook.mockResolvedValue({ action: 'pass' });
 
@@ -310,6 +366,116 @@ describe('ConversationMessageLifecycleService', () => {
     }));
     expect(aiModelExecutionService.streamText.mock.calls[0][0].system).toContain('planner skill');
   });
+
+  it('injects persona prompt and begin dialogs before model execution', async () => {
+    aiModelExecutionService.streamText.mockReturnValue(streamed('gpt-5.4', 'openai', '模型回复'));
+    personaService.readCurrentPersona.mockReturnValue({
+      avatar: null,
+      beginDialogs: [
+        { content: '你先说明推理框架。', role: 'assistant' },
+        { content: '我会先说明框架。', role: 'user' },
+      ],
+      createdAt: '2026-04-18T00:00:00.000Z',
+      customErrorMessage: null,
+      description: '分析人格',
+      id: 'persona.analyst',
+      isDefault: false,
+      name: 'Analyst',
+      personaId: 'persona.analyst',
+      prompt: '你是一个分析型助手。',
+      skillIds: null,
+      source: 'conversation',
+      toolNames: null,
+      updatedAt: '2026-04-18T00:00:00.000Z',
+    });
+
+    await startAndWait(service, conversationTaskService, {
+      content: '给我总结一下',
+      model: 'gpt-5.4',
+      provider: 'openai',
+    }, 'user-1');
+
+    expect(aiModelExecutionService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        { content: '你先说明推理框架。', role: 'assistant' },
+        { content: '我会先说明框架。', role: 'user' },
+        { content: '给我总结一下', role: 'user' },
+      ],
+      system: '你是一个分析型助手。',
+    }));
+  });
+
+  it('intersects persona tool restrictions with active skill tool restrictions', async () => {
+    aiModelExecutionService.streamText.mockReturnValue(streamed('gpt-5.4', 'openai', '模型回复'));
+    personaService.readCurrentPersona.mockReturnValue({
+      avatar: null,
+      beginDialogs: [],
+      createdAt: '2026-04-18T00:00:00.000Z',
+      customErrorMessage: null,
+      description: '分析人格',
+      id: 'persona.analyst',
+      isDefault: false,
+      name: 'Analyst',
+      personaId: 'persona.analyst',
+      prompt: '你是一个分析型助手。',
+      skillIds: ['project/planner'],
+      source: 'conversation',
+      toolNames: ['skill__asset__list', 'memory.search'],
+      updatedAt: '2026-04-18T00:00:00.000Z',
+    });
+    skillSessionService.getConversationSkillContext.mockResolvedValue({
+      allowedToolNames: ['skill__asset__list', 'skill__script__run'],
+      systemPrompt: '你必须按 planner skill 方式回答',
+    });
+
+    await startAndWait(service, conversationTaskService, {
+      content: '给我总结一下',
+      model: 'gpt-5.4',
+      provider: 'openai',
+    }, 'user-1');
+
+    expect(skillSessionService.getConversationSkillContext).toHaveBeenCalledWith(conversationId, {
+      allowedSkillIds: ['project/planner'],
+    })
+    expect(toolRegistryService.buildToolSet).toHaveBeenCalledWith(expect.objectContaining({
+      allowedToolNames: ['skill__asset__list'],
+    }))
+  })
+
+  it('uses persona custom error messages when model execution fails', async () => {
+    aiModelExecutionService.streamText.mockImplementation(() => {
+      throw new Error('provider timeout')
+    })
+    personaService.readCurrentPersona.mockReturnValue({
+      avatar: null,
+      beginDialogs: [],
+      createdAt: '2026-04-18T00:00:00.000Z',
+      customErrorMessage: '当前人格暂时无法完成请求。',
+      description: '分析人格',
+      id: 'persona.analyst',
+      isDefault: false,
+      name: 'Analyst',
+      personaId: 'persona.analyst',
+      prompt: '你是一个分析型助手。',
+      skillIds: null,
+      source: 'conversation',
+      toolNames: null,
+      updatedAt: '2026-04-18T00:00:00.000Z',
+    })
+
+    const started = await startAndWait(service, conversationTaskService, {
+      content: '给我总结一下',
+      model: 'gpt-5.4',
+      provider: 'openai',
+    }, 'user-1')
+
+    expect(readConversation(runtimeHostConversationRecordService).messages[1]).toMatchObject({
+      error: '当前人格暂时无法完成请求。',
+      role: 'assistant',
+      status: 'error',
+    })
+    expect(started.assistantMessage).toMatchObject({ role: 'assistant' })
+  })
 
   it('short-circuits the conversation mainline for /skill commands', async () => {
     skillSessionService.tryHandleMessage.mockResolvedValue({

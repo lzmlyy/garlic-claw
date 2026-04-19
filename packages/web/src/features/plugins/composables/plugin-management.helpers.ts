@@ -5,7 +5,8 @@ import type { PluginActionName, PluginInfo } from '@garlic-claw/shared'
  * 这类 builtin 即使没有工具，也应该默认展示给用户。
  */
 function hasConfigurableSurface(plugin: PluginInfo): boolean {
-  return (plugin.manifest?.config?.fields?.length ?? 0) > 0
+  const configSchema = plugin.manifest?.config
+  return configSchema?.type === 'object' && Object.keys(configSchema.items).length > 0
 }
 
 /**
@@ -28,7 +29,7 @@ export function isSystemBuiltinPlugin(plugin: PluginInfo): boolean {
     return true
   }
 
-  return (plugin.runtimeKind ?? 'remote') === 'builtin'
+  return (plugin.runtimeKind ?? plugin.manifest.runtime ?? 'remote') === 'local'
     && !!plugin.manifest
     && !hasUserFacingSurface(plugin)
 }
@@ -81,6 +82,14 @@ export function hasPluginIssue(plugin: PluginInfo): boolean {
     || plugin.health?.status === 'error'
     || plugin.health?.status === 'degraded'
     || plugin.health?.status === 'offline'
+}
+
+/**
+ * 判断插件是否直接使用宿主 LLM 调用能力。
+ * 只有这种插件才应该显示统一的“插件模型策略”面板。
+ */
+export function pluginUsesHostLlm(plugin: PluginInfo): boolean {
+  return plugin.manifest.permissions.includes('llm:generate')
 }
 
 /**

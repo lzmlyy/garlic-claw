@@ -9,6 +9,8 @@ import { McpService } from '../../execution/mcp/mcp.service';
 import { SKILL_DISCOVERY_OPTIONS, SkillRegistryService } from '../../execution/skill/skill-registry.service';
 import { SkillSessionService } from '../../execution/skill/skill-session.service';
 import { ToolRegistryService } from '../../execution/tool/tool-registry.service';
+import { PersonaService } from '../../persona/persona.service';
+import { PersonaStoreService } from '../../persona/persona-store.service';
 import { PluginModule } from '../../plugin/plugin.module';
 import { RuntimeGatewayModule } from '../gateway/runtime-gateway.module';
 import { RuntimeKernelModule } from '../kernel/runtime-kernel.module';
@@ -33,6 +35,8 @@ import { RuntimeHostUserContextService } from './runtime-host-user-context.servi
     AutomationService,
     McpConfigStoreService,
     McpService,
+    PersonaService,
+    PersonaStoreService,
     {
       provide: SKILL_DISCOVERY_OPTIONS,
       useValue: {},
@@ -51,7 +55,7 @@ import { RuntimeHostUserContextService } from './runtime-host-user-context.servi
     SkillSessionService,
     ToolRegistryService,
   ],
-  exports: [AiModelExecutionService, AiManagementService, AiProviderSettingsService, AiVisionService, AutomationService, McpService, RuntimeHostConversationMessageService, RuntimeHostConversationRecordService, RuntimeHostKnowledgeService, RuntimeHostPluginDispatchService, RuntimeHostPluginRuntimeService, RuntimeHostSubagentRunnerService, RuntimeHostService, RuntimeHostUserContextService, SkillRegistryService, SkillSessionService, ToolRegistryService],
+  exports: [AiModelExecutionService, AiManagementService, AiProviderSettingsService, AiVisionService, AutomationService, McpService, PersonaService, PersonaStoreService, RuntimeHostConversationMessageService, RuntimeHostConversationRecordService, RuntimeHostKnowledgeService, RuntimeHostPluginDispatchService, RuntimeHostPluginRuntimeService, RuntimeHostSubagentRunnerService, RuntimeHostService, RuntimeHostUserContextService, SkillRegistryService, SkillSessionService, ToolRegistryService],
 })
 export class RuntimeHostModule implements OnModuleInit {
   constructor(private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService) {}

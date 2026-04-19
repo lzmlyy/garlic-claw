@@ -28,8 +28,8 @@ export class SkillSessionService {
     return toConversationSkillState(selection);
   }
 
-  async getConversationSkillContext(conversationId: string): Promise<ConversationSkillContext> {
-    const activeSkills = await this.readConversationSkills(conversationId);
+  async getConversationSkillContext(conversationId: string, options?: { allowedSkillIds?: string[] | null }): Promise<ConversationSkillContext> {
+    const activeSkills = await this.readConversationSkills(conversationId, options);
     return buildConversationSkillContext(activeSkills, describeSkillPackageToolAccess(activeSkills, this.skillPackageToolsEnabled));
   }
 
@@ -123,7 +123,14 @@ export class SkillSessionService {
     return { activeSkillIds: selection.activeSkillIds, activeSkills: selection.activeSkills };
   }
 
-  private async readConversationSkills(conversationId: string): Promise<SkillDetail[]> { return (await this.readConversationSkillSelection({ conversationId })).activeSkills; }
+  private async readConversationSkills(conversationId: string, options?: { allowedSkillIds?: string[] | null }): Promise<SkillDetail[]> {
+    const activeSkills = (await this.readConversationSkillSelection({ conversationId })).activeSkills;
+    const allowedSkillIds = options?.allowedSkillIds;
+    if (allowedSkillIds === undefined || allowedSkillIds === null) {return activeSkills;}
+    if (allowedSkillIds.length === 0) {return [];}
+    const allowedSkillSet = new Set(allowedSkillIds);
+    return activeSkills.filter((skill) => allowedSkillSet.has(skill.id));
+  }
 
   private async renderSkillList(userId: string, conversationId: string): Promise<string> {
     const { activeSkills: skills } = await this.readConversationSkillSelection({ conversationId, userId, persistCleanup: true });

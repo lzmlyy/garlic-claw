@@ -77,6 +77,7 @@
       </div>
 
       <ChatMessageList
+        :assistant-persona="currentConversationPersona ? { avatar: currentConversationPersona.avatar, name: currentConversationPersona.name } : null"
         :loading="chat.loading"
         :messages="chat.messages"
         @delete-message="deleteMessage"
@@ -104,18 +105,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import altArrowUpBold from '@iconify-icons/solar/alt-arrow-up-bold'
 import altArrowDownBold from '@iconify-icons/solar/alt-arrow-down-bold'
+import type { PluginPersonaCurrentInfo } from '@garlic-claw/shared'
 import ModelQuickInput from '@/components/ModelQuickInput.vue'
 import { useChatView } from '@/features/chat/composables/use-chat-view'
 import ChatComposer from '@/features/chat/components/ChatComposer.vue'
 import ChatMessageList from '@/features/chat/components/ChatMessageList.vue'
+import { loadCurrentPersona } from '@/features/personas/composables/persona-settings.data'
 import { useChatStore } from '@/features/chat/store/chat'
 
 const chat = useChatStore()
 const toolbarExpanded = ref(true)
+const currentConversationPersona = ref<PluginPersonaCurrentInfo | null>(null)
+const currentConversationId = computed(() => chat.currentConversationId ?? null)
+let currentPersonaRequestId = 0
 const {
   inputText,
   pendingImages,
@@ -135,6 +141,36 @@ const {
   setConversationSessionEnabled,
   removeConversationSkill,
 } = useChatView(chat)
+
+watch(
+  currentConversationId,
+  (conversationId) => {
+    if (!conversationId) {
+      currentConversationPersona.value = null
+      return
+    }
+    const requestId = ++currentPersonaRequestId
+    void readCurrentConversationPersona(conversationId, requestId)
+  },
+  {
+    immediate: true,
+  },
+)
+
+async function readCurrentConversationPersona(conversationId: string, requestId: number) {
+  try {
+    const persona = await loadCurrentPersona(conversationId)
+    if (currentPersonaRequestId !== requestId || currentConversationId.value !== conversationId) {
+      return
+    }
+    currentConversationPersona.value = persona
+  } catch {
+    if (currentPersonaRequestId !== requestId || currentConversationId.value !== conversationId) {
+      return
+    }
+    currentConversationPersona.value = null
+  }
+}
 </script>
 
 <style scoped>

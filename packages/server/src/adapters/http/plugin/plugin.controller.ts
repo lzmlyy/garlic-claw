@@ -1,4 +1,4 @@
-import { type DeviceType, type JsonObject, type JsonValue, type PluginActionName, type PluginCommandOverview, type PluginSubagentTaskDetail, type PluginSubagentTaskOverview } from '@garlic-claw/shared';
+import { type DeviceType, type JsonObject, type JsonValue, type PluginActionName, type PluginCommandOverview, type PluginLlmPreference, type PluginSubagentTaskDetail, type PluginSubagentTaskOverview } from '@garlic-claw/shared';
 import { All, BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, Res, Inject, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../../auth/http-auth';
@@ -14,6 +14,7 @@ import { readPluginEventQuery, readPluginRouteInvocation, writePluginRouteRespon
 
 interface CreateRemotePluginBootstrapDto { description?: string; deviceType: DeviceType; displayName?: string; pluginName: string; version?: string; }
 interface UpdatePluginConfigDto { values: JsonObject; }
+interface UpdatePluginLlmPreferenceDto extends PluginLlmPreference {}
 interface UpdatePluginScopeDto { defaultEnabled?: boolean; conversations?: Record<string, boolean>; }
 interface UpdatePluginStorageDto { key: string; value: JsonValue; }
 interface PluginEventQueryInput { limit?: string; level?: string; type?: string; keyword?: string; cursor?: string; }
@@ -29,7 +30,7 @@ export class PluginController {
   getConnectedPlugins() { return this.runtimePluginGovernanceService.listPlugins().filter((plugin) => plugin.connected).map((plugin) => ({ manifest: plugin.manifest, name: plugin.pluginId, runtimeKind: plugin.manifest.runtime })); }
 
   @Get('plugins/:pluginId/health')
-  getPluginHealth(@Param('pluginId') pluginId: string) { return this.runtimePluginGovernanceService.checkPluginHealth(pluginId); }
+  getPluginHealth(@Param('pluginId') pluginId: string) { return this.runtimePluginGovernanceService.readPluginHealthSnapshot(pluginId); }
 
   @Post('plugins/remote/bootstrap')
   createRemoteBootstrap(@Body() dto: CreateRemotePluginBootstrapDto) { return this.pluginBootstrapService.issueRemoteBootstrap(dto); }
@@ -49,6 +50,16 @@ export class PluginController {
     const snapshot = this.pluginPersistenceService.updatePluginConfig(pluginId, dto.values);
     this.recordPluginEvent(pluginId, { message: `Updated plugin config for ${pluginId}`, metadata: { keys: Object.keys(dto.values) }, type: 'plugin:config.updated' });
     return snapshot;
+  }
+
+  @Get('plugins/:pluginId/llm-preference')
+  getPluginLlmPreference(@Param('pluginId') pluginId: string) { return this.pluginPersistenceService.getPluginLlmPreference(pluginId); }
+
+  @Put('plugins/:pluginId/llm-preference')
+  updatePluginLlmPreference(@Param('pluginId') pluginId: string, @Body() dto: UpdatePluginLlmPreferenceDto) {
+    const preference = this.pluginPersistenceService.updatePluginLlmPreference(pluginId, dto);
+    this.recordPluginEvent(pluginId, { message: `Updated plugin llm preference for ${pluginId}`, metadata: { mode: preference.mode, modelId: preference.modelId, providerId: preference.providerId }, type: 'plugin:llm-preference.updated' });
+    return preference;
   }
 
   @Get('plugins/:pluginId/scopes')

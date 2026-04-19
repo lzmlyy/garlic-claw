@@ -4,21 +4,17 @@ import builtinManifestData from "./builtin-manifest-data.json";
 export interface PluginSubagentDelegateConfig {
   targetProviderId?: string;
   targetModelId?: string;
-  allowedToolNames?: string;
-  maxSteps?: number;
+  allowedToolNames?: string[];
 }
 const BUILTIN_MANIFEST_DATA = builtinManifestData;
-
-type PluginConfigFields = NonNullable<PluginManifest["config"]>["fields"];
 
 export const MEMORY_CONTEXT_DEFAULT_LIMIT = BUILTIN_MANIFEST_DATA.defaults.memoryContextLimit;
 export const MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX = BUILTIN_MANIFEST_DATA.defaults.memoryContextPromptPrefix;
 export const KB_CONTEXT_DEFAULT_LIMIT = BUILTIN_MANIFEST_DATA.defaults.kbContextLimit;
 export const KB_CONTEXT_DEFAULT_PROMPT_PREFIX = BUILTIN_MANIFEST_DATA.defaults.kbContextPromptPrefix;
-export const SUBAGENT_DELEGATE_DEFAULT_MAX_STEPS = BUILTIN_MANIFEST_DATA.defaults.subagentDelegateMaxSteps;
-export const MEMORY_CONTEXT_CONFIG_FIELDS = BUILTIN_MANIFEST_DATA.memoryContextConfigFields as PluginConfigFields;
-export const KB_CONTEXT_CONFIG_FIELDS = BUILTIN_MANIFEST_DATA.kbContextConfigFields as PluginConfigFields;
-export const SUBAGENT_DELEGATE_CONFIG_FIELDS = BUILTIN_MANIFEST_DATA.subagentDelegateConfigFields as PluginConfigFields;
+export const MEMORY_CONTEXT_CONFIG_SCHEMA = BUILTIN_MANIFEST_DATA.memoryContextConfigSchema as unknown as NonNullable<PluginManifest["config"]>;
+export const KB_CONTEXT_CONFIG_SCHEMA = BUILTIN_MANIFEST_DATA.kbContextConfigSchema as unknown as NonNullable<PluginManifest["config"]>;
+export const SUBAGENT_DELEGATE_CONFIG_SCHEMA = BUILTIN_MANIFEST_DATA.subagentDelegateConfigSchema as unknown as NonNullable<PluginManifest["config"]>;
 export const MEMORY_TOOLS_MANIFEST_TOOLS = BUILTIN_MANIFEST_DATA.memoryToolsManifestTools as unknown as NonNullable<PluginManifest["tools"]>;
 export const CORE_TOOLS_MANIFEST_TOOLS = BUILTIN_MANIFEST_DATA.coreToolsManifestTools as unknown as NonNullable<PluginManifest["tools"]>;
 export const AUTOMATION_TOOLS_MANIFEST_TOOLS = BUILTIN_MANIFEST_DATA.automationToolsManifestTools as unknown as NonNullable<PluginManifest["tools"]>;

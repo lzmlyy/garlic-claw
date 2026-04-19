@@ -73,6 +73,7 @@ const modelConfig: AiModelConfig = {
   providerId: 'openai',
   name: 'GPT-4o mini',
   capabilities: modelCapabilities,
+  contextLength: 128 * 1024,
   api: {
     id: 'gpt-4o-mini',
     url: 'https://api.openai.com/v1',

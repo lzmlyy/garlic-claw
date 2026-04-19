@@ -189,6 +189,20 @@ export function addProviderModel(
 }
 
 /**
+ * 保存模型上下文长度。
+ * @param providerId provider ID
+ * @param modelId 模型 ID
+ * @param contextLength 上下文长度
+ */
+export function saveProviderModelContextLength(
+  providerId: string,
+  modelId: string,
+  contextLength: number,
+) {
+  return upsertAiModel(providerId, modelId, { contextLength })
+}
+
+/**
  * 删除一个 provider 模型。
  * @param providerId provider ID
  * @param modelId 模型 ID

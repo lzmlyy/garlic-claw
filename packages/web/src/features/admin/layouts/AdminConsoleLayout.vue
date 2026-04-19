@@ -74,7 +74,7 @@ const navItems: Array<{
     | 'chat'
     | 'plugins'
     | 'persona-settings'
-    | 'tools'
+    | 'mcp'
     | 'skills'
     | 'commands'
     | 'subagent-tasks'
@@ -87,7 +87,7 @@ const navItems: Array<{
   { name: 'chat', label: '对话', icon: chatRoundLineBold, section: 'core' },
   { name: 'plugins', label: '插件', icon: widgetBold, section: 'core' },
   { name: 'persona-settings', label: '人设', icon: userIdBold, section: 'core' },
-  { name: 'tools', label: '工具', icon: widgetAddBold, section: 'core' },
+  { name: 'mcp', label: 'MCP', icon: widgetAddBold, section: 'core' },
   { name: 'skills', label: '技能', icon: magicStick3Bold, section: 'core' },
   { name: 'commands', label: '命令', icon: keyboardBold, section: 'core' },
   { name: 'subagent-tasks', label: '后台代理', icon: cpuBold, section: 'core' },

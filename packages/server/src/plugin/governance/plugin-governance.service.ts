@@ -19,7 +19,7 @@ export class PluginGovernanceService {
     overrides?: PluginGovernanceOverrides;
   }) {
     const builtinRole = input.overrides?.builtinRole
-      ?? (input.manifest.runtime === 'builtin' ? 'system-optional' : undefined);
+      ?? (input.manifest.runtime === 'local' ? 'system-optional' : undefined);
     const canDisable = input.overrides?.canDisable
       ?? builtinRole !== 'system-required';
     const governance: PluginGovernanceInfo = {
@@ -31,7 +31,7 @@ export class PluginGovernanceService {
     };
 
     return {
-      defaultEnabled: input.overrides?.defaultEnabled ?? input.manifest.runtime === 'builtin',
+      defaultEnabled: input.overrides?.defaultEnabled ?? input.manifest.runtime === 'local',
       governance,
     };
   }

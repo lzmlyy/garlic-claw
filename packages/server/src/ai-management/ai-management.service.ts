@@ -6,19 +6,18 @@ import {
 import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   buildAiProviderHeaders,
-  buildAiModelKey,
+  createStoredAiModelConfig,
   createAiModelConfig,
+  DEFAULT_AI_MODEL_CONTEXT_LENGTH,
   mergeAiCapabilities,
   type ModelCapabilitiesUpdate,
 } from './ai-management-model-config';
 import { PROVIDER_CATALOG } from './ai-provider-catalog';
 import { AiProviderSettingsService } from './ai-provider-settings.service';
-import type { StoredAiProviderConfig } from './ai-management.types';
+import type { StoredAiModelConfig, StoredAiProviderConfig } from './ai-management.types';
 
 @Injectable()
 export class AiManagementService {
-  private readonly models = new Map<string, AiModelConfig>();
-
   constructor(private readonly aiProviderSettingsService: AiProviderSettingsService) {}
 
   listProviderCatalog() { return this.aiProviderSettingsService.listProviderCatalog(); }
@@ -43,6 +42,7 @@ export class AiManagementService {
       name: model.name,
       providerId: model.providerId,
       capabilities: model.capabilities,
+      contextLength: model.contextLength,
       ...(model.status ? { status: model.status } : {}),
     };
   }
@@ -53,11 +53,6 @@ export class AiManagementService {
 
   deleteProvider(providerId: string): void {
     this.aiProviderSettingsService.removeProvider(providerId);
-    for (const key of [...this.models.keys()]) {
-      if (key.startsWith(`${providerId}:`)) {
-        this.models.delete(key);
-      }
-    }
   }
 
   listModels(providerId: string): AiModelConfig[] { return this.getProvider(providerId).models.map((modelId) => this.getProviderModel(providerId, modelId)); }
@@ -65,18 +60,24 @@ export class AiManagementService {
   getProviderModel(providerId: string, modelId: string): AiModelConfig {
     const provider = this.getProvider(providerId);
     if (!provider.models.includes(modelId)) {throw new NotFoundException(`Model "${modelId}" is not configured for provider "${providerId}"`);}
+    const stored = this.aiProviderSettingsService.readPersistedModel(providerId, modelId);
+    if (stored) {
+      return this.buildResolvedModelConfig(provider, stored);
+    }
 
-    const key = buildAiModelKey(providerId, modelId);
-    const existing = this.models.get(key) ?? createAiModelConfig(PROVIDER_CATALOG, provider, modelId);
-    this.models.set(key, existing);
-    return existing;
+    const created = createAiModelConfig(PROVIDER_CATALOG, provider, modelId);
+    this.aiProviderSettingsService.upsertPersistedModel(createStoredAiModelConfig(created));
+    return created;
   }
 
   upsertModel(
     providerId: string,
     modelId: string,
-    input: { name?: string; capabilities?: ModelCapabilitiesUpdate } = {},
+    input: { name?: string; capabilities?: ModelCapabilitiesUpdate; contextLength?: number } = {},
   ): AiModelConfig {
+    if (input.contextLength !== undefined && (!Number.isInteger(input.contextLength) || input.contextLength <= 0)) {
+      throw new BadRequestException('contextLength must be a positive integer');
+    }
     this.updateProvider(providerId, (provider) => {
       if (!provider.models.includes(modelId)) {provider.models.push(modelId);}
       if (!provider.defaultModel) {provider.defaultModel = modelId;}
@@ -85,11 +86,12 @@ export class AiManagementService {
     const nextModel = {
       ...this.getProviderModel(providerId, modelId),
       ...(input.name ? { name: input.name } : {}),
+      ...(input.contextLength !== undefined ? { contextLength: input.contextLength } : {}),
     };
     if (input.capabilities) {
       nextModel.capabilities = mergeAiCapabilities(nextModel.capabilities, input.capabilities);
     }
-    this.models.set(buildAiModelKey(providerId, modelId), nextModel);
+    this.aiProviderSettingsService.upsertPersistedModel(createStoredAiModelConfig(nextModel));
     return nextModel;
   }
 
@@ -98,7 +100,7 @@ export class AiManagementService {
       provider.models = provider.models.filter((entry) => entry !== modelId);
       if (provider.defaultModel === modelId) {provider.defaultModel = provider.models[0];}
     });
-    this.models.delete(buildAiModelKey(providerId, modelId));
+    this.aiProviderSettingsService.removePersistedModel(providerId, modelId);
   }
 
   setDefaultModel(providerId: string, modelId: string): StoredAiProviderConfig {
@@ -113,7 +115,7 @@ export class AiManagementService {
   ): AiModelConfig {
     const model = this.getProviderModel(providerId, modelId);
     model.capabilities = mergeAiCapabilities(model.capabilities, capabilities);
-    this.models.set(buildAiModelKey(providerId, modelId), model);
+    this.aiProviderSettingsService.upsertPersistedModel(createStoredAiModelConfig(model));
     return model;
   }
 
@@ -155,8 +157,26 @@ export class AiManagementService {
 
   private updateProvider(providerId: string, mutate: (provider: StoredAiProviderConfig) => void): StoredAiProviderConfig {
     const provider = this.getProvider(providerId);
-    mutate(provider);
-    return this.aiProviderSettingsService.upsertProvider(providerId, provider);
+    const nextProvider: StoredAiProviderConfig = {
+      ...provider,
+      models: [...provider.models],
+    };
+    mutate(nextProvider);
+    return this.aiProviderSettingsService.upsertProvider(providerId, nextProvider);
+  }
+
+  private buildResolvedModelConfig(
+    provider: StoredAiProviderConfig,
+    stored: StoredAiModelConfig,
+  ): AiModelConfig {
+    const base = createAiModelConfig(PROVIDER_CATALOG, provider, stored.id);
+    return {
+      ...base,
+      capabilities: mergeAiCapabilities(base.capabilities, stored.capabilities),
+      contextLength: stored.contextLength || DEFAULT_AI_MODEL_CONTEXT_LENGTH,
+      name: stored.name,
+      ...(stored.status ? { status: stored.status } : {}),
+    };
   }
 }
 

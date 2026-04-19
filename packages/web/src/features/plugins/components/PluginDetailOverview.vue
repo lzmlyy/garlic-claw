@@ -231,7 +231,7 @@ function runtimePressureBadgeLabel(health: PluginHealthSnapshot | null | undefin
  * @returns 运行形态标签
  */
 function runtimeKindLabel(plugin: PluginInfo): string {
-  return (plugin.runtimeKind ?? 'remote') === 'builtin' ? '内建插件' : '远程插件'
+  return (plugin.runtimeKind ?? 'remote') === 'local' ? '本地插件' : '远程插件'
 }
 
 /**

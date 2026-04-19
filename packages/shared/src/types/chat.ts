@@ -63,11 +63,68 @@ export interface ChatVisionFallbackMetadata {
 }
 
 /**
+ * 自定义扩展块状态。
+ */
+export type ChatMessageCustomBlockState = 'streaming' | 'done';
+
+/**
+ * 自定义扩展块来源。
+ */
+export interface ChatMessageCustomBlockSource {
+  /** provider 标识。 */
+  providerId?: string;
+  /** 原始来源。 */
+  origin?: string;
+  /** 原始字段名。 */
+  key?: string;
+}
+
+interface ChatMessageCustomBlockBase {
+  /** 扩展块唯一 ID。 */
+  id: string;
+  /** 扩展块标题。 */
+  title: string;
+  /** 扩展块状态。 */
+  state?: ChatMessageCustomBlockState;
+  /** 来源信息。 */
+  source?: ChatMessageCustomBlockSource;
+}
+
+/**
+ * 文本类扩展块。
+ */
+export interface ChatMessageTextBlock extends ChatMessageCustomBlockBase {
+  /** 扩展块类型。 */
+  kind: 'text';
+  /** 文本内容。 */
+  text: string;
+}
+
+/**
+ * JSON 类扩展块。
+ */
+export interface ChatMessageJsonBlock extends ChatMessageCustomBlockBase {
+  /** 扩展块类型。 */
+  kind: 'json';
+  /** JSON 内容。 */
+  data: JsonValue;
+}
+
+/**
+ * 聊天消息自定义扩展块。
+ */
+export type ChatMessageCustomBlock =
+  | ChatMessageTextBlock
+  | ChatMessageJsonBlock;
+
+/**
  * 聊天消息元数据。
  */
 export interface ChatMessageMetadata {
   /** 本条消息关联的图像转述信息。 */
   visionFallback?: ChatVisionFallbackMetadata;
+  /** provider 自定义扩展块。 */
+  customBlocks?: ChatMessageCustomBlock[];
 }
 
 /**
@@ -183,6 +240,11 @@ export type SSEEvent =
       messageId: string;
       content: string;
       parts?: ChatMessagePart[];
+    }
+  | {
+      type: 'message-metadata';
+      messageId: string;
+      metadata: ChatMessageMetadata;
     }
   | {
       type: 'finish';

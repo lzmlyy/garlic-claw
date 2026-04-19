@@ -28,7 +28,7 @@
       <article class="quick-card">
         <span class="quick-kicker">人设设置</span>
         <h3>人设配置</h3>
-        <p>人设相关入口已提升到独立业务页，里面会解释 `persona-router` 的作用并提供插件配置入口。</p>
+        <p>人设已经提升为独立资源中心，在业务页里直接管理、编辑并应用到当前对话。</p>
         <RouterLink
           class="quick-link"
           :to="{

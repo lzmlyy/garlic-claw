@@ -67,7 +67,7 @@ def loadProjectEnv() -> dict[str, str]:
 
     loaded = parseEnvFile(envPath)
     for key, value in loaded.items():
-        os.environ[key] = value
+        os.environ.setdefault(key, value)
     return loaded
 
 

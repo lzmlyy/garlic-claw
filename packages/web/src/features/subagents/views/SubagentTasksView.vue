@@ -104,7 +104,7 @@
           </div>
 
           <div class="meta-row">
-            <span class="meta-chip">{{ task.runtimeKind === 'builtin' ? '内建' : '远程' }}</span>
+            <span class="meta-chip">{{ task.runtimeKind === 'local' ? '本地' : '远程' }}</span>
             <span v-if="task.providerId" class="meta-chip">{{ task.providerId }}</span>
             <span v-if="task.modelId" class="meta-chip">{{ task.modelId }}</span>
             <span class="meta-chip writeback-chip" :class="task.writeBackStatus">

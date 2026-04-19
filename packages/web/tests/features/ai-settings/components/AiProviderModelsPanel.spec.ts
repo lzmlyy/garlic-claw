@@ -54,6 +54,7 @@ function createModel(id: string, reasoning = false): AiModelConfig {
       url: 'https://example.com/v1/chat/completions',
       npm: '@example/sdk',
     },
+    contextLength: 128 * 1024,
   }
 }
 
@@ -102,5 +103,38 @@ describe('AiProviderModelsPanel', () => {
     expect(wrapper.text()).toContain('deepseek-reasoner-search')
     expect(wrapper.text()).toContain('协议接入')
     expect(wrapper.text()).toContain('OpenAI 协议接入')
+  })
+
+  it('emits context length updates for a model', async () => {
+    const wrapper = mount(AiProviderModelsPanel, {
+      props: {
+        provider: createProvider(),
+        catalog,
+        models: [createModel('deepseek-chat')],
+        discoveringModels: false,
+        testingConnection: false,
+        connectionResult: null,
+      },
+      global: {
+        stubs: {
+          AiModelCapabilityToggles: {
+            template: '<div class="capability-toggles-stub" />',
+          },
+        },
+      },
+    })
+
+    const input = wrapper.get('.context-length-field input')
+    await input.setValue('65536')
+    await wrapper.get('.context-length-row .ghost-button').trigger('click')
+
+    expect(wrapper.emitted('update-context-length')).toEqual([
+      [
+        {
+          modelId: 'deepseek-chat',
+          contextLength: 65536,
+        },
+      ],
+    ])
   })
 })

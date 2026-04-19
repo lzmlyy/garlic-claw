@@ -14,7 +14,7 @@ describe('PluginBootstrapService', () => {
       fallback: {
         id: 'builtin.ping',
         name: 'Builtin Ping',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: [],
@@ -46,17 +46,17 @@ describe('PluginBootstrapService', () => {
       fallback: {
         id: 'builtin.ping',
         name: 'Builtin Ping',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         config: {
-          fields: [
-            {
-              key: 'limit',
-              type: 'number',
+          type: 'object',
+          items: {
+            limit: {
+              type: 'int',
               defaultValue: 5,
             },
-          ],
+          },
         },
         permissions: [],
         tools: [],
@@ -76,17 +76,17 @@ describe('PluginBootstrapService', () => {
       fallback: {
         id: 'builtin.ping',
         name: 'Builtin Ping',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         config: {
-          fields: [
-            {
-              key: 'limit',
-              type: 'number',
+          type: 'object',
+          items: {
+            limit: {
+              type: 'int',
               defaultValue: 5,
             },
-          ],
+          },
         },
         permissions: [],
         tools: [
@@ -118,13 +118,13 @@ describe('PluginBootstrapService', () => {
     });
     expect(persistence.getPluginConfig('builtin.ping')).toEqual({
       schema: {
-        fields: [
-          {
-            key: 'limit',
-            type: 'number',
+        type: 'object',
+        items: {
+          limit: {
+            type: 'int',
             defaultValue: 5,
           },
-        ],
+        },
       },
       values: {
         limit: 9,
@@ -155,7 +155,7 @@ describe('PluginBootstrapService', () => {
         {
           id: 'builtin.ping',
           name: 'Builtin Ping',
-          runtime: 'builtin',
+          runtime: 'local',
           version: '1.0.0',
         },
       ),
@@ -164,7 +164,7 @@ describe('PluginBootstrapService', () => {
       id: 'builtin.ping',
       name: 'Builtin Ping',
       permissions: ['llm:generate'],
-      runtime: 'builtin',
+      runtime: 'local',
       tools: [
         {
           description: 'Ping',
@@ -172,6 +172,86 @@ describe('PluginBootstrapService', () => {
           parameters: {},
         },
       ],
+      version: '1.0.0',
+    });
+  });
+
+  it('normalizes typed config options and render type from plugin manifest', () => {
+    expect(
+      normalizePluginManifest(
+        {
+          config: {
+            type: 'object',
+            items: {
+              themes: {
+                type: 'list',
+                renderType: 'select',
+                options: [
+                  {
+                    value: 'light',
+                    label: '浅色',
+                  },
+                  {
+                    value: 'dark',
+                    label: '深色',
+                  },
+                ],
+              },
+              locale: {
+                type: 'string',
+                options: [
+                  {
+                    value: 'zh-CN',
+                    label: '简体中文',
+                  },
+                ],
+              },
+            },
+          },
+          permissions: [],
+          tools: [],
+        } as never,
+        {
+          id: 'builtin.theme-config',
+          name: 'Theme Config',
+          runtime: 'local',
+          version: '1.0.0',
+        },
+      ),
+    ).toEqual({
+      config: {
+        type: 'object',
+        items: {
+          themes: {
+            type: 'list',
+            renderType: 'select',
+            options: [
+              {
+                value: 'light',
+                label: '浅色',
+              },
+              {
+                value: 'dark',
+                label: '深色',
+              },
+            ],
+          },
+          locale: {
+            type: 'string',
+            options: [
+              {
+                value: 'zh-CN',
+                label: '简体中文',
+              },
+            ],
+          },
+        },
+      },
+      id: 'builtin.theme-config',
+      name: 'Theme Config',
+      permissions: [],
+      runtime: 'local',
+      tools: [],
       version: '1.0.0',
     });
   });

@@ -6,6 +6,9 @@
     "noEmit": true,
     "ignoreDeprecations": "5.0"
   },
-  "files": ["src/main.ts"],
+  "files": [
+    "src/main.ts",
+    "src/execution/mcp/mcp-stdio-launcher.ts"
+  ],
   "exclude": ["src/**/*.spec.ts"]
 }

@@ -16,7 +16,7 @@ function createOverview() {
         id: 'subagent-task-1',
         pluginId: 'builtin.subagent-delegate',
         pluginDisplayName: '子代理委派',
-        runtimeKind: 'builtin' as const,
+        runtimeKind: 'local' as const,
         status: 'running' as const,
         requestPreview: '请帮我总结当前对话',
         providerId: 'openai',

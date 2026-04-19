@@ -9,11 +9,13 @@ describe('PluginController', () => {
   const pluginPersistenceService = {
     deletePlugin: jest.fn(),
     getPluginConfig: jest.fn(),
+    getPluginLlmPreference: jest.fn(),
     getPluginOrThrow: jest.fn(),
     getPluginScope: jest.fn(),
     listPluginEvents: jest.fn(),
     recordPluginEvent: jest.fn(),
     updatePluginConfig: jest.fn(),
+    updatePluginLlmPreference: jest.fn(),
     updatePluginScope: jest.fn(),
     upsertPlugin: jest.fn(),
   };
@@ -37,6 +39,7 @@ describe('PluginController', () => {
   };
   const runtimePluginGovernanceService = {
     checkPluginHealth: jest.fn(),
+    readPluginHealthSnapshot: jest.fn(),
     listConnectedPlugins: jest.fn(),
     listPlugins: jest.fn(),
     listSupportedActions: jest.fn(),
@@ -73,7 +76,7 @@ describe('PluginController', () => {
           name: 'Memory Context',
           description: 'Memory plugin',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
@@ -115,7 +118,7 @@ describe('PluginController', () => {
           name: 'Memory Context',
           description: 'Memory plugin',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
@@ -150,12 +153,12 @@ describe('PluginController', () => {
           name: 'Memory Context',
           description: 'Memory plugin',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
         name: 'builtin.memory-context',
-        runtimeKind: 'builtin',
+        runtimeKind: 'local',
         status: 'online',
         supportedActions: ['health-check', 'reload'],
         updatedAt: '2026-03-26T01:00:00.000Z',
@@ -204,12 +207,12 @@ describe('PluginController', () => {
           id: 'builtin.memory-context',
           name: 'Memory Context',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
         name: 'builtin.memory-context',
-        runtimeKind: 'builtin',
+        runtimeKind: 'local',
       },
     ]);
   });
@@ -222,7 +225,15 @@ describe('PluginController', () => {
       token: 'signed-token',
       tokenExpiresIn: '30d',
     });
-    runtimePluginGovernanceService.checkPluginHealth.mockReturnValue({ ok: true });
+    runtimePluginGovernanceService.readPluginHealthSnapshot.mockReturnValue({
+      status: 'healthy',
+      failureCount: 0,
+      consecutiveFailures: 0,
+      lastError: null,
+      lastErrorAt: null,
+      lastSuccessAt: '2026-03-28T00:00:00.000Z',
+      lastCheckedAt: '2026-03-28T00:05:00.000Z',
+    });
     runtimePluginGovernanceService.runPluginAction.mockResolvedValue({
       accepted: true,
       action: 'reload',
@@ -240,7 +251,15 @@ describe('PluginController', () => {
       token: 'signed-token',
       tokenExpiresIn: '30d',
     });
-    expect(controller.getPluginHealth('remote.echo')).toEqual({ ok: true });
+    expect(controller.getPluginHealth('remote.echo')).toEqual({
+      status: 'healthy',
+      failureCount: 0,
+      consecutiveFailures: 0,
+      lastError: null,
+      lastErrorAt: null,
+      lastSuccessAt: '2026-03-28T00:00:00.000Z',
+      lastCheckedAt: '2026-03-28T00:05:00.000Z',
+    });
     await expect(
       controller.runPluginAction('remote.echo', 'reload'),
     ).resolves.toEqual({
@@ -264,8 +283,18 @@ describe('PluginController', () => {
     pluginPersistenceService.getPluginConfig.mockReturnValue({
       values: { limit: 8 },
     });
+    pluginPersistenceService.getPluginLlmPreference.mockReturnValue({
+      mode: 'inherit',
+      modelId: null,
+      providerId: null,
+    });
     pluginPersistenceService.updatePluginConfig.mockReturnValue({
       values: { limit: 6 },
+    });
+    pluginPersistenceService.updatePluginLlmPreference.mockReturnValue({
+      mode: 'override',
+      modelId: 'deepseek-reasoner',
+      providerId: 'ds2api',
     });
     pluginPersistenceService.getPluginScope.mockReturnValueOnce({
       defaultEnabled: true,
@@ -287,6 +316,20 @@ describe('PluginController', () => {
     } as never)).toEqual({
       values: { limit: 6 },
     });
+    expect(controller.getPluginLlmPreference('builtin.memory-context')).toEqual({
+      mode: 'inherit',
+      modelId: null,
+      providerId: null,
+    });
+    expect(controller.updatePluginLlmPreference('builtin.memory-context', {
+      mode: 'override',
+      modelId: 'deepseek-reasoner',
+      providerId: 'ds2api',
+    } as never)).toEqual({
+      mode: 'override',
+      modelId: 'deepseek-reasoner',
+      providerId: 'ds2api',
+    });
     expect(controller.getPluginScope('builtin.memory-context')).toEqual({
       defaultEnabled: true,
       conversations: { 'conversation-1': false },
@@ -300,6 +343,11 @@ describe('PluginController', () => {
     expect(pluginPersistenceService.updatePluginConfig).toHaveBeenCalledWith('builtin.memory-context', {
       limit: 6,
     });
+    expect(pluginPersistenceService.updatePluginLlmPreference).toHaveBeenCalledWith('builtin.memory-context', {
+      mode: 'override',
+      modelId: 'deepseek-reasoner',
+      providerId: 'ds2api',
+    });
     expect(pluginPersistenceService.updatePluginScope).toHaveBeenCalledWith('builtin.memory-context', {
       conversations: { 'conversation-1': true },
     });
@@ -308,6 +356,16 @@ describe('PluginController', () => {
       message: 'Updated plugin config for builtin.memory-context',
       metadata: { keys: ['limit'] },
       type: 'plugin:config.updated',
+    });
+    expect(pluginPersistenceService.recordPluginEvent).toHaveBeenCalledWith('builtin.memory-context', {
+      level: 'info',
+      message: 'Updated plugin llm preference for builtin.memory-context',
+      metadata: {
+        mode: 'override',
+        modelId: 'deepseek-reasoner',
+        providerId: 'ds2api',
+      },
+      type: 'plugin:llm-preference.updated',
     });
     expect(pluginPersistenceService.recordPluginEvent).toHaveBeenCalledWith('builtin.memory-context', {
       level: 'info',

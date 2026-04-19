@@ -1,4 +1,4 @@
-import type { AiModelConfig, AiProviderSummary } from './ai';
+import type { AiModelConfig, AiModelUsage, AiProviderSummary } from './ai';
 import type { ChatMessagePart } from './chat';
 import type { JsonObject, JsonValue } from './json';
 import type {
@@ -17,6 +17,9 @@ export interface PluginLlmMessage {
   content: string | ChatMessagePart[];
 }
 
+/** 插件侧显式指定的底层调用传输模式。 */
+export type PluginLlmTransportMode = 'generate' | 'stream-collect';
+
 /** 插件侧统一 LLM 生成请求。 */
 export interface PluginLlmGenerateParams {
   providerId?: string;
@@ -27,6 +30,7 @@ export interface PluginLlmGenerateParams {
   providerOptions?: JsonObject;
   headers?: Record<string, string>;
   maxOutputTokens?: number;
+  transportMode?: PluginLlmTransportMode;
 }
 
 /** 插件侧统一 LLM 生成结果。 */
@@ -39,7 +43,16 @@ export interface PluginLlmGenerateResult {
     content: string;
   };
   finishReason?: string | null;
-  usage?: JsonValue;
+  usage?: AiModelUsage;
+}
+
+/** 插件侧统一 LLM 纯文本生成结果。 */
+export interface PluginLlmGenerateTextResult {
+  providerId: string;
+  modelId: string;
+  text: string;
+  metadata?: JsonValue;
+  usage?: AiModelUsage;
 }
 
 /** 插件侧统一 Subagent 运行请求。 */
@@ -53,7 +66,6 @@ export interface PluginSubagentRunParams {
   providerOptions?: JsonObject;
   headers?: Record<string, string>;
   maxOutputTokens?: number;
-  maxSteps?: number;
 }
 
 /** 后台子代理任务状态。 */
@@ -109,7 +121,6 @@ export interface PluginSubagentRequest {
   providerOptions?: JsonObject;
   headers?: Record<string, string>;
   maxOutputTokens?: number;
-  maxSteps: number;
 }
 
 /** 插件可见的当前 provider 上下文摘要。 */
@@ -128,7 +139,7 @@ export type PluginProviderSummary = Pick<
 /** 插件可见的模型安全摘要。 */
 export type PluginProviderModelSummary = Pick<
   AiModelConfig,
-  'id' | 'providerId' | 'name' | 'capabilities' | 'status'
+  'id' | 'providerId' | 'name' | 'capabilities' | 'contextLength' | 'status'
 >;
 
 /** 子代理运行前 Hook 的输入。 */
@@ -155,7 +166,6 @@ export interface SubagentBeforeRunHookMutateResult {
   providerOptions?: JsonObject | null;
   headers?: Record<string, string> | null;
   maxOutputTokens?: number | null;
-  maxSteps?: number | null;
 }
 
 /** 子代理运行前 Hook 直接短路本轮执行。 */

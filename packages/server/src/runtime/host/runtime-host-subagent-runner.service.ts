@@ -1,5 +1,4 @@
 import type { JsonObject, JsonValue, PluginCallContext, PluginMessageTargetInfo, PluginSubagentRequest, PluginSubagentRunResult, PluginSubagentTaskDetail, PluginSubagentTaskOverview, PluginSubagentTaskSummary, SubagentAfterRunHookResult, SubagentBeforeRunHookResult } from '@garlic-claw/shared';
-import { stepCountIs } from 'ai';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { AiModelExecutionService } from '../../ai/ai-model-execution.service';
 import { ToolRegistryService } from '../../execution/tool/tool-registry.service';
@@ -99,7 +98,6 @@ export class RuntimeHostSubagentRunnerService {
       modelId: request.modelId,
       providerId: request.providerId,
       providerOptions: request.providerOptions,
-      stopWhen: stepCountIs(request.maxSteps),
       system: request.system,
       tools,
       variant: request.variant,
@@ -129,7 +127,6 @@ function readSubagentRequest(params: JsonObject): PluginSubagentRequest {
     ...(providerOptions ? { providerOptions } : {}),
     ...(headers ? { headers } : {}),
     ...(typeof params.maxOutputTokens === 'number' ? { maxOutputTokens: params.maxOutputTokens } : {}),
-    maxSteps: typeof params.maxSteps === 'number' && Number.isInteger(params.maxSteps) && params.maxSteps > 0 ? params.maxSteps : 4,
     messages: readPluginLlmMessages(params.messages, 'subagent request requires non-empty messages'),
   };
 }
@@ -184,7 +181,6 @@ function readSubagentBeforeRunResponse(request: PluginSubagentRequest, response:
       ...('providerOptions' in response ? { providerOptions: response.providerOptions ?? undefined } : {}),
       ...('headers' in response ? { headers: response.headers ?? undefined } : {}),
       ...('maxOutputTokens' in response && typeof response.maxOutputTokens === 'number' ? { maxOutputTokens: response.maxOutputTokens } : {}),
-      ...('maxSteps' in response && typeof response.maxSteps === 'number' ? { maxSteps: response.maxSteps } : {}),
     },
   };
 }

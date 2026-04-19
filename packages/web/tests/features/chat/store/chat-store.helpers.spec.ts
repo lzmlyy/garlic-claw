@@ -43,6 +43,7 @@ function createModel(providerId: string, id: string) {
       url: 'https://example.com/v1/chat/completions',
       npm: '@example/sdk',
     },
+    contextLength: 128 * 1024,
   }
 }
 
@@ -137,6 +138,56 @@ describe('dbMessageToChat', () => {
           },
         ],
       },
+    })
+  })
+
+  it('parses persisted custom blocks metadata from message records', () => {
+    const message = dbMessageToChat({
+      id: 'message-2',
+      role: 'assistant',
+      content: '最终回复',
+      partsJson: null,
+      toolCalls: null,
+      toolResults: null,
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+      status: 'completed',
+      error: null,
+      metadataJson: JSON.stringify({
+        customBlocks: [
+          {
+            id: 'custom-field:reasoning_content',
+            kind: 'text',
+            title: 'reasoning_content',
+            text: '先检查上下文',
+            state: 'done',
+            source: {
+              providerId: 'deepseek',
+              origin: 'ai-sdk.raw',
+              key: 'reasoning_content',
+            },
+          },
+        ],
+      }),
+      createdAt: '2026-03-29T12:00:00.000Z',
+      updatedAt: '2026-03-29T12:00:00.000Z',
+    })
+
+    expect(message.metadata).toEqual({
+      customBlocks: [
+        {
+          id: 'custom-field:reasoning_content',
+          kind: 'text',
+          title: 'reasoning_content',
+          text: '先检查上下文',
+          state: 'done',
+          source: {
+            providerId: 'deepseek',
+            origin: 'ai-sdk.raw',
+            key: 'reasoning_content',
+          },
+        },
+      ],
     })
   })
 })

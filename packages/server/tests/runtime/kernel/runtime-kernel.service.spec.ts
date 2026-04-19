@@ -7,6 +7,8 @@ import { BuiltinPluginRegistryService } from '../../../src/plugin/builtin/builti
 import { PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
 import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
 import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
+import { PersonaService } from '../../../src/persona/persona.service';
+import { PersonaStoreService } from '../../../src/persona/persona-store.service';
 import { RuntimeGatewayConnectionLifecycleService } from '../../../src/runtime/gateway/runtime-gateway-connection-lifecycle.service';
 import { RuntimeGatewayRemoteTransportService } from '../../../src/runtime/gateway/runtime-gateway-remote-transport.service';
 import { RuntimeHostConversationMessageService } from '../../../src/runtime/host/runtime-host-conversation-message.service';
@@ -157,7 +159,7 @@ describe('RuntimePluginGovernanceService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: [],
@@ -191,7 +193,7 @@ describe('RuntimePluginGovernanceService', () => {
       accepted: true,
       action: 'reload',
       pluginId: 'builtin.memory-context',
-      message: '已重新装载内建插件',
+      message: '已重新装载本地插件',
     });
     expect(pluginBootstrapService.getPlugin('builtin.memory-context')).toMatchObject({
       connected: true,
@@ -229,7 +231,7 @@ describe('RuntimePluginGovernanceService', () => {
           id: 'builtin.subagent-observer',
           name: 'Builtin Subagent Observer',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },
@@ -397,6 +399,7 @@ function createService() {
     new RuntimeHostPluginRuntimeService(),
     runtimeHostSubagentRunnerService,
     new RuntimeHostUserContextService(),
+    new PersonaService(new PersonaStoreService(), runtimeHostConversationRecordService),
   );
   runtimeHostService.onModuleInit();
   return {

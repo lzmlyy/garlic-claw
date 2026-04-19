@@ -29,7 +29,15 @@ describe('ConversationTaskService', () => {
       createStream: async () => ({
         modelId: 'gpt-5.4',
         providerId: 'openai',
-        stream: { fullStream: (async function* () { yield delta('模型'); yield toolCall(); yield toolResult(); })() },
+        stream: {
+          fullStream: (async function* () {
+            yield rawCustomFieldChunk('reasoning_content', '先检查');
+            yield rawCustomFieldChunk('reasoning_content', '上下文');
+            yield delta('模型');
+            yield toolCall();
+            yield toolResult();
+          })(),
+        },
       }),
       modelId: 'gpt-5.4',
       onComplete: async (result) => ({ ...result, content: '最终回复', parts: [{ text: '最终回复', type: 'text' }] }),
@@ -41,6 +49,46 @@ describe('ConversationTaskService', () => {
 
     expect(events).toEqual([
       { messageId: String(assistantMessage.id), status: 'streaming', type: 'status' },
+      {
+        messageId: String(assistantMessage.id),
+        metadata: {
+          customBlocks: [
+            {
+              id: 'custom-field:reasoning_content',
+              kind: 'text',
+              source: {
+                key: 'reasoning_content',
+                origin: 'ai-sdk.raw',
+                providerId: 'openai',
+              },
+              state: 'streaming',
+              text: '先检查',
+              title: 'Reasoning Content',
+            },
+          ],
+        },
+        type: 'message-metadata',
+      },
+      {
+        messageId: String(assistantMessage.id),
+        metadata: {
+          customBlocks: [
+            {
+              id: 'custom-field:reasoning_content',
+              kind: 'text',
+              source: {
+                key: 'reasoning_content',
+                origin: 'ai-sdk.raw',
+                providerId: 'openai',
+              },
+              state: 'streaming',
+              text: '先检查上下文',
+              title: 'Reasoning Content',
+            },
+          ],
+        },
+        type: 'message-metadata',
+      },
       { messageId: String(assistantMessage.id), text: '模型', type: 'text-delta' },
       { input: { city: 'Shanghai' }, messageId: String(assistantMessage.id), toolName: 'weather.search', type: 'tool-call' },
       { messageId: String(assistantMessage.id), output: { temp: 20 }, toolName: 'weather.search', type: 'tool-result' },
@@ -51,6 +99,22 @@ describe('ConversationTaskService', () => {
     const conversation = runtimeHostConversationRecordService.requireConversation(conversationId);
     expect(conversation.messages[0]).toMatchObject({
       content: '最终回复',
+      metadataJson: JSON.stringify({
+        customBlocks: [
+          {
+            id: 'custom-field:reasoning_content',
+            kind: 'text',
+            source: {
+              key: 'reasoning_content',
+              origin: 'ai-sdk.raw',
+              providerId: 'openai',
+            },
+            state: 'done',
+            text: '先检查上下文',
+            title: 'Reasoning Content',
+          },
+        ],
+      }),
       model: 'gpt-5.4',
       provider: 'openai',
       role: 'assistant',
@@ -60,6 +124,22 @@ describe('ConversationTaskService', () => {
     });
     expect(serializeConversationMessage(conversation.messages[0] as never)).toMatchObject({
       content: '最终回复',
+      metadataJson: JSON.stringify({
+        customBlocks: [
+          {
+            id: 'custom-field:reasoning_content',
+            kind: 'text',
+            source: {
+              key: 'reasoning_content',
+              origin: 'ai-sdk.raw',
+              providerId: 'openai',
+            },
+            state: 'done',
+            text: '先检查上下文',
+            title: 'Reasoning Content',
+          },
+        ],
+      }),
       toolCalls: JSON.stringify([toolCallRecord()]),
       toolResults: JSON.stringify([toolResultRecord()]),
     });
@@ -119,6 +199,25 @@ function createAssistantMessage(runtimeHostConversationMessageService: RuntimeHo
 
 function delta(text: string) {
   return { text, type: 'text-delta' as const };
+}
+
+function rawCustomFieldChunk(key: string, value: string) {
+  return {
+    rawValue: {
+      choices: [
+        {
+          delta: {
+            [key]: value,
+          },
+          index: 0,
+        },
+      ],
+      id: 'raw-chunk-1',
+      model: 'deepseek-reasoner',
+      object: 'chat.completion.chunk',
+    },
+    type: 'raw' as const,
+  };
 }
 
 function toolCallRecord() {

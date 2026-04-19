@@ -10,7 +10,7 @@ describe('PluginGovernanceService', () => {
           id: 'builtin.ping',
           name: 'Builtin Ping',
           permissions: [],
-          runtime: 'builtin',
+          runtime: 'local',
           tools: [],
           version: '1.0.0',
         },

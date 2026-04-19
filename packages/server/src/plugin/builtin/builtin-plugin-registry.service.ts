@@ -1,27 +1,14 @@
-import { CONVERSATION_TITLE_MANIFEST, MEMORY_CONTEXT_MANIFEST } from '@garlic-claw/plugin-sdk/authoring';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { BuiltinPluginDefinition } from './builtin-plugin-definition';
+import { BUILTIN_CONVERSATION_TITLE_PLUGIN } from './hooks/builtin-conversation-title.plugin';
+import { BUILTIN_MEMORY_CONTEXT_PLUGIN } from './hooks/builtin-memory-context.plugin';
 import { BUILTIN_SUBAGENT_DELEGATE_PLUGIN } from './tools/builtin-subagent-delegate.plugin';
 
 @Injectable()
 export class BuiltinPluginRegistryService {
   private readonly definitions: BuiltinPluginDefinition[] = [
-    {
-      governance: {
-        builtinRole: 'system-optional',
-        canDisable: true,
-        defaultEnabled: true,
-      },
-      manifest: CONVERSATION_TITLE_MANIFEST,
-    },
-    {
-      governance: {
-        builtinRole: 'system-optional',
-        canDisable: true,
-        defaultEnabled: true,
-      },
-      manifest: MEMORY_CONTEXT_MANIFEST,
-    },
+    BUILTIN_CONVERSATION_TITLE_PLUGIN,
+    BUILTIN_MEMORY_CONTEXT_PLUGIN,
     BUILTIN_SUBAGENT_DELEGATE_PLUGIN,
   ];
 

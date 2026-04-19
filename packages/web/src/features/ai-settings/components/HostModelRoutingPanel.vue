@@ -3,7 +3,7 @@
     <div class="panel-header">
       <div>
         <h2>Host Model Routing</h2>
-        <p>配置聊天回退链、压缩模型，以及宿主内部 utility role 使用的专用模型。</p>
+        <p>这里只保留主聊天失败后的回退链；插件自己的模型策略已迁到对应插件设置页。</p>
       </div>
     </div>
 
@@ -74,46 +74,6 @@
         </ul>
       </div>
 
-      <div class="field-grid">
-        <label class="field">
-          <span>Compression Model</span>
-          <select v-model="compressionSelection" data-test="compression-model-select">
-            <option value="">未指定</option>
-            <option
-              v-for="option in options"
-              :key="`compression-${encodeTarget(option)}`"
-              :value="encodeTarget(option)"
-            >
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
-
-        <div class="field">
-          <span>Utility Roles</span>
-          <label
-            v-for="role in utilityRoleDefinitions"
-            :key="role.key"
-            class="field utility-role-field"
-          >
-            <small>{{ role.label }}</small>
-            <select
-              v-model="utilityRoleSelections[role.key]"
-              :data-test="`utility-role-${role.key}`"
-            >
-              <option value="">未指定</option>
-              <option
-                v-for="option in options"
-                :key="`${role.key}-${encodeTarget(option)}`"
-                :value="encodeTarget(option)"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-        </div>
-      </div>
-
       <div class="actions">
         <button
           type="button"
@@ -130,11 +90,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type {
   AiHostModelRoutingConfig,
   AiModelRouteTarget,
-  AiUtilityModelRole,
 } from '@garlic-claw/shared'
 
 interface HostModelRoutingOption extends AiModelRouteTarget {
@@ -151,18 +110,8 @@ const emit = defineEmits<{
   (event: 'save', payload: AiHostModelRoutingConfig): void
 }>()
 
-const utilityRoleDefinitions: Array<{ key: AiUtilityModelRole; label: string }> = [
-  { key: 'conversationTitle', label: '会话标题生成' },
-  { key: 'pluginGenerateText', label: '插件默认文本生成' },
-]
-
 const fallbackModels = ref<AiModelRouteTarget[]>([])
 const pendingFallbackSelection = ref('')
-const compressionSelection = ref('')
-const utilityRoleSelections = reactive<Record<AiUtilityModelRole, string>>({
-  conversationTitle: '',
-  pluginGenerateText: '',
-})
 
 const optionLabelMap = computed(() =>
   new Map(props.options.map((option) => [encodeTarget(option), option.label])),
@@ -172,15 +121,6 @@ watch(
   () => props.config,
   (config) => {
     fallbackModels.value = config.fallbackChatModels.map((target) => ({ ...target }))
-    compressionSelection.value = config.compressionModel
-      ? encodeTarget(config.compressionModel)
-      : ''
-    utilityRoleSelections.conversationTitle = config.utilityModelRoles.conversationTitle
-      ? encodeTarget(config.utilityModelRoles.conversationTitle)
-      : ''
-    utilityRoleSelections.pluginGenerateText = config.utilityModelRoles.pluginGenerateText
-      ? encodeTarget(config.utilityModelRoles.pluginGenerateText)
-      : ''
     pendingFallbackSelection.value = ''
   },
   { immediate: true, deep: true },
@@ -225,22 +165,8 @@ function removeFallback(index: number) {
 function submit() {
   emit('save', {
     fallbackChatModels: fallbackModels.value.map((target) => ({ ...target })),
-    ...(decodeTarget(compressionSelection.value)
-      ? { compressionModel: decodeTarget(compressionSelection.value) }
-      : {}),
-    utilityModelRoles: buildUtilityRoles(),
+    utilityModelRoles: {},
   })
-}
-
-function buildUtilityRoles() {
-  return Object.fromEntries(
-    utilityRoleDefinitions
-      .map((role) => {
-        const target = decodeTarget(utilityRoleSelections[role.key])
-        return target ? [role.key, target] : null
-      })
-      .filter((entry): entry is [AiUtilityModelRole, AiModelRouteTarget] => Boolean(entry)),
-  ) as AiHostModelRoutingConfig['utilityModelRoles']
 }
 
 function resolveLabel(target: AiModelRouteTarget) {
@@ -295,7 +221,6 @@ function decodeTarget(value: string): AiModelRouteTarget | undefined {
   margin-top: 6px;
 }
 
-.field-grid,
 .inline-row,
 .actions,
 .fallback-item,
@@ -307,14 +232,6 @@ function decodeTarget(value: string): AiModelRouteTarget | undefined {
 .field span,
 .field small {
   color: var(--text-muted);
-}
-
-.field-grid {
-  align-items: start;
-}
-
-.field-grid > * {
-  flex: 1 1 0;
 }
 
 .inline-row {
@@ -353,10 +270,6 @@ function decodeTarget(value: string): AiModelRouteTarget | undefined {
   flex-wrap: wrap;
 }
 
-.utility-role-field {
-  gap: 8px;
-}
-
 .ghost-button,
 .primary-button {
   padding: 8px 12px;
@@ -387,10 +300,6 @@ function decodeTarget(value: string): AiModelRouteTarget | undefined {
 @media (max-width: 720px) {
   .panel-card {
     padding: 16px;
-  }
-
-  .field-grid {
-    flex-direction: column;
   }
 
   .actions {

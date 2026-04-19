@@ -52,13 +52,14 @@ async function main() {
   const skillRoot = path.join(SERVER_DIR, 'skills', SKILL_DIR_NAME);
   const fakeOpenAi = await startFakeOpenAiServer();
   const smokeSkillId = 'project/.smoke-http-flow';
-  const mcpScriptPath = path.join(tempDir, 'failing-mcp.cjs');
+  const mcpScriptPath = path.join(tempDir, 'working-mcp.cjs');
   const remotePluginScriptPath = path.join(tempDir, 'remote-route-plugin.cjs');
   const serverFiles = {
     aiSettingsPath: path.join(tempDir, 'ai-settings.server.json'),
     automationsPath: path.join(tempDir, 'automations.server.json'),
     conversationsPath: path.join(tempDir, 'conversations.server.json'),
-    mcpConfigPath: path.join(tempDir, 'mcp.server.json'),
+    mcpConfigPath: path.join(tempDir, 'mcp', 'mcp.json'),
+    personasPath: path.join(tempDir, 'persona'),
     subagentTasksPath: path.join(tempDir, 'subagent-tasks.server.json'),
   };
   const state = {
@@ -67,8 +68,10 @@ async function main() {
     automationSubagentTaskId: null,
     bootstrapTokens: null,
     conversationId: null,
+    defaultPersonaId: null,
     firstAssistantMessageId: null,
     firstUserMessageId: null,
+    managedPersonaId: 'smoke-persona',
     memoryId: null,
     mcpName: 'smoke-mcp',
     modelId: 'smoke-model',
@@ -96,7 +99,7 @@ async function main() {
       assertWebRoutesMatchServerRoutes(serverRoutes, webRoutes);
     });
     await prepareProjectSkill(skillRoot);
-    await prepareMcpFailScript(mcpScriptPath);
+    await prepareWorkingMcpScript(mcpScriptPath);
     await prepareRemoteRoutePluginScript(remotePluginScriptPath);
 
     if (cli.proxyOrigin) {
@@ -106,6 +109,7 @@ async function main() {
     } else {
       console.log('-> build server');
       await runTypescriptBuild();
+      await verifyRequiredBuildArtifacts();
 
       console.log('-> prisma db push');
       await runCommand(process.execPath, [
@@ -142,6 +146,7 @@ async function main() {
       flowSuffix: state.userAlias,
       mcpCommand: process.execPath,
       mcpScriptPath,
+      personasPath: serverFiles.personasPath,
       remotePluginScriptPath,
       smokeSkillId,
     });
@@ -174,6 +179,8 @@ async function main() {
 async function runHttpFlow(apiBase, state, input) {
   const adminHeaders = () => createBearerHeaders(readTokens(state.adminTokens).accessToken);
   const userHeaders = adminHeaders;
+  const managedPersonaDirectory = path.join(input.personasPath, encodeURIComponent(state.managedPersonaId));
+  const managedPersonaAvatarPath = path.join(managedPersonaDirectory, 'avatar.svg');
 
   await runStep('ai.provider-catalog', async () => {
     const catalog = await getJson(apiBase, '/ai/provider-catalog');
@@ -228,10 +235,18 @@ async function runHttpFlow(apiBase, state, input) {
             image: true,
           },
         },
+        contextLength: 65_536,
         name: 'Smoke Extra',
       },
     });
     ensure(model.id === 'smoke-extra', 'Expected extra model to be created');
+    ensure(model.contextLength === 65_536, 'Expected explicit context length to persist on model upsert');
+  });
+
+  await runStep('ai.model.context-length', async () => {
+    const models = await getJson(apiBase, `/ai/providers/${state.providerId}/models`);
+    const extraModel = models.find((entry) => entry.id === 'smoke-extra');
+    ensure(extraModel?.contextLength === 65_536, 'Expected model list to expose persisted context length');
   });
 
   await runStep('ai.default-model', async () => {
@@ -374,23 +389,98 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('personas.list', async () => {
     const personas = await getJson(apiBase, '/personas');
     ensure(Array.isArray(personas) && personas.length > 0, 'Expected personas list to be non-empty');
-    state.personaId = personas[0].id;
+    state.defaultPersonaId = personas.find((entry) => entry.isDefault)?.id ?? personas[0].id;
+    state.personaId = state.defaultPersonaId;
   });
 
   await runStep('personas.current.get', async () => {
     const persona = await getJson(apiBase, `/personas/current?conversationId=${state.conversationId}`, { headers: userHeaders() });
     ensure(typeof persona.personaId === 'string', 'Expected current persona payload');
+    ensure(persona.personaId === state.defaultPersonaId, 'Expected conversation to use default persona before custom activation');
+  });
+
+  await runStep('personas.create', async () => {
+    const persona = await postJson(apiBase, '/personas', {
+      body: {
+        beginDialogs: [
+          { content: '先给出结构化提纲。', role: 'assistant' },
+        ],
+        customErrorMessage: '烟测 persona 暂时不可用',
+        description: '用于后端烟测的人设',
+        id: state.managedPersonaId,
+        name: 'Smoke Persona',
+        prompt: '你是一个用于后端烟测的 persona。',
+        skillIds: [input.smokeSkillId],
+        toolNames: [],
+      },
+      headers: userHeaders(),
+    });
+    ensure(persona.id === state.managedPersonaId, 'Expected persona create to persist requested id');
+  });
+
+  await runStep('personas.avatar.prepare', async () => {
+    await fsPromises.mkdir(managedPersonaDirectory, { recursive: true });
+    await fsPromises.writeFile(
+      managedPersonaAvatarPath,
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#111"/><text x="8" y="11" fill="#fff" font-size="8" text-anchor="middle">S</text></svg>',
+      'utf8',
+    );
+  });
+
+  await runStep('personas.avatar.get', async () => {
+    const avatar = await getJson(apiBase, `/personas/${state.managedPersonaId}/avatar`);
+    ensure(typeof avatar === 'string' && avatar.includes('<svg'), 'Expected persona avatar endpoint to return svg content');
+  });
+
+  await runStep('personas.get', async () => {
+    const persona = await getJson(apiBase, `/personas/${state.managedPersonaId}`);
+    ensure(persona.id === state.managedPersonaId, 'Expected persona detail to match created persona');
+    ensure(persona.beginDialogs?.[0]?.content === '先给出结构化提纲。', 'Expected persona detail to include begin dialogs');
+  });
+
+  await runStep('personas.update', async () => {
+    const persona = await putJson(apiBase, `/personas/${state.managedPersonaId}`, {
+      body: {
+        beginDialogs: [
+          { content: '先列出两个候选方案。', role: 'assistant' },
+        ],
+        customErrorMessage: '更新后的烟测 persona 暂时不可用',
+        description: '更新后的烟测 persona',
+        name: 'Smoke Persona Updated',
+        prompt: '你是更新后的后端烟测 persona。',
+        skillIds: [],
+        toolNames: [input.smokeSkillId],
+      },
+      headers: userHeaders(),
+    });
+    ensure(persona.name === 'Smoke Persona Updated', 'Expected persona update to persist latest name');
+    ensure(persona.toolNames?.includes(input.smokeSkillId), 'Expected persona update to persist latest tool names');
   });
 
   await runStep('personas.current.put', async () => {
     const persona = await putJson(apiBase, '/personas/current', {
       body: {
         conversationId: state.conversationId,
-        personaId: state.personaId,
+        personaId: state.managedPersonaId,
       },
       headers: userHeaders(),
     });
-    ensure(persona.personaId === state.personaId, 'Expected persona activation to persist');
+    state.personaId = persona.personaId;
+    ensure(persona.personaId === state.managedPersonaId, 'Expected persona activation to persist');
+    ensure(persona.source === 'conversation', 'Expected persona activation to report conversation source');
+  });
+
+  await runStep('personas.delete', async () => {
+    const result = await deleteJson(apiBase, `/personas/${state.managedPersonaId}`, { headers: userHeaders() });
+    ensure(result.deletedPersonaId === state.managedPersonaId, 'Expected persona delete response to include deleted id');
+    ensure(result.fallbackPersonaId === state.defaultPersonaId, 'Expected persona delete to report default fallback');
+    ensure(result.reassignedConversationCount >= 1, 'Expected persona delete to reassign the smoke conversation');
+    state.personaId = result.fallbackPersonaId;
+  });
+
+  await runStep('personas.current.get.after-delete', async () => {
+    const persona = await getJson(apiBase, `/personas/current?conversationId=${state.conversationId}`, { headers: userHeaders() });
+    ensure(persona.personaId === state.defaultPersonaId, 'Expected current persona to fall back to default after delete');
   });
 
   await runStep('chat.messages.send', async () => {
@@ -497,7 +587,7 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('plugins.health', async () => {
     const health = await getJson(apiBase, '/plugins/builtin.memory-context/health');
-    ensure(typeof health.ok === 'boolean', 'Expected plugin health response');
+    ensure(health?.status === 'healthy', 'Expected plugin health response');
   });
 
   await runStep('plugins.config.get', async () => {
@@ -515,6 +605,23 @@ async function runHttpFlow(apiBase, state, input) {
       },
     });
     ensure(config.values.limit === 6, 'Expected plugin config update to persist');
+  });
+
+  await runStep('plugins.llm-preference.get', async () => {
+    const preference = await getJson(apiBase, '/plugins/builtin.memory-context/llm-preference');
+    ensure(preference.mode === 'inherit', 'Expected plugin llm preference to default to inherit');
+  });
+
+  await runStep('plugins.llm-preference.put', async () => {
+    const preference = await putJson(apiBase, '/plugins/builtin.memory-context/llm-preference', {
+      body: {
+        mode: 'override',
+        modelId: state.modelId,
+        providerId: state.providerId,
+      },
+    });
+    ensure(preference.mode === 'override', 'Expected plugin llm preference update to persist');
+    ensure(preference.providerId === state.providerId && preference.modelId === state.modelId, 'Expected plugin llm preference to store provider/model');
   });
 
   await runStep('plugins.scopes.get', async () => {
@@ -631,7 +738,7 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('plugins.remote.health.offline', async () => {
     const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
-    ensure(health.ok === false, 'Expected unconnected remote plugin health to be false');
+    ensure(health?.status === 'offline', 'Expected unconnected remote plugin health to be offline');
   });
 
   await runStep('plugins.remote.connect', async () => {
@@ -641,7 +748,7 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('plugins.remote.health.online', async () => {
     const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
-    ensure(health.ok === true, 'Expected connected remote plugin health to be true');
+    ensure(health?.status === 'healthy', 'Expected connected remote plugin health to be healthy');
   });
 
   await runStep('plugins.routes.get.success', async () => {
@@ -752,7 +859,7 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('plugins.remote.health.disconnected', async () => {
     await waitForPluginHealth(apiBase, state.remotePluginId, false);
     const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
-    ensure(health.ok === false, 'Expected reconnect action to disconnect remote plugin');
+    ensure(health?.status === 'offline', 'Expected reconnect action to disconnect remote plugin');
   });
 
   await runStep('plugins.remote.stop-client', async () => {
@@ -837,6 +944,23 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('mcp.servers.get.after-create', async () => {
     const snapshot = await getJson(apiBase, '/mcp/servers');
     ensure(snapshot.servers.some((entry) => entry.name === state.mcpName), 'Expected MCP list to include created server');
+  });
+
+  await runStep('tools.overview.after-mcp-create', async () => {
+    const overview = await getJson(apiBase, '/tools/overview');
+    ensure(
+      overview.sources.some((entry) => entry.kind === 'mcp' && entry.id === state.mcpName && entry.health === 'healthy' && entry.totalTools > 0),
+      'Expected tools overview to include a healthy MCP source with discovered tools',
+    );
+    ensure(
+      overview.tools.some((entry) => entry.sourceKind === 'mcp' && entry.sourceId === state.mcpName && entry.callName === `${state.mcpName}__echo_weather`),
+      'Expected tools overview to include the discovered MCP tool',
+    );
+  });
+
+  await runStep('tools.source.action.mcp.health-check', async () => {
+    const result = await postJson(apiBase, `/tools/sources/mcp/${encodeURIComponent(state.mcpName)}/actions/health-check`);
+    ensure(result.accepted === true && result.message.includes('passed'), 'Expected MCP source health-check to succeed');
   });
 
   await runStep('mcp.servers.put', async () => {
@@ -1055,11 +1179,39 @@ async function prepareProjectSkill(skillRoot) {
   ].join('\n'), 'utf8');
 }
 
-async function prepareMcpFailScript(filePath) {
+async function prepareWorkingMcpScript(filePath) {
   await fsPromises.writeFile(filePath, [
-    'process.stdin.resume();',
-    "setTimeout(() => process.exit(1), 50);",
+    "const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');",
+    "const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');",
+    "const z = require('zod/v4');",
+    "const server = new McpServer({ name: 'smoke-working-mcp', version: '1.0.0' });",
+    "server.registerTool('echo_weather', {",
+    "  description: 'Echo weather city for smoke verification',",
+    "  inputSchema: { city: z.string() },",
+    "}, async ({ city }) => ({",
+    "  content: [{ type: 'text', text: `weather:${city}` }],",
+    '}));',
+    'const transport = new StdioServerTransport();',
+    'transport.onerror = (error) => {',
+    "  if (error && (error.code === 'EPIPE' || error.code === 'ERR_STREAM_DESTROYED')) { process.exit(0); }",
+    '};',
+    'server.connect(transport).catch((error) => {',
+    '  console.error(error);',
+    '  process.exit(1);',
+    '});',
   ].join('\n'), 'utf8');
+}
+
+async function verifyRequiredBuildArtifacts() {
+  const requiredFiles = [
+    path.join(SERVER_DIR, 'dist', 'src', 'main.js'),
+    path.join(SERVER_DIR, 'dist', 'src', 'execution', 'mcp', 'mcp-stdio-launcher.js'),
+  ];
+
+  for (const filePath of requiredFiles) {
+    const exists = await fsPromises.stat(filePath).then(() => true).catch(() => false);
+    ensure(exists, `Expected build artifact to exist: ${path.relative(SERVER_DIR, filePath)}`);
+  }
 }
 
 async function prepareRemoteRoutePluginScript(filePath) {
@@ -1183,6 +1335,7 @@ async function startBackend(port, wsPort, databaseUrl, files) {
       GARLIC_CLAW_AUTOMATIONS_PATH: files.automationsPath,
       GARLIC_CLAW_CONVERSATIONS_PATH: files.conversationsPath,
       GARLIC_CLAW_MCP_CONFIG_PATH: files.mcpConfigPath,
+      GARLIC_CLAW_PERSONAS_PATH: files.personasPath,
       GARLIC_CLAW_SUBAGENT_TASKS_PATH: files.subagentTasksPath,
       JWT_SECRET: 'smoke-jwt-secret',
       NODE_ENV: 'test',
@@ -1410,7 +1563,7 @@ async function waitForPluginHealth(apiBase, pluginId, expectedOk) {
   while (Date.now() - startedAt < DEFAULT_TIMEOUT_MS) {
     try {
       const health = await getJson(apiBase, `/plugins/${pluginId}/health`);
-      if (health?.ok === expectedOk) {
+      if (readPluginHealthOk(health) === expectedOk) {
         return health;
       }
     } catch {
@@ -1421,6 +1574,10 @@ async function waitForPluginHealth(apiBase, pluginId, expectedOk) {
   }
 
   throw new Error(`Timed out waiting for plugin ${pluginId} health=${expectedOk}`);
+}
+
+function readPluginHealthOk(health) {
+  return health?.status === 'healthy';
 }
 
 async function waitForSubagentTaskCompletion(apiBase, taskId) {

@@ -1,8 +1,8 @@
-import type { ActionConfig, AutomationEventDispatchInfo, AutomationInfo, HostCallPayload, JsonObject, JsonValue, PluginCronDescriptor, PluginCronJobSummary, PluginEventLevel, PluginEventListResult, PluginEventQuery, PluginKbEntryDetail, PluginKbEntrySummary, PluginMessageSendInfo, PluginMessageSendParams, PluginMessageTargetInfo, PluginPersonaCurrentInfo, PluginPersonaSummary, PluginProviderCurrentInfo, PluginProviderModelSummary, PluginProviderSummary, PluginScopedStateScope, PluginSelfInfo, PluginSubagentTaskDetail, PluginSubagentTaskStartParams, PluginSubagentTaskSummary, PluginConversationSessionInfo, PluginConversationSessionKeepParams, PluginConversationSessionStartParams, PluginMessageHookInfo, PluginLlmGenerateParams, PluginLlmGenerateResult, PluginSubagentRunParams, PluginSubagentRunResult, TriggerConfig } from "@garlic-claw/shared";
+import type { ActionConfig, AutomationEventDispatchInfo, AutomationInfo, HostCallPayload, JsonObject, JsonValue, PluginCronDescriptor, PluginCronJobSummary, PluginEventLevel, PluginEventListResult, PluginEventQuery, PluginKbEntryDetail, PluginKbEntrySummary, PluginMessageSendInfo, PluginMessageSendParams, PluginMessageTargetInfo, PluginPersonaCurrentInfo, PluginPersonaSummary, PluginProviderCurrentInfo, PluginProviderModelSummary, PluginProviderSummary, PluginScopedStateScope, PluginSelfInfo, PluginSubagentTaskDetail, PluginSubagentTaskStartParams, PluginSubagentTaskSummary, PluginConversationSessionInfo, PluginConversationSessionKeepParams, PluginConversationSessionStartParams, PluginMessageHookInfo, PluginLlmGenerateParams, PluginLlmGenerateResult, PluginLlmGenerateTextResult, PluginLlmTransportMode, PluginSubagentRunParams, PluginSubagentRunResult, TriggerConfig } from "@garlic-claw/shared";
 import { buildPluginConversationSessionKeepParams, buildPluginConversationSessionStartParams, buildPluginCreateAutomationParams, buildPluginGenerateParams, buildPluginGenerateTextParams, buildPluginMessageSendParams, buildPluginRegisterCronParams, buildPluginRunSubagentParams, buildPluginStartSubagentTaskParams, toScopedStateParams } from "./facade-payload.helpers";
 import { toHostJsonValue } from "./host-json-value.codec";
 export interface PluginScopedStateOptions { scope?: PluginScopedStateScope; }
-export interface PluginGenerateTextParams { prompt: string; system?: string; providerId?: string; modelId?: string; variant?: string; maxOutputTokens?: number; providerOptions?: JsonObject; headers?: Record<string, string>; }
+export interface PluginGenerateTextParams { prompt: string; system?: string; providerId?: string; modelId?: string; variant?: string; maxOutputTokens?: number; providerOptions?: JsonObject; headers?: Record<string, string>; transportMode?: PluginLlmTransportMode; }
 type ScopedJsonReader = (key: string, options?: PluginScopedStateOptions) => Promise<JsonValue>;
 type ScopedJsonWriter = (key: string, value: JsonValue, options?: PluginScopedStateOptions) => Promise<JsonValue>;
 type ScopedJsonLister = (prefix?: string, options?: PluginScopedStateOptions) => Promise<JsonValue>;
@@ -63,7 +63,7 @@ export interface PluginHostFacade {
   startSubagentTask(params: PluginSubagentTaskStartParams): Promise<PluginSubagentTaskSummary>;
   listSubagentTasks(): Promise<PluginSubagentTaskSummary[]>;
   getSubagentTask(taskId: string): Promise<PluginSubagentTaskDetail>;
-  generateText(params: PluginGenerateTextParams): Promise<JsonValue>;
+  generateText(params: PluginGenerateTextParams): Promise<PluginLlmGenerateTextResult>;
 }
 export type PluginHostFacadeMethods = Omit<PluginHostFacade, "conversationSession">;
 export interface PluginHostFacadeFactoryInput {
@@ -136,6 +136,6 @@ export function createPluginHostFacade(input: PluginHostFacadeFactoryInput): Plu
     startSubagentTask: (params) => callHost<PluginSubagentTaskSummary>("subagent.task.start", buildPluginStartSubagentTaskParams(params)),
     listSubagentTasks: callHostNoArgs<PluginSubagentTaskSummary[]>("subagent.task.list"),
     getSubagentTask: callHostByKey<PluginSubagentTaskDetail>("subagent.task.get", "taskId"),
-    generateText: (params) => call("llm.generate-text", buildPluginGenerateTextParams(params)),
+    generateText: (params) => callHost<PluginLlmGenerateTextResult>("llm.generate-text", buildPluginGenerateTextParams(params)),
   };
 }

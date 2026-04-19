@@ -435,6 +435,27 @@ class DevRuntimeTests(unittest.TestCase):
         self.assertEqual(loaded, {'DATABASE_URL': 'file:./dev.db'})
         self.assertEqual(devRuntime.os.environ.get('DATABASE_URL'), 'file:./dev.db')
 
+    def testLoadProjectEnvKeepsExistingProcessEnv(self) -> None:
+        """开发态启动前注入的环境变量不应被 `.env` 覆盖。"""
+        devRuntime = loadPackageModule('tools.scripts.dev_runtime')
+        envPath = SCRIPTS_DIR / 'tmp-load-priority.env'
+        envPath.write_text('GARLIC_CLAW_LOGIN_SECRET=file-secret\n', encoding='utf-8')
+        self.addCleanup(lambda: envPath.unlink(missing_ok=True))
+
+        original = devRuntime.os.environ.get('GARLIC_CLAW_LOGIN_SECRET')
+        self.addCleanup(
+            lambda: devRuntime.os.environ.__setitem__('GARLIC_CLAW_LOGIN_SECRET', original)
+            if original is not None
+            else devRuntime.os.environ.pop('GARLIC_CLAW_LOGIN_SECRET', None)
+        )
+        devRuntime.os.environ['GARLIC_CLAW_LOGIN_SECRET'] = 'process-secret'
+
+        with mock.patch.object(devRuntime.docker_runtime, '获取可用env文件', return_value=envPath):
+            loaded = devRuntime.loadProjectEnv()
+
+        self.assertEqual(loaded, {'GARLIC_CLAW_LOGIN_SECRET': 'file-secret'})
+        self.assertEqual(devRuntime.os.environ.get('GARLIC_CLAW_LOGIN_SECRET'), 'process-secret')
+
     def testCreateDevServicesReturnsThreeManagedProcesses(self) -> None:
         """应暴露三进程开发编排定义。"""
         devRuntime = loadPackageModule('tools.scripts.dev_runtime')

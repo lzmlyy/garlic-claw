@@ -7,7 +7,7 @@ export interface WsMessage<T = JsonValue> {
   requestId?: string;
 }
 
-export type PluginRuntimeKind = 'builtin' | 'remote';
+export type PluginRuntimeKind = 'local' | 'remote';
 
 export type PluginPermission =
   | 'automation:read'
@@ -124,22 +124,98 @@ export interface PluginHookDescriptor {
   filter?: PluginHookFilterDescriptor;
 }
 
-export interface PluginConfigFieldSchema {
-  key: string;
-  type: PluginParamSchema['type'];
+export type PluginConfigNodeType =
+  | 'string'
+  | 'text'
+  | 'int'
+  | 'float'
+  | 'bool'
+  | 'object'
+  | 'list';
+
+export type PluginConfigConditionValue = boolean | null | number | string;
+
+export type PluginConfigRenderType = 'checkbox' | 'select';
+
+export type PluginConfigSpecialType =
+  | 'selectProvider'
+  | 'selectProviders'
+  | 'selectPersona'
+  | 'personaPool'
+  | (string & {});
+
+export interface PluginConfigOptionSchema {
+  value: string;
+  label?: string;
   description?: string;
-  required?: boolean;
-  secret?: boolean;
-  defaultValue?: JsonValue;
 }
 
-export interface PluginConfigSchema {
-  fields: PluginConfigFieldSchema[];
+export interface PluginConfigBaseSchema {
+  type: PluginConfigNodeType;
+  description?: string;
+  hint?: string;
+  obviousHint?: boolean;
+  defaultValue?: JsonValue;
+  invisible?: boolean;
+  options?: PluginConfigOptionSchema[];
+  condition?: Record<string, PluginConfigConditionValue>;
+  collapsed?: boolean;
+  renderType?: PluginConfigRenderType;
+  editorMode?: boolean;
+  editorLanguage?: string;
+  editorTheme?: string;
+  specialType?: PluginConfigSpecialType;
+  secret?: boolean;
+}
+
+export interface PluginConfigStringSchema extends PluginConfigBaseSchema {
+  type: 'string' | 'text';
+}
+
+export interface PluginConfigNumberSchema extends PluginConfigBaseSchema {
+  type: 'int' | 'float';
+}
+
+export interface PluginConfigBooleanSchema extends PluginConfigBaseSchema {
+  type: 'bool';
+}
+
+export interface PluginConfigListSchema extends PluginConfigBaseSchema {
+  type: 'list';
+  items?: PluginConfigNodeSchema;
+}
+
+export interface PluginConfigObjectSchema extends PluginConfigBaseSchema {
+  type: 'object';
+  items: Record<string, PluginConfigNodeSchema>;
+}
+
+export type PluginConfigNodeSchema =
+  | PluginConfigBooleanSchema
+  | PluginConfigListSchema
+  | PluginConfigNumberSchema
+  | PluginConfigObjectSchema
+  | PluginConfigStringSchema;
+
+export type PluginConfigSchema = PluginConfigObjectSchema;
+
+export interface PluginConfigNodeSnapshot {
+  path: string;
+  schema: PluginConfigNodeSchema;
+  value: JsonValue | undefined;
 }
 
 export interface PluginConfigSnapshot {
   schema: PluginConfigSchema | null;
   values: JsonObject;
+}
+
+export type PluginLlmPreferenceMode = 'inherit' | 'override';
+
+export interface PluginLlmPreference {
+  mode: PluginLlmPreferenceMode;
+  providerId: string | null;
+  modelId: string | null;
 }
 
 export interface PluginScopeSettings {

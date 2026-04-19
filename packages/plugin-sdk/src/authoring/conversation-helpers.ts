@@ -8,8 +8,8 @@ export interface PluginConversationTitleConfig {
 }
 export const CONVERSATION_TITLE_DEFAULT_TITLE = builtinManifestData.defaults.conversationTitleDefaultTitle;
 export const CONVERSATION_TITLE_DEFAULT_MAX_MESSAGES = builtinManifestData.defaults.conversationTitleMaxMessages;
-export const CONVERSATION_TITLE_CONFIG_FIELDS = builtinManifestData.conversationTitleConfigFields as NonNullable<PluginManifest["config"]>["fields"];
-export const CONVERSATION_TITLE_MANIFEST = builtinManifestData.conversationTitleManifest as PluginManifest;
+export const CONVERSATION_TITLE_CONFIG_SCHEMA = builtinManifestData.conversationTitleConfigSchema as unknown as NonNullable<PluginManifest["config"]>;
+export const CONVERSATION_TITLE_MANIFEST = builtinManifestData.conversationTitleManifest as unknown as PluginManifest;
 export function readConversationSummary(value: JsonValue): {
   id?: string;
   title?: string;

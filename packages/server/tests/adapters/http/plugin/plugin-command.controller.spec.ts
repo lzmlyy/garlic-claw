@@ -56,7 +56,7 @@ describe('PluginController command overview', () => {
         manifest: {
           id: 'builtin.core-tools',
           name: '核心工具',
-          runtime: 'builtin',
+          runtime: 'local',
           version: '1.0.0',
           permissions: [],
           commands: [
@@ -77,7 +77,7 @@ describe('PluginController command overview', () => {
         manifest: {
           id: 'builtin.alias-tools',
           name: '别名工具',
-          runtime: 'builtin',
+          runtime: 'local',
           version: '1.0.0',
           permissions: [],
           commands: [

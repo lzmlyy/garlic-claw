@@ -1,11 +1,19 @@
 import type {
   PluginPersonaCurrentInfo,
+  PluginPersonaDeleteResult,
+  PluginPersonaDetail,
   PluginPersonaSummary,
+  PluginPersonaUpdateInput,
+  PluginPersonaUpsertInput,
 } from '@garlic-claw/shared'
 import {
   activateConversationPersona as activateConversationPersonaRequest,
+  createPersona as createPersonaRequest,
+  deletePersona as deletePersonaRequest,
+  getPersona as getPersonaRequest,
   getCurrentPersona,
   listPersonas,
+  updatePersona as updatePersonaRequest,
 } from '@/features/personas/api/personas'
 import { getErrorMessage } from '@/utils/error'
 
@@ -15,6 +23,29 @@ import { getErrorMessage } from '@/utils/error'
  */
 export function loadPersonas(): Promise<PluginPersonaSummary[]> {
   return listPersonas()
+}
+
+export function loadPersona(personaId: string): Promise<PluginPersonaDetail> {
+  return getPersonaRequest(personaId)
+}
+
+export function createPersona(
+  input: PluginPersonaUpsertInput,
+): Promise<PluginPersonaDetail> {
+  return createPersonaRequest(input)
+}
+
+export function updatePersona(
+  personaId: string,
+  input: PluginPersonaUpdateInput,
+): Promise<PluginPersonaDetail> {
+  return updatePersonaRequest(personaId, input)
+}
+
+export function deletePersona(
+  personaId: string,
+): Promise<PluginPersonaDeleteResult> {
+  return deletePersonaRequest(personaId)
 }
 
 /**

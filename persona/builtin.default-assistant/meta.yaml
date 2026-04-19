@@ -1,0 +1,39 @@
+# Persona 元数据
+# 同目录的 SYSTEM.md 存放系统提示词正文。
+# avatar 不在这里手动配置；如果当前目录存在名为 avatar 的图片文件，例如 avatar.png / avatar.webp / avatar.jpg，服务端会自动识别。
+
+# 人设唯一 ID。建议与目录名保持一致，方便人工检查。
+id: builtin.default-assistant
+
+# 人设显示名称。
+name: Default Assistant
+
+# 人设简介。没有可写 null。
+description: server 默认人格
+
+# 预置对话，按数组顺序注入到主对话模型上下文。
+# 每项格式：
+# - role: user | assistant
+#   content: 对话内容
+# 没有预置对话时写 []。
+beginDialogs: []
+
+# Persona 允许使用的 tools。
+# null 表示不限制；[] 表示全部禁用；非空数组表示只允许这些 tool 名称。
+toolNames: null
+
+# Persona 允许使用的 skills。
+# null 表示不限制；[] 表示全部禁用；非空数组表示只允许这些 skill ID。
+skillIds: null
+
+# 仅在“主对话主回复”失败时，直接回复给用户的固定错误文案。
+# subagent、标题生成、摘要总结等链路不会使用这个字段。
+# 留空或写 null 表示使用系统默认错误文案。
+customErrorMessage: null
+
+# 是否为默认人设。同一时刻只会有一个默认人设生效。
+isDefault: true
+
+# 创建时间与更新时间通常由系统维护；手动编辑时建议保持 ISO 时间格式。
+createdAt: 2026-04-10T00:00:00.000Z
+updatedAt: 2026-04-10T00:00:00.000Z

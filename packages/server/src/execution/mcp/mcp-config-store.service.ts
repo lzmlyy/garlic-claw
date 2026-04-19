@@ -15,13 +15,13 @@ type LegacyMcpConfigFile = {
 
 @Injectable()
 export class McpConfigStoreService {
-  private readonly configPath = process.env.GARLIC_CLAW_MCP_CONFIG_PATH
-    ?? path.join(process.cwd(), 'tmp', 'mcp.server.json');
+  private readonly configPath = resolveMcpConfigFilePath();
+  private readonly reportedConfigPath = readReportedMcpConfigPath(this.configPath);
   private config = this.loadConfig();
 
   getSnapshot(): McpConfigSnapshot {
     return {
-      configPath: this.configPath,
+      configPath: this.reportedConfigPath,
       servers: this.config.servers.map(cloneServerConfig),
     };
   }
@@ -111,4 +111,45 @@ function readServers(raw: LegacyMcpConfigFile): McpServerConfig[] {
 
 function cloneServerConfig(server: McpServerConfig): McpServerConfig {
   return { ...server, args: [...server.args], env: { ...server.env } };
+}
+
+function resolveMcpConfigFilePath(): string {
+  if (process.env.GARLIC_CLAW_MCP_CONFIG_PATH) {
+    return path.resolve(process.env.GARLIC_CLAW_MCP_CONFIG_PATH);
+  }
+
+  return path.join(resolveProjectRoot(), 'mcp', 'mcp.json');
+}
+
+function readReportedMcpConfigPath(configPath: string): string {
+  if (process.env.GARLIC_CLAW_MCP_CONFIG_PATH) {
+    return configPath;
+  }
+
+  return 'mcp/mcp.json';
+}
+
+function resolveProjectRoot(): string {
+  return findProjectRoot(process.cwd())
+    ?? findProjectRoot(__dirname)
+    ?? process.cwd();
+}
+
+function findProjectRoot(startPath: string): string | null {
+  let currentPath = path.resolve(startPath);
+
+  while (true) {
+    if (
+      fs.existsSync(path.join(currentPath, 'package.json'))
+      && fs.existsSync(path.join(currentPath, 'packages', 'server'))
+    ) {
+      return currentPath;
+    }
+
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) {
+      return null;
+    }
+    currentPath = parentPath;
+  }
 }

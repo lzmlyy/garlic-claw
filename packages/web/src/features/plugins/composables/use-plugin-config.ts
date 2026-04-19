@@ -1,13 +1,17 @@
 import { ref, shallowRef, type ComputedRef, type Ref } from 'vue'
 import type {
+  AiProviderSummary,
   PluginConfigSnapshot,
   PluginInfo,
+  PluginLlmPreference,
   PluginScopeSettings,
 } from '@garlic-claw/shared'
 import type { PluginDetailSnapshot } from '@/features/plugins/composables/plugin-management.data'
 import {
   savePluginConfig as savePluginConfigRequest,
+  savePluginLlmPreference as savePluginLlmPreferenceRequest,
   savePluginScope as savePluginScopeRequest,
+  type PluginLlmRouteOption,
   toErrorMessage,
 } from '@/features/plugins/composables/plugin-management.data'
 
@@ -21,17 +25,27 @@ export interface UsePluginConfigOptions {
 
 export function usePluginConfig(options: UsePluginConfigOptions) {
   const savingConfig = ref(false)
+  const savingLlmPreference = ref(false)
   const savingScope = ref(false)
   const configSnapshot = shallowRef<PluginConfigSnapshot | null>(null)
+  const llmPreference = shallowRef<PluginLlmPreference | null>(null)
+  const llmProviders = shallowRef<AiProviderSummary[]>([])
+  const llmOptions = shallowRef<PluginLlmRouteOption[]>([])
   const scopeSettings = shallowRef<PluginScopeSettings | null>(null)
 
   function applyDetailSnapshot(detail: PluginDetailSnapshot) {
     configSnapshot.value = detail.configSnapshot
+    llmPreference.value = detail.llmPreference
+    llmProviders.value = detail.llmProviders
+    llmOptions.value = detail.llmOptions
     scopeSettings.value = detail.scopeSettings
   }
 
   function clearDetailState() {
     configSnapshot.value = null
+    llmPreference.value = null
+    llmProviders.value = []
+    llmOptions.value = []
     scopeSettings.value = null
   }
 
@@ -53,6 +67,27 @@ export function usePluginConfig(options: UsePluginConfigOptions) {
       options.error.value = toErrorMessage(caughtError, '保存插件配置失败')
     } finally {
       savingConfig.value = false
+    }
+  }
+
+  async function saveLlmPreference(preference: PluginLlmPreference) {
+    if (!options.selectedPlugin.value) {
+      return
+    }
+
+    const pluginName = options.selectedPlugin.value.name
+    savingLlmPreference.value = true
+    options.error.value = null
+    options.notice.value = null
+    try {
+      llmPreference.value = await savePluginLlmPreferenceRequest(pluginName, preference)
+      options.notice.value = '插件模型策略已保存'
+      await options.reloadPluginListSilently()
+      await options.refreshSelectedDetails(pluginName)
+    } catch (caughtError) {
+      options.error.value = toErrorMessage(caughtError, '保存插件模型策略失败')
+    } finally {
+      savingLlmPreference.value = false
     }
   }
 
@@ -79,12 +114,17 @@ export function usePluginConfig(options: UsePluginConfigOptions) {
 
   return {
     savingConfig,
+    savingLlmPreference,
     savingScope,
     configSnapshot,
+    llmPreference,
+    llmProviders,
+    llmOptions,
     scopeSettings,
     applyDetailSnapshot,
     clearDetailState,
     saveConfig,
+    saveLlmPreference,
     saveScope,
   }
 }

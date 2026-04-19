@@ -11,6 +11,7 @@ export async function bootstrapHttpApp(): Promise<void> {
   const { globalPrefix, port } = readHttpServerConfig();
   const app = await NestFactory.create(AppModule);
 
+  app.enableShutdownHooks();
   app.setGlobalPrefix(globalPrefix);
   app.useGlobalPipes(
     new ValidationPipe({

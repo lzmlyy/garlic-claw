@@ -75,9 +75,15 @@
   min-width: 0;
 }
 
-.skills-page .skill-detail-panel {
+.skills-page .skill-detail-column {
   width: 420px;
   flex-shrink: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.skills-page .skill-detail-panel {
+  width: 100%;
 }
 
 .skills-page .skill-search {
@@ -266,6 +272,10 @@
   }
 
   .skills-page .skill-detail-panel {
+    width: 100%;
+  }
+
+  .skills-page .skill-detail-column {
     width: 100%;
   }
 

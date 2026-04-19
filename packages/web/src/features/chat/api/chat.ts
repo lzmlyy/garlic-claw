@@ -69,7 +69,7 @@ export function stopConversationMessage(
   conversationId: string,
   messageId: string,
 ) {
-  return post<Message>(
+  return post<{ message: string }>(
     `/chat/conversations/${conversationId}/messages/${messageId}/stop`,
   );
 }

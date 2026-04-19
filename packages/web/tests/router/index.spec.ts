@@ -23,8 +23,9 @@ describe('router', () => {
     expect(resolved.matched[0]?.name).toBe('admin-shell')
   })
 
-  it('keeps plugin and ai routes mounted inside the same shell', () => {
+  it('keeps plugin、mcp 和 ai routes mounted inside the same shell', () => {
     expect(router.resolve({ name: 'plugins' }).matched[0]?.name).toBe('admin-shell')
+    expect(router.resolve({ name: 'mcp' }).matched[0]?.name).toBe('admin-shell')
     expect(router.resolve({ name: 'ai-settings' }).matched[0]?.name).toBe('admin-shell')
   })
 
@@ -45,8 +46,8 @@ describe('router', () => {
   it('allows any authenticated user to access admin console routes', async () => {
     authState.isLoggedIn = true
 
-    await router.push({ name: 'plugins' })
+    await router.push('/tools')
 
-    expect(router.currentRoute.value.name).toBe('plugins')
+    expect(router.currentRoute.value.name).toBe('mcp')
   })
 })

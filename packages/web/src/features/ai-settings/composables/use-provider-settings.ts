@@ -20,6 +20,7 @@ import {
   loadProviderSettingsBaseData,
   loadProviderSelectionData,
   saveHostModelRouting,
+  saveProviderModelContextLength,
   saveProviderDefaultModel,
   saveProviderModelCapabilities,
   saveProviderConfig,
@@ -304,6 +305,22 @@ export function useProviderSettings() {
     await reloadSelectedProvider(selectedProvider.value.id)
   }
 
+  async function updateContextLength(payload: {
+    modelId: string
+    contextLength: number
+  }) {
+    if (!selectedProvider.value) {
+      return
+    }
+
+    await saveProviderModelContextLength(
+      selectedProvider.value.id,
+      payload.modelId,
+      payload.contextLength,
+    )
+    await reloadSelectedProvider(selectedProvider.value.id)
+  }
+
   /**
    * 发起 provider 测试连接请求，并格式化结果文本。
    */
@@ -432,6 +449,7 @@ export function useProviderSettings() {
     deleteModel,
     setDefaultModel,
     updateCapabilities,
+    updateContextLength,
     testProviderConnection,
     saveVisionConfig,
     saveHostModelRoutingConfig,

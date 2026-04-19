@@ -28,7 +28,7 @@
           {{ trustLevelDescription(skill.governance.trustLevel) }}
         </p>
         <p class="detail-line muted-text">
-          `技能` 的统一在线启用 / 停用已收敛到工具治理页里的 `Active Skill Packages` source，这里只保留单个技能的 trust level。
+          `技能` 的统一在线启用 / 停用已收敛到本页下方的 `Active Skill Packages` 工具治理区域，这里只保留单个技能的 trust level。
         </p>
         <div class="governance-actions">
           <label class="trust-level-field">

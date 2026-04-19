@@ -1,7 +1,7 @@
 import type { ActionConfig, AutomationEventDispatchInfo, AutomationInfo, JsonObject, JsonValue, PluginSubagentRunParams, PluginSubagentRunResult, PluginSubagentTaskStartParams, PluginSubagentTaskSummary, TriggerConfig } from "@garlic-claw/shared";
 import { toHostJsonValue } from "../host";
-import { pickOptionalNumberFields, pickOptionalStringFields, readOptionalObjectParam, readOptionalStringParam, readRequiredStringParam, sanitizeOptionalText, parseCommaSeparatedNames, readJsonObjectValue, normalizePositiveInteger } from "./index";
-import { PluginSubagentDelegateConfig, SUBAGENT_DELEGATE_DEFAULT_MAX_STEPS } from "./builtin-manifests";
+import { pickOptionalStringFields, readOptionalObjectParam, readOptionalStringParam, readRequiredStringParam, sanitizeOptionalText, readJsonObjectValue } from "./index";
+import { PluginSubagentDelegateConfig } from "./builtin-manifests";
 export function readMemorySearchResults(value: JsonValue): Array<{ content?: string; category?: string; createdAt?: string }> {
   return Array.isArray(value)
     ? value.flatMap((entry) => {
@@ -16,9 +16,12 @@ export function readMemorySaveResultId(value: JsonValue): string | null {
 }
 export function readSubagentDelegateConfig(value: unknown): PluginSubagentDelegateConfig {
   const object = readJsonObjectValue(value);
+  const llm = readJsonObjectValue(object?.llm);
+  const tools = readJsonObjectValue(object?.tools);
+  const allowedToolNames = readOptionalToolNames(tools?.allowedToolNames);
   return {
-    ...pickOptionalStringFields(object, ["targetProviderId", "targetModelId", "allowedToolNames"] as const),
-    ...pickOptionalNumberFields(object, ["maxSteps"] as const),
+    ...pickOptionalStringFields(llm, ["targetProviderId", "targetModelId"] as const),
+    ...(allowedToolNames ? { allowedToolNames } : {}),
   };
 }
 export function buildSubagentDelegateRunParams(input: { config: PluginSubagentDelegateConfig; prompt: string }): PluginSubagentRunParams {
@@ -118,14 +121,24 @@ export function createSubagentRunSummary(result: PluginSubagentRunResult): JsonV
 }
 export function createSubagentTaskSummaryResult(result: PluginSubagentTaskSummary): JsonValue { return toHostJsonValue(result); }
 function buildSubagentDelegateBaseParams(input: { config: PluginSubagentDelegateConfig; prompt: string }): PluginSubagentRunParams {
-  const toolNames = parseCommaSeparatedNames(input.config.allowedToolNames) as string[] | null;
+  const toolNames = input.config.allowedToolNames?.length ? input.config.allowedToolNames : null;
   return {
     ...(sanitizeOptionalText(input.config.targetProviderId) ? { providerId: sanitizeOptionalText(input.config.targetProviderId) } : {}),
     ...(sanitizeOptionalText(input.config.targetModelId) ? { modelId: sanitizeOptionalText(input.config.targetModelId) } : {}),
     messages: [{ role: "user", content: [{ type: "text", text: input.prompt }] }],
     ...(toolNames ? { toolNames } : {}),
-    maxSteps: normalizePositiveInteger(input.config.maxSteps, SUBAGENT_DELEGATE_DEFAULT_MAX_STEPS),
   };
+}
+
+function readOptionalToolNames(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const normalized = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return normalized.length > 0 ? normalized : undefined;
 }
 function readPluginAutomationActionsParam(params: JsonObject): ActionConfig[] {
   const value = params.actions;

@@ -1,5 +1,6 @@
 import { delete as del, get, post, put, requestWithMetadata } from '@/api/http'
 import type {
+  AiProviderSummary,
   JsonValue,
   PluginActionName,
   PluginActionResult,
@@ -10,6 +11,7 @@ import type {
   PluginEventQuery,
   PluginHealthSnapshot,
   PluginInfo,
+  PluginLlmPreference,
   PluginRouteMethod,
   PluginScopeSettings,
   PluginStorageEntry,
@@ -34,6 +36,17 @@ export function updatePluginConfig(
   return put<PluginConfigSnapshot>(`/plugins/${encodeURIComponent(name)}/config`, {
     values,
   })
+}
+
+export function getPluginLlmPreference(name: string) {
+  return get<PluginLlmPreference>(`/plugins/${encodeURIComponent(name)}/llm-preference`)
+}
+
+export function updatePluginLlmPreference(
+  name: string,
+  preference: PluginLlmPreference,
+) {
+  return put<PluginLlmPreference>(`/plugins/${encodeURIComponent(name)}/llm-preference`, preference)
 }
 
 export function getPluginScope(name: string) {
@@ -131,6 +144,18 @@ export function deletePluginStorage(name: string, key: string) {
 
 export function runPluginAction(name: string, action: PluginActionName) {
   return post<PluginActionResult>(`/plugins/${encodeURIComponent(name)}/actions/${action}`)
+}
+
+export interface PluginLlmRouteOption {
+  providerId: string
+  modelId: string
+  label: string
+}
+
+export interface PluginLlmRouteSnapshot {
+  preference: PluginLlmPreference
+  providers: AiProviderSummary[]
+  options: PluginLlmRouteOption[]
 }
 
 export function invokePluginRoute(

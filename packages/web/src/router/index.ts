@@ -37,8 +37,12 @@ const router = createRouter({
         },
         {
           path: 'tools',
-          name: 'tools',
-          component: () => import('@/features/tools/views/ToolsView.vue'),
+          redirect: { name: 'mcp' },
+        },
+        {
+          path: 'mcp',
+          name: 'mcp',
+          component: () => import('@/features/mcp/views/McpView.vue'),
         },
         {
           path: 'skills',

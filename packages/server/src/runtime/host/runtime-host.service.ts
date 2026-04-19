@@ -1,9 +1,10 @@
-import { type JsonObject, type JsonValue, type PluginCallContext, type PluginHostMethod, type PluginLlmMessage } from '@garlic-claw/shared';
+import { type JsonObject, type JsonValue, type PluginCallContext, type PluginHostMethod, type PluginLlmMessage, type PluginLlmTransportMode } from '@garlic-claw/shared';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { AiModelExecutionService } from '../../ai/ai-model-execution.service';
 import { AiManagementService } from '../../ai-management/ai-management.service';
 import { createSingleUserProfile } from '../../auth/single-user-auth';
 import { AutomationService } from '../../execution/automation/automation.service';
+import { PersonaService } from '../../persona/persona.service';
 import { PluginBootstrapService } from '../../plugin/bootstrap/plugin-bootstrap.service';
 import { buildPluginSelfSummary, createPluginConfigSnapshot } from '../../plugin/persistence/plugin-read-model';
 import type { RegisteredPluginRecord } from '../../plugin/persistence/plugin-persistence.service';
@@ -15,7 +16,7 @@ import { RuntimeHostPluginDispatchService } from './runtime-host-plugin-dispatch
 import { RuntimeHostPluginRuntimeService } from './runtime-host-plugin-runtime.service';
 import { RuntimeHostSubagentRunnerService } from './runtime-host-subagent-runner.service';
 import { RuntimeHostUserContextService } from './runtime-host-user-context.service';
-import { asJsonValue, readJsonObject, readOptionalString, readPluginLlmMessages, readRequiredString, requireContextField } from './runtime-host-values';
+import { asJsonValue, readJsonObject, readOptionalString, readPluginLlmMessages, readRequiredString, requireContextField, type AssistantCustomBlockEntry } from './runtime-host-values';
 
 type RuntimeHostMethod = PluginHostMethod;
 type RuntimeHostCallHandler = (input: RuntimeHostCallInput) => JsonValue | Promise<JsonValue>;
@@ -32,7 +33,7 @@ interface RuntimeHostCallInput {
 export class RuntimeHostService implements OnModuleInit {
   private readonly callHandlers: Record<RuntimeHostMethod, RuntimeHostCallHandler>;
 
-  constructor(private readonly pluginBootstrapService: PluginBootstrapService, private readonly automationService: AutomationService, private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly aiModelExecutionService: AiModelExecutionService, private readonly aiManagementService: AiManagementService, private readonly runtimeHostKnowledgeService: RuntimeHostKnowledgeService, private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService, private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService, private readonly runtimeHostUserContextService: RuntimeHostUserContextService) {
+  constructor(private readonly pluginBootstrapService: PluginBootstrapService, private readonly automationService: AutomationService, private readonly runtimeHostConversationMessageService: RuntimeHostConversationMessageService, private readonly runtimeHostConversationRecordService: RuntimeHostConversationRecordService, private readonly aiModelExecutionService: AiModelExecutionService, private readonly aiManagementService: AiManagementService, private readonly runtimeHostKnowledgeService: RuntimeHostKnowledgeService, private readonly runtimeHostPluginDispatchService: RuntimeHostPluginDispatchService, private readonly runtimeHostPluginRuntimeService: RuntimeHostPluginRuntimeService, private readonly runtimeHostSubagentRunnerService: RuntimeHostSubagentRunnerService, private readonly runtimeHostUserContextService: RuntimeHostUserContextService, private readonly personaService: PersonaService) {
     this.callHandlers = this.buildCallHandlers();
   }
 
@@ -50,7 +51,6 @@ export class RuntimeHostService implements OnModuleInit {
     const plugin = this.pluginBootstrapService.getPlugin(input.pluginId);
     this.assertHostPermission(plugin, method);
     if (input.context.conversationId && input.context.activePersonaId) {this.runtimeHostConversationRecordService.rememberConversationActivePersona(input.context.conversationId, input.context.activePersonaId);}
-    this.runtimeHostUserContextService.rememberPersonaContext(input.context);
     return handler({ ...input, method, plugin });
   }
 
@@ -62,11 +62,10 @@ export class RuntimeHostService implements OnModuleInit {
 
   private buildCallHandlers(): Record<RuntimeHostMethod, RuntimeHostCallHandler> {
     const readConversationId = (context: RuntimeHostCallInput['context']) => requireContextField(context, 'conversationId');
-    const readConversation = (context: RuntimeHostCallInput['context']) => this.runtimeHostConversationRecordService.requireConversation(readConversationId(context));
     const readPersonaId = (params: RuntimeHostCallInput['params']) => readRequiredString(params, 'personaId');
     const readUserId = (context: RuntimeHostCallInput['context']) => requireContextField(context, 'userId');
     const runStoreMutation = (surface: 'state' | 'storage', action: 'deleteStoreValue' | 'getStoreValue' | 'listStoreValues' | 'setStoreValue', input: RuntimeHostCallInput) => this.runtimeHostPluginRuntimeService[action](surface, input.pluginId, input.context, input.params);
-    const createLlmHandler = (method: 'llm.generate' | 'llm.generate-text') => ({ context, params, pluginId }: RuntimeHostCallInput) => this.executeLlmGenerate(pluginId, context, params, method);
+    const createLlmHandler = (method: 'llm.generate' | 'llm.generate-text') => ({ context, params, plugin }: RuntimeHostCallInput) => this.executeLlmGenerate(plugin, context, params, method);
 
     const handlers: Record<RuntimeHostMethod, RuntimeHostCallHandler> = {
       'automation.create': ({ context, params }) => this.automationService.create(readUserId(context), params),
@@ -83,7 +82,7 @@ export class RuntimeHostService implements OnModuleInit {
       'cron.list': ({ pluginId }) => this.runtimeHostPluginRuntimeService.listCronJobs(pluginId),
       'cron.register': ({ params, pluginId }) => this.runtimeHostPluginRuntimeService.registerCronJob(pluginId, params),
       'conversation.get': ({ context }) => this.runtimeHostConversationRecordService.readConversationSummary(readConversationId(context)),
-      'conversation.messages.list': ({ context }) => readConversation(context).messages.map((message) => structuredClone(message)),
+      'conversation.messages.list': ({ context }) => this.runtimeHostConversationRecordService.requireConversation(readConversationId(context)).messages.map((message) => structuredClone(message)),
       'conversation.session.finish': ({ context, pluginId }) => this.runtimeHostConversationRecordService.finishPluginConversationSession(pluginId, readConversationId(context)),
       'conversation.session.get': ({ context, pluginId }) => this.runtimeHostConversationRecordService.getConversationSession(pluginId, context),
       'conversation.session.keep': ({ context, params, pluginId }) => this.runtimeHostConversationRecordService.keepConversationSession(pluginId, context, params),
@@ -100,10 +99,10 @@ export class RuntimeHostService implements OnModuleInit {
       'memory.search': ({ context, params }) => this.runtimeHostUserContextService.searchMemories(context, params),
       'message.send': ({ context, params }) => this.runtimeHostConversationMessageService.sendMessage(context, params),
       'message.target.current.get': ({ context }) => this.runtimeHostConversationRecordService.readCurrentMessageTarget(readConversationId(context)),
-      'persona.activate': ({ context, params }) => this.runtimeHostUserContextService.activatePersona({ conversation: readConversation(context), personaId: readPersonaId(params) }),
-      'persona.current.get': ({ context }) => this.runtimeHostUserContextService.readCurrentPersona({ context, conversationActivePersonaId: readConversation(context).activePersonaId }),
-      'persona.get': ({ params }) => this.runtimeHostUserContextService.readPersona(readRequiredString(params, 'personaId')),
-      'persona.list': () => this.runtimeHostUserContextService.listPersonas(),
+      'persona.activate': ({ context, params }) => asJsonValue(this.personaService.activatePersona({ conversationId: readConversationId(context), personaId: readPersonaId(params), userId: context.userId })),
+      'persona.current.get': ({ context }) => asJsonValue(this.personaService.readCurrentPersona({ context, ...(context.conversationId ? { conversationId: context.conversationId } : {}) })),
+      'persona.get': ({ params }) => asJsonValue(this.personaService.readPersona(readRequiredString(params, 'personaId'))),
+      'persona.list': () => asJsonValue(this.personaService.listPersonas()),
       'plugin.self.get': ({ plugin }) => buildPluginSelfSummary(plugin),
       'provider.current.get': ({ context }) => context.activeProviderId && context.activeModelId
         ? { modelId: context.activeModelId, providerId: context.activeProviderId, source: 'context' }
@@ -131,8 +130,8 @@ export class RuntimeHostService implements OnModuleInit {
     return handlers;
   }
 
-  private async executeLlmGenerate(pluginId: string, context: RuntimeHostCallInput['context'], params: JsonObject, method: 'llm.generate' | 'llm.generate-text'): Promise<JsonValue> {
-    const request = readRuntimeHostLlmRequest({ context, method, params, pluginId });
+  private async executeLlmGenerate(plugin: RegisteredPluginRecord, context: RuntimeHostCallInput['context'], params: JsonObject, method: 'llm.generate' | 'llm.generate-text'): Promise<JsonValue> {
+    const request = readRuntimeHostLlmRequest({ context, method, params, plugin });
     const result = await this.aiModelExecutionService.generateText({
       allowFallbackChatModels: true,
       headers: request.headers,
@@ -142,20 +141,43 @@ export class RuntimeHostService implements OnModuleInit {
       providerId: request.providerId,
       providerOptions: request.providerOptions,
       system: request.system,
+      transportMode: request.transportMode,
       variant: request.variant,
     });
+    const metadata = result.customBlocks?.length
+      ? asJsonValue({
+          customBlocks: result.customBlocks.map((block) => createRuntimeHostCustomBlock(
+            result.providerId,
+            result.customBlockOrigin ?? 'ai-sdk.response-body',
+            block,
+          )),
+        })
+      : null;
 
-    if (method === 'llm.generate-text') {return { modelId: result.modelId, providerId: result.providerId, text: result.text };}
-    return {
+    if (method === 'llm.generate-text') {
+      return asJsonValue({
+        modelId: result.modelId,
+        ...(metadata ? { metadata } : {}),
+        providerId: result.providerId,
+        text: result.text,
+        ...(result.usage !== undefined ? { usage: result.usage } : {}),
+      });
+    }
+    return asJsonValue({
       ...(result.finishReason !== undefined ? { finishReason: result.finishReason } : {}),
-      message: { content: result.text, role: 'assistant' },
+      message: {
+        content: result.text,
+        ...(metadata ? { metadata } : {}),
+        role: 'assistant',
+      },
       modelId: result.modelId,
+      ...(metadata ? { metadata } : {}),
       providerId: result.providerId,
       text: result.text,
       toolCalls: [],
       toolResults: [],
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-    };
+    });
   }
 }
 
@@ -163,7 +185,7 @@ function readRuntimeHostLlmRequest(input: {
   context: RuntimeHostCallInput['context'];
   method: 'llm.generate' | 'llm.generate-text';
   params: JsonObject;
-  pluginId: string;
+  plugin: RegisteredPluginRecord;
 }): {
   headers?: Record<string, string>;
   maxOutputTokens?: number;
@@ -172,13 +194,17 @@ function readRuntimeHostLlmRequest(input: {
   providerOptions?: JsonObject;
   providerId?: string;
   system?: string;
+  transportMode?: PluginLlmTransportMode;
   variant?: string;
 } {
   const headers = readJsonObject(input.params.headers);
-  const modelId = readOptionalString(input.params, 'modelId') ?? (input.pluginId === 'builtin.conversation-title' ? input.context.activeModelId : undefined);
+  const pluginModelId = input.plugin.llmPreference.mode === 'override' ? input.plugin.llmPreference.modelId ?? undefined : undefined;
+  const pluginProviderId = input.plugin.llmPreference.mode === 'override' ? input.plugin.llmPreference.providerId ?? undefined : undefined;
+  const modelId = readOptionalString(input.params, 'modelId') ?? pluginModelId ?? input.context.activeModelId;
   const providerOptions = readJsonObject(input.params.providerOptions);
-  const providerId = readOptionalString(input.params, 'providerId') ?? (input.pluginId === 'builtin.conversation-title' ? input.context.activeProviderId : undefined);
+  const providerId = readOptionalString(input.params, 'providerId') ?? pluginProviderId ?? input.context.activeProviderId;
   const system = readOptionalString(input.params, 'system');
+  const transportMode = readTransportMode(input.params);
   const variant = readOptionalString(input.params, 'variant');
 
   return {
@@ -191,6 +217,61 @@ function readRuntimeHostLlmRequest(input: {
     ...(providerOptions ? { providerOptions } : {}),
     ...(providerId ? { providerId } : {}),
     ...(system ? { system } : {}),
+    ...(transportMode ? { transportMode } : {}),
     ...(variant ? { variant } : {}),
   };
+}
+
+function createRuntimeHostCustomBlock(
+  providerId: string,
+  origin: 'ai-sdk.raw' | 'ai-sdk.response-body',
+  block: AssistantCustomBlockEntry,
+): JsonValue {
+  const title = block.key
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(' ') || block.key;
+
+  return block.kind === 'text'
+    ? asJsonValue({
+        id: `custom-field:${block.key}`,
+        kind: 'text',
+        source: {
+          key: block.key,
+          origin,
+          providerId,
+        },
+        state: 'done',
+        text: block.value,
+        title,
+      })
+    : asJsonValue({
+        data: block.value,
+        id: `custom-field:${block.key}`,
+        kind: 'json',
+        source: {
+          key: block.key,
+          origin,
+          providerId,
+        },
+        state: 'done',
+        title,
+      });
+}
+
+function readTransportMode(params: JsonObject): PluginLlmTransportMode | null {
+  const value = readOptionalString(params, 'transportMode');
+  if (!value) {
+    return null;
+  }
+  if (value === 'generate' || value === 'stream-collect') {
+    return value;
+  }
+  throw new BadRequestException('transportMode must be generate or stream-collect');
 }

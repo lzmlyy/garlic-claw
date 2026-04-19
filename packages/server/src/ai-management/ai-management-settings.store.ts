@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AiHostModelRoutingConfig } from '@garlic-claw/shared';
-import type { AiSettingsFile, StoredAiProviderConfig } from './ai-management.types';
+import type { AiSettingsFile, StoredAiModelConfig, StoredAiProviderConfig } from './ai-management.types';
 
 export function resolveAiSettingsPath(): string {
   return process.env.GARLIC_CLAW_AI_SETTINGS_PATH
@@ -18,6 +18,7 @@ export function loadAiSettings(settingsPath: string): AiSettingsFile {
     }
     const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AiSettingsFile>;
     return {
+      models: Array.isArray(parsed.models) ? parsed.models.map(cloneStoredAiModelConfig) : [],
       providers: Array.isArray(parsed.providers) ? parsed.providers.map(cloneStoredProviderConfig) : [],
       visionFallback: parsed.visionFallback ? { ...parsed.visionFallback } : { enabled: false },
       hostModelRouting: parsed.hostModelRouting
@@ -51,8 +52,20 @@ function cloneStoredProviderConfig(provider: StoredAiProviderConfig): StoredAiPr
   };
 }
 
+function cloneStoredAiModelConfig(model: StoredAiModelConfig): StoredAiModelConfig {
+  return {
+    ...model,
+    capabilities: {
+      ...model.capabilities,
+      input: { ...model.capabilities.input },
+      output: { ...model.capabilities.output },
+    },
+  };
+}
+
 function createEmptySettings(): AiSettingsFile {
   return {
+    models: [],
     providers: [],
     visionFallback: { enabled: false },
     hostModelRouting: {

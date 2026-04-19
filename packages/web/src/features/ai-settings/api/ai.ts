@@ -45,7 +45,7 @@ export function discoverAiProviderModels(providerId: string) {
 export function upsertAiModel(
   providerId: string,
   modelId: string,
-  payload: { name?: string },
+  payload: { name?: string; contextLength?: number },
 ) {
   return post<AiModelConfig>(
     `/ai/providers/${providerId}/models/${encodeURIComponent(modelId)}`,

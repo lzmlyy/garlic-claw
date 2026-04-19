@@ -1,4 +1,4 @@
-import type { JsonObject, ListPluginEventOptions, PluginEventLevel, PluginEventListResult, PluginEventRecord, PluginConfigSnapshot, PluginGovernanceInfo, PluginManifest, PluginStatus, PluginScopeSettings } from '@garlic-claw/shared';
+import type { JsonObject, JsonValue, ListPluginEventOptions, PluginConfigNodeSchema, PluginConfigSnapshot, PluginEventLevel, PluginEventListResult, PluginEventRecord, PluginGovernanceInfo, PluginLlmPreference, PluginManifest, PluginScopeSettings, PluginStatus } from '@garlic-claw/shared';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PLUGIN_STATUS } from '../plugin.constants';
 import { createPluginConfigSnapshot } from './plugin-read-model';
@@ -12,6 +12,7 @@ export interface RegisteredPluginRecord {
   deviceType?: string;
   governance: PluginGovernanceInfo;
   lastSeenAt: string | null;
+  llmPreference: PluginLlmPreference;
   manifest: PluginManifest;
   pluginId: string;
   status: PluginStatus;
@@ -19,8 +20,8 @@ export interface RegisteredPluginRecord {
 }
 
 type UpsertPluginRecordInput =
-  Omit<RegisteredPluginRecord, 'createdAt' | 'status' | 'updatedAt'>
-  & Partial<Pick<RegisteredPluginRecord, 'createdAt' | 'status' | 'updatedAt'>>;
+  Omit<RegisteredPluginRecord, 'createdAt' | 'llmPreference' | 'status' | 'updatedAt'>
+  & Partial<Pick<RegisteredPluginRecord, 'createdAt' | 'llmPreference' | 'status' | 'updatedAt'>>;
 type PluginEventInput = { level: PluginEventLevel; message: string; metadata?: JsonObject; type: string };
 
 @Injectable()
@@ -36,6 +37,7 @@ export class PluginPersistenceService {
   }
 
   getPluginConfig(pluginId: string): PluginConfigSnapshot { return createPluginConfigSnapshot(this.readMutableRecord(pluginId)); }
+  getPluginLlmPreference(pluginId: string): PluginLlmPreference { return { ...this.readMutableRecord(pluginId).llmPreference }; }
   getPluginScope(pluginId: string): PluginScopeSettings { return toPluginScopeSettings(this.readMutableRecord(pluginId)); }
 
   listPluginEvents(pluginId: string, options: ListPluginEventOptions = {}): PluginEventListResult {
@@ -106,6 +108,7 @@ export class PluginPersistenceService {
       conversationScopes: record.conversationScopes ?? {},
       createdAt: existing?.createdAt ?? record.createdAt ?? now,
       status: record.status ?? (record.connected ? PLUGIN_STATUS.ONLINE : PLUGIN_STATUS.OFFLINE),
+      llmPreference: normalizePluginLlmPreference(record.llmPreference ?? existing?.llmPreference),
       updatedAt: record.updatedAt ?? now,
     });
   }
@@ -137,6 +140,17 @@ export class PluginPersistenceService {
     }));
   }
 
+  updatePluginLlmPreference(pluginId: string, preference: PluginLlmPreference): PluginLlmPreference {
+    const current = this.readMutableRecord(pluginId);
+    const normalizedPreference = normalizePluginLlmPreference(preference);
+    this.writeRecord({
+      ...current,
+      llmPreference: normalizedPreference,
+      updatedAt: new Date().toISOString(),
+    });
+    return { ...normalizedPreference };
+  }
+
   private readMutableRecord(pluginId: string): RegisteredPluginRecord { const record = this.records.get(pluginId); if (!record) {throw new NotFoundException(`Plugin not found: ${pluginId}`);} return record; }
 
   private writeRecord(record: RegisteredPluginRecord): RegisteredPluginRecord {
@@ -154,39 +168,105 @@ function toPluginScopeSettings(record: RegisteredPluginRecord): PluginScopeSetti
   return { defaultEnabled: record.defaultEnabled, conversations: { ...(record.conversationScopes ?? {}) } };
 }
 
+export function normalizePluginLlmPreference(preference?: PluginLlmPreference | null): PluginLlmPreference {
+  if (!preference || preference.mode === 'inherit') {
+    return {
+      mode: 'inherit',
+      modelId: null,
+      providerId: null,
+    };
+  }
+  const providerId = preference.providerId?.trim();
+  const modelId = preference.modelId?.trim();
+  if (!providerId || !modelId) {
+    throw new BadRequestException('插件模型覆盖必须同时指定 providerId 和 modelId');
+  }
+  return {
+    mode: 'override',
+    modelId,
+    providerId,
+  };
+}
+
 export function validatePluginConfig(manifest: PluginManifest, values: JsonObject): void {
   const schema = manifest.config;
   if (!schema) {throw new BadRequestException(`Plugin ${manifest.id} 未声明配置 schema`);}
-  const fields = new Map(schema.fields.map((field) => [field.key, field]));
-  for (const [key, value] of Object.entries(values)) {
-    const field = fields.get(key);
-    if (!field) {throw new BadRequestException(`未知配置字段: ${key}`);}
-    if (!matchesConfigFieldType(field.type, value)) {throw new BadRequestException(`配置字段 ${key} 类型不合法`);}
+  validateConfigNode(schema, values, []);
+}
+
+function validateConfigNode(
+  schema: PluginConfigNodeSchema,
+  value: JsonValue | undefined,
+  path: string[],
+): void {
+  const label = path.length > 0 ? path.join('.') : 'config';
+  const allowedOptionValues = new Set((schema.options ?? []).map((option) => option.value));
+
+  if (typeof value === 'undefined') {
+    return;
   }
-  for (const field of schema.fields) {
-    if (!field.required) {continue;}
-    if (typeof values[field.key] !== 'undefined' || typeof field.defaultValue !== 'undefined') {continue;}
-    throw new BadRequestException(`缺少必填配置字段: ${field.key}`);
+
+  if (schema.type === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadRequestException(`配置字段 ${label} 必须是对象`);
+    }
+    const record = value as JsonObject;
+    for (const key of Object.keys(record)) {
+      const childSchema = schema.items[key];
+      if (!childSchema) {
+        throw new BadRequestException(`未知配置字段: ${[...path, key].join('.')}`);
+      }
+      validateConfigNode(childSchema, record[key], [...path, key]);
+    }
+    return;
+  }
+
+  if (schema.type === 'list') {
+    if (!Array.isArray(value)) {
+      throw new BadRequestException(`配置字段 ${label} 必须是数组`);
+    }
+    if (allowedOptionValues.size > 0) {
+      value.forEach((item, index) => validateOptionValue(allowedOptionValues, item, [...path, String(index)]));
+    }
+    const itemSchema = schema.items;
+    if (!itemSchema) {
+      return;
+    }
+    value.forEach((item, index) => validateConfigNode(itemSchema, item, [...path, String(index)]));
+    return;
+  }
+
+  if (schema.type === 'string' || schema.type === 'text') {
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`配置字段 ${label} 必须是字符串`);
+    }
+    validateOptionValue(allowedOptionValues, value, path);
+    return;
+  }
+
+  if (schema.type === 'int' || schema.type === 'float') {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      throw new BadRequestException(`配置字段 ${label} 必须是数字`);
+    }
+    return;
+  }
+
+  if (schema.type === 'bool' && typeof value !== 'boolean') {
+    throw new BadRequestException(`配置字段 ${label} 必须是布尔值`);
   }
 }
 
-function matchesConfigFieldType(
-  type: 'array' | 'boolean' | 'number' | 'object' | 'string',
-  value: unknown,
-): boolean {
-  switch (type) {
-    case 'string':
-      return typeof value === 'string';
-    case 'number':
-      return typeof value === 'number';
-    case 'boolean':
-      return typeof value === 'boolean';
-    case 'array':
-      return Array.isArray(value);
-    case 'object':
-      return typeof value === 'object' && value !== null && !Array.isArray(value);
-    default:
-      return false;
+function validateOptionValue(
+  allowedOptionValues: Set<string>,
+  value: JsonValue,
+  path: string[],
+): void {
+  if (allowedOptionValues.size === 0) {
+    return;
+  }
+  const label = path.length > 0 ? path.join('.') : 'config';
+  if (typeof value !== 'string' || !allowedOptionValues.has(value)) {
+    throw new BadRequestException(`配置字段 ${label} 必须命中声明的 options`);
   }
 }
 

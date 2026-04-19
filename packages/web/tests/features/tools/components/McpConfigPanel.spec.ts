@@ -15,7 +15,7 @@ describe('McpConfigPanel', () => {
   it('renders MCP config summary and selected server fields', async () => {
     hoisted.state = createManagementState()
     hoisted.state.snapshot.value = {
-      configPath: '.mcp/mcp.json',
+      configPath: 'mcp/mcp.json',
       servers: [
         {
           name: 'weather-server',
@@ -35,7 +35,7 @@ describe('McpConfigPanel', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('MCP Config')
-    expect(wrapper.text()).toContain('.mcp/mcp.json')
+    expect(wrapper.text()).toContain('mcp/mcp.json')
     expect(wrapper.text()).toContain('weather-server')
     expect(wrapper.find('[data-test="mcp-name-input"]').element).toHaveProperty('value', 'weather-server')
     expect(wrapper.find('[data-test="mcp-command-input"]').element).toHaveProperty('value', 'npx')
@@ -44,7 +44,7 @@ describe('McpConfigPanel', () => {
   it('submits create requests with command args and env entries', async () => {
     hoisted.state = createManagementState()
     hoisted.state.snapshot.value = {
-      configPath: '.mcp/mcp.json',
+      configPath: 'mcp/mcp.json',
       servers: [],
     }
 
@@ -71,7 +71,7 @@ describe('McpConfigPanel', () => {
 
 function createManagementState() {
   const snapshot = ref({
-    configPath: '.mcp/mcp.json',
+    configPath: 'mcp/mcp.json',
     servers: [] as Array<{
       name: string
       command: string

@@ -42,7 +42,8 @@ describe('AdminConsoleLayout', () => {
 
     expect(wrapper.text()).toContain('对话')
     expect(wrapper.text()).toContain('插件')
-    expect(wrapper.text()).toContain('工具')
+    expect(wrapper.text()).toContain('MCP')
+    expect(wrapper.text()).toContain('技能')
     expect(wrapper.text()).toContain('AI 设置')
     expect(wrapper.text()).toContain('自动化')
     expect(wrapper.text()).toContain('控制台')

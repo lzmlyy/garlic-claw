@@ -67,14 +67,25 @@
         @toggle-skill="toggleSkill"
       />
 
-      <SkillDetailPanel
-        :skill="selectedSkill"
-        :conversation-id="chat.currentConversationId"
-        :conversation-skill-state="conversationSkillState"
-        :mutating-skill-id="mutatingSkillId"
-        @toggle-skill="toggleSkill"
-        @update-trust-level="handleSkillTrustLevelUpdate"
-      />
+      <div class="skill-detail-column">
+        <SkillDetailPanel
+          :skill="selectedSkill"
+          :conversation-id="chat.currentConversationId"
+          :conversation-skill-state="conversationSkillState"
+          :mutating-skill-id="mutatingSkillId"
+          @toggle-skill="toggleSkill"
+          @update-trust-level="handleSkillTrustLevelUpdate"
+        />
+        <ToolGovernancePanel
+          source-id="active-packages"
+          source-kind="skill"
+          title="技能工具治理"
+          description="管理 `Active Skill Packages` 这一条技能工具源的启用状态和治理动作。"
+          :show-source-list="false"
+          empty-title="当前没有技能工具源"
+          empty-description="当会话技能包加载后，这里会展示资产读取与脚本执行工具。"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -88,6 +99,7 @@ import type { SkillTrustLevel } from '@garlic-claw/shared'
 import SkillDetailPanel from '@/features/skills/components/SkillDetailPanel.vue'
 import SkillsList from '@/features/skills/components/SkillsList.vue'
 import { useSkillManagement } from '@/features/skills/composables/use-skill-management'
+import ToolGovernancePanel from '@/features/tools/components/ToolGovernancePanel.vue'
 import { useChatStore } from '@/features/chat/store/chat'
 
 const chat = useChatStore()

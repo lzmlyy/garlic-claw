@@ -78,6 +78,30 @@
             :capabilities="model.capabilities"
             @update="emitCapabilities(model, $event)"
           />
+
+          <div class="context-length-row">
+            <label class="context-length-field">
+              <span>上下文长度</span>
+              <input
+                :value="contextLengthDraftByModelId[model.id] ?? String(model.contextLength)"
+                :data-test="`context-length-input-${model.id}`"
+                min="1"
+                step="1"
+                type="number"
+                @input="handleContextLengthInput(model.id, $event)"
+              />
+            </label>
+            <button
+              type="button"
+              class="ghost-button"
+              :data-test="`context-length-save-${model.id}`"
+              :disabled="!canSaveContextLength(model)"
+              @click="saveContextLength(model)"
+            >
+              保存上下文
+            </button>
+          </div>
+          <p class="context-length-hint">默认值 131072，仅在模型未显式配置时自动补齐。</p>
         </article>
       </div>
 
@@ -137,11 +161,13 @@ const emit = defineEmits<{
   (event: 'delete-model', modelId: string): void
   (event: 'set-default-model', modelId: string): void
   (event: 'update-capabilities', payload: { modelId: string; capabilities: AiModelConfig['capabilities'] }): void
+  (event: 'update-context-length', payload: { modelId: string; contextLength: number }): void
 }>()
 
 const newModelId = ref('')
 const newModelName = ref('')
 const searchKeyword = ref('')
+const contextLengthDraftByModelId = ref<Record<string, string>>({})
 
 const filteredModels = computed(() => {
   const keyword = searchKeyword.value.trim().toLowerCase()
@@ -179,6 +205,16 @@ watch(
   },
 )
 
+watch(
+  () => props.models,
+  (models) => {
+    contextLengthDraftByModelId.value = Object.fromEntries(
+      models.map((model) => [model.id, String(model.contextLength)]),
+    )
+  },
+  { immediate: true },
+)
+
 function addModel() {
   emit('add-model', {
     modelId: newModelId.value.trim(),
@@ -195,6 +231,33 @@ function emitCapabilities(
   emit('update-capabilities', {
     modelId: model.id,
     capabilities,
+  })
+}
+
+function updateContextLengthDraft(modelId: string, value: string) {
+  contextLengthDraftByModelId.value = {
+    ...contextLengthDraftByModelId.value,
+    [modelId]: value,
+  }
+}
+
+function handleContextLengthInput(modelId: string, event: Event) {
+  updateContextLengthDraft(modelId, (event.target as HTMLInputElement).value)
+}
+
+function canSaveContextLength(model: AiModelConfig) {
+  const draft = Number(contextLengthDraftByModelId.value[model.id] ?? model.contextLength)
+  return Number.isInteger(draft) && draft > 0 && draft !== model.contextLength
+}
+
+function saveContextLength(model: AiModelConfig) {
+  const contextLength = Number(contextLengthDraftByModelId.value[model.id] ?? model.contextLength)
+  if (!Number.isInteger(contextLength) || contextLength <= 0) {
+    return
+  }
+  emit('update-context-length', {
+    modelId: model.id,
+    contextLength,
   })
 }
 </script>
@@ -264,6 +327,47 @@ function emitCapabilities(
   display: grid;
   gap: 10px;
   margin: 0 0 18px;
+}
+
+.context-length-row {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.context-length-field {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 220px;
+}
+
+.context-length-field span,
+.context-length-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.context-length-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(11, 21, 35, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text);
+}
+
+.context-length-field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.24);
+}
+
+.context-length-hint {
+  margin: 10px 0 0;
 }
 
 .toolbar-row input {

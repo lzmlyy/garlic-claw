@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import { shouldDeleteBrowserSmokeProvider } from './browser-smoke-provider-cleanup.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +27,7 @@ const PREFIX = `smoke-ui-${Date.now().toString(36)}`;
 const PROVIDER_ID = `${PREFIX}-openai`;
 const PROVIDER_NAME = `${PREFIX}-provider`;
 const MODEL_ID = `${PREFIX}-model`;
+const SHADOW_MODEL_ID = `${PREFIX}-shadow-model`;
 const AUTOMATION_NAME = `${PREFIX}-automation`;
 const AUTOMATION_MESSAGE = `${PREFIX} automation message`;
 
@@ -39,6 +41,7 @@ async function main() {
   const page = await context.newPage();
   let accessToken = '';
   let createdConversationId = null;
+  let initialProviderIds = new Set();
 
   try {
     await page.goto('/login', { waitUntil: 'networkidle' });
@@ -49,18 +52,22 @@ async function main() {
       return token || null;
     }, '等待登录 token');
     assert.ok(accessToken, '登录后未拿到 accessToken');
+    initialProviderIds = new Set((await requestJson('/ai/providers', {
+      headers: createAuthHeaders(accessToken),
+    }).catch(() => [])).map((provider) => provider.id));
     await page.goto('/', { waitUntil: 'networkidle' });
     await page.getByRole('button', { name: '新对话' }).waitFor({ timeout: REQUEST_TIMEOUT_MS });
 
     await cleanupSmokeArtifacts(accessToken, {
       conversationId: null,
+      initialProviderIds,
       prefix: PREFIX,
       providerId: PROVIDER_ID,
     });
 
     await createProviderThroughUi(page, accessToken, fakeOpenAi.url);
     createdConversationId = await runChatFlow(page, accessToken);
-    await verifyToolsPage(page);
+    await verifyMcpPage(page);
     await verifyPluginsPage(page);
     await runAutomationFlow(page, accessToken, createdConversationId);
     await verifyArtifactsPresent(accessToken, createdConversationId);
@@ -70,6 +77,7 @@ async function main() {
     await Promise.allSettled([
       cleanupSmokeArtifacts(accessToken, {
         conversationId: createdConversationId,
+        initialProviderIds,
         prefix: PREFIX,
         providerId: PROVIDER_ID,
       }),
@@ -180,6 +188,74 @@ async function createProviderThroughUi(page, accessToken, fakeOpenAiUrl) {
     }).catch(() => []);
     return providers.some((provider) => provider.id === PROVIDER_ID) ? true : null;
   }, '等待 smoke provider 创建完成');
+
+  await page.getByText(PROVIDER_NAME, { exact: false }).first().click();
+  const contextLengthInput = page.locator(`[data-test="context-length-input-${MODEL_ID}"]`);
+  await contextLengthInput.waitFor({ timeout: REQUEST_TIMEOUT_MS });
+  await contextLengthInput.evaluate((node, value) => {
+    node.value = value;
+    node.dispatchEvent(new Event('input', { bubbles: true }));
+  }, '65536');
+  const saveButton = page.locator(`[data-test="context-length-save-${MODEL_ID}"]`);
+  await waitFor(async () => (await saveButton.isDisabled()) ? null : true, '等待上下文长度保存按钮可用');
+  await saveButton.click();
+
+  await waitFor(async () => {
+    const models = await requestJson(`/ai/providers/${PROVIDER_ID}/models`, {
+      headers: createAuthHeaders(accessToken),
+    }).catch(() => []);
+    return models.find((model) => model.id === MODEL_ID)?.contextLength === 65536 ? true : null;
+  }, '等待上下文长度持久化');
+
+  await page.getByRole('button', { name: '编辑' }).click();
+  const editDialog = page.locator('[data-test="provider-dialog-overlay"]');
+  await editDialog.waitFor({ state: 'visible' });
+  await editDialog.getByPlaceholder('gpt-4o-mini').fill(SHADOW_MODEL_ID);
+  await editDialog.getByPlaceholder('每行一个模型 ID，或用逗号分隔').fill(SHADOW_MODEL_ID);
+  const removeOriginalModelResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PUT'
+        && response.url().endsWith(`/api/ai/providers/${PROVIDER_ID}`),
+    { timeout: REQUEST_TIMEOUT_MS },
+  );
+  await editDialog.getByRole('button', { name: '保存' }).click();
+  const removeOriginalModelResponse = await removeOriginalModelResponsePromise;
+  assert.equal(removeOriginalModelResponse.ok(), true, '删除原模型的 provider 保存请求失败');
+
+  await waitFor(async () => {
+    const models = await requestJson(`/ai/providers/${PROVIDER_ID}/models`, {
+      headers: createAuthHeaders(accessToken),
+    }).catch(() => []);
+    const originalModel = models.find((model) => model.id === MODEL_ID);
+    const shadowModel = models.find((model) => model.id === SHADOW_MODEL_ID);
+    return !originalModel && shadowModel ? true : null;
+  }, '等待原模型从 provider 配置中移除');
+
+  await page.getByRole('button', { name: '编辑' }).click();
+  await editDialog.waitFor({ state: 'visible' });
+  await editDialog.getByPlaceholder('gpt-4o-mini').fill(MODEL_ID);
+  await editDialog.getByPlaceholder('每行一个模型 ID，或用逗号分隔').fill([MODEL_ID, SHADOW_MODEL_ID].join('\n'));
+  const readdOriginalModelResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PUT'
+        && response.url().endsWith(`/api/ai/providers/${PROVIDER_ID}`),
+    { timeout: REQUEST_TIMEOUT_MS },
+  );
+  await editDialog.getByRole('button', { name: '保存' }).click();
+  const readdOriginalModelResponse = await readdOriginalModelResponsePromise;
+  assert.equal(readdOriginalModelResponse.ok(), true, '重新加入原模型的 provider 保存请求失败');
+
+  await waitFor(async () => {
+    const models = await requestJson(`/ai/providers/${PROVIDER_ID}/models`, {
+      headers: createAuthHeaders(accessToken),
+    }).catch(() => []);
+    return models.find((model) => model.id === MODEL_ID)?.contextLength === 128 * 1024 ? true : null;
+  }, '等待重新加入的原模型恢复默认上下文长度');
+
+  await waitFor(async () => {
+    const currentValue = await contextLengthInput.inputValue().catch(() => '');
+    return currentValue === String(128 * 1024) ? true : null;
+  }, '等待前端模型面板展示重新加入模型的默认上下文长度');
 }
 
 async function runChatFlow(page, accessToken) {
@@ -218,12 +294,10 @@ async function runChatFlow(page, accessToken) {
   return conversation.id;
 }
 
-async function verifyToolsPage(page) {
-  await page.goto('/tools', { waitUntil: 'networkidle' });
-  await expectText(page, '工具治理');
-  await expectText(page, '工具总数');
-  const sourceItems = page.locator('.source-item');
-  assert.ok(await sourceItems.count() > 0, '工具页未加载任何 source');
+async function verifyMcpPage(page) {
+  await page.goto('/mcp', { waitUntil: 'networkidle' });
+  await expectText(page, 'MCP 管理');
+  await expectText(page, 'MCP 工具治理');
   await expectText(page, 'MCP 配置');
   const configPath = (await page.locator('.mcp-config-path').textContent())?.trim() ?? '';
   assert.ok(configPath.length > 0, 'MCP 配置区未展示配置路径');
@@ -321,13 +395,27 @@ async function cleanupSmokeArtifacts(accessToken, input) {
 
   try {
     const providers = await requestJson('/ai/providers', { headers }).catch(() => []);
-    for (const provider of providers.filter((item) =>
-      item.id === input.providerId || item.id?.startsWith(SMOKE_PREFIX_ROOT))) {
+    for (const provider of providers) {
+      const detail = await requestJson(`/ai/providers/${encodeURIComponent(provider.id)}`, {
+        headers,
+      }).catch(() => null);
+      if (!detail) {
+        continue;
+      }
+      if (!shouldDeleteBrowserSmokeProvider({
+        configuredProviderId: input.providerId,
+        initialProviderIds: input.initialProviderIds,
+        providerApiKey: typeof detail.apiKey === 'string' ? detail.apiKey : '',
+        providerId: provider.id,
+        smokePrefixRoot: SMOKE_PREFIX_ROOT,
+      })) {
+        continue;
+      }
       await requestJson(`/ai/providers/${encodeURIComponent(provider.id)}`, {
         headers,
         method: 'DELETE',
       }).catch(() => undefined);
-    }
+    } 
   } catch {}
 
   const [providers, automations, conversations] = await Promise.all([

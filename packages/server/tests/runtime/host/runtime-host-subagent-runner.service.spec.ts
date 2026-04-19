@@ -1,10 +1,10 @@
-const mockStepCountIs = jest.fn((count: number) => `stop-${count}`);
+const mockIsLoopFinished = jest.fn(() => 'loop-finished-stop');
 const mockStreamText = jest.fn();
 const mockOpenAiChat = jest.fn(() => ({ id: 'mock-model' }));
 const mockCreateOpenAI = jest.fn(() => ({ chat: mockOpenAiChat }));
 
 jest.mock('ai', () => ({
-  stepCountIs: mockStepCountIs,
+  isLoopFinished: mockIsLoopFinished,
   streamText: mockStreamText,
 }));
 
@@ -66,7 +66,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
     }
   });
 
-  it('runs a real subagent stream with tool filter and step limit', async () => {
+  it('runs a real subagent stream with tool filter', async () => {
     const pluginBootstrapService = new PluginBootstrapService(
       new PluginGovernanceService(),
       new PluginPersistenceService(),
@@ -75,7 +75,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -134,7 +134,6 @@ describe('RuntimeHostSubagentRunnerService', () => {
       source: 'plugin',
       userId: 'user-1',
     }, {
-      maxSteps: 3,
       messages: [
         {
           content: 'summarize this conversation',
@@ -174,10 +173,10 @@ describe('RuntimeHostSubagentRunnerService', () => {
       ],
     });
 
-    expect(mockStepCountIs).toHaveBeenCalledWith(3);
     expect(mockOpenAiChat).toHaveBeenCalledWith('gpt-5.4');
+    expect(mockIsLoopFinished).toHaveBeenCalledTimes(1);
     expect(mockStreamText).toHaveBeenCalledWith(expect.objectContaining({
-      stopWhen: 'stop-3',
+      stopWhen: 'loop-finished-stop',
       tools: expect.objectContaining({
         'memory.search': expect.any(Object),
       }),
@@ -194,7 +193,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -301,7 +300,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -313,7 +312,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.subagent-observer',
         name: 'Builtin Hooker',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       governance: {
         defaultEnabled: true,
@@ -404,7 +403,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -493,7 +492,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -576,7 +575,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],
@@ -670,7 +669,7 @@ describe('RuntimeHostSubagentRunnerService', () => {
       fallback: {
         id: 'builtin.memory-context',
         name: 'Memory Context',
-        runtime: 'builtin',
+        runtime: 'local',
       },
       manifest: {
         permissions: ['subagent:run'],

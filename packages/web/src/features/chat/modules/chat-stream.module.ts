@@ -3,7 +3,6 @@
 import type { Ref } from "vue";
 import type { ChatSendInput } from "@/features/chat/store/chat-store.types";
 import {
-  loadConversationMessages,
   retryConversationMessage,
   sendConversationMessage,
 } from "@/features/chat/modules/chat-conversation.data";
@@ -34,6 +33,12 @@ export interface ChatStreamState {
   recoveryTimer: Ref<number | null>;
   currentStreamingMessageId: Ref<string | null>;
   streaming: Ref<boolean>;
+}
+
+interface ConversationRefreshParams {
+  loadConversationDetail?: ((conversationId: string) => Promise<void>) | undefined;
+  refreshConversationSummary?: (() => Promise<void>) | undefined;
+  refreshConversationState?: (() => Promise<void>) | undefined;
 }
 
 interface PendingMessageCommit {
@@ -74,6 +79,12 @@ function clearPendingCommit(pendingCommit: PendingMessageCommit) {
     cancelAnimationFrame(pendingCommit.frameId);
     pendingCommit.frameId = null;
   }
+}
+
+export function discardPendingMessageUpdates(state: ChatStreamState) {
+  const pendingCommit = getPendingMessageCommit(state);
+  clearPendingCommit(pendingCommit);
+  pendingCommit.nextMessages = null;
 }
 
 function syncMessageList(state: ChatStreamState, nextMessages: ChatMessage[]) {
@@ -143,6 +154,13 @@ export function stopChatRecovery(state: ChatStreamState) {
 }
 
 export function scheduleChatRecovery(state: ChatStreamState) {
+  scheduleChatRecoveryWithState(state, async () => undefined);
+}
+
+export function scheduleChatRecoveryWithState(
+  state: ChatStreamState,
+  loadConversationDetail: (conversationId: string) => Promise<void>,
+) {
   startChatRecoveryPolling({
     recoveryTimer: state.recoveryTimer,
     streamController: state.streamController,
@@ -150,7 +168,7 @@ export function scheduleChatRecovery(state: ChatStreamState) {
     isStreaming: () => state.streaming.value,
     loadConversationDetail: async (conversationId) => {
       flushPendingMessages(state);
-      syncMessageList(state, await loadConversationMessages(conversationId));
+      await loadConversationDetail(conversationId);
     },
   });
 }
@@ -158,6 +176,7 @@ export function scheduleChatRecovery(state: ChatStreamState) {
 export async function dispatchSendMessage(
   state: ChatStreamState,
   input: ChatSendInput,
+  params?: ConversationRefreshParams,
 ) {
   if (!state.currentConversationId.value || state.streaming.value) {
     return;
@@ -197,6 +216,7 @@ export async function dispatchSendMessage(
   const controller = new AbortController();
   state.streamController.value = controller;
   stopChatRecovery(state);
+  let didRefreshConversationStateDuringStream = false;
 
   try {
     await sendConversationMessage(
@@ -205,6 +225,11 @@ export async function dispatchSendMessage(
       (event) => {
         if (state.currentConversationId.value !== requestConversationId) {
           return;
+        }
+
+        if (!didRefreshConversationStateDuringStream) {
+          didRefreshConversationStateDuringStream = true;
+          void params?.refreshConversationSummary?.().catch(() => undefined);
         }
 
         queueMessageCommit(
@@ -242,8 +267,12 @@ export async function dispatchSendMessage(
       state.streamController.value = null;
     }
 
+    await params?.refreshConversationState?.().catch(() => undefined);
     if (state.currentConversationId.value === requestConversationId) {
-      scheduleChatRecovery(state);
+      scheduleChatRecoveryWithState(
+        state,
+        params?.loadConversationDetail ?? (async () => undefined),
+      );
     }
   }
 }
@@ -251,6 +280,7 @@ export async function dispatchSendMessage(
 export async function dispatchRetryMessage(
   state: ChatStreamState,
   messageId: string,
+  params?: ConversationRefreshParams,
 ) {
   if (!state.currentConversationId.value || state.streaming.value) {
     return;
@@ -283,6 +313,7 @@ export async function dispatchRetryMessage(
   const controller = new AbortController();
   state.streamController.value = controller;
   stopChatRecovery(state);
+  let didRefreshConversationStateDuringStream = false;
 
   try {
     await retryConversationMessage(
@@ -295,6 +326,11 @@ export async function dispatchRetryMessage(
       (event) => {
         if (state.currentConversationId.value !== requestConversationId) {
           return;
+        }
+
+        if (!didRefreshConversationStateDuringStream) {
+          didRefreshConversationStateDuringStream = true;
+          void params?.refreshConversationSummary?.().catch(() => undefined);
         }
 
         queueMessageCommit(
@@ -327,8 +363,12 @@ export async function dispatchRetryMessage(
       state.streamController.value = null;
     }
 
+    await params?.refreshConversationState?.().catch(() => undefined);
     if (state.currentConversationId.value === requestConversationId) {
-      scheduleChatRecovery(state);
+      scheduleChatRecoveryWithState(
+        state,
+        params?.loadConversationDetail ?? (async () => undefined),
+      );
     }
   }
 }

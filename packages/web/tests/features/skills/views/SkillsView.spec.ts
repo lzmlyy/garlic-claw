@@ -130,6 +130,13 @@ vi.mock('@/features/skills/composables/use-skill-management', () => ({
   }),
 }))
 
+vi.mock('@/features/tools/components/ToolGovernancePanel.vue', () => ({
+  default: {
+    name: 'ToolGovernancePanel',
+    template: '<div>技能工具治理</div>',
+  },
+}))
+
 describe('SkillsView', () => {
   it('renders the skill workspace, active state, and markdown preview', () => {
     const wrapper = mount(SkillsView)
@@ -140,6 +147,7 @@ describe('SkillsView', () => {
     expect(wrapper.text()).toContain('kb.search')
     expect(wrapper.text()).toContain('可执行脚本')
     expect(wrapper.text()).toContain('scripts/plan.js')
+    expect(wrapper.text()).toContain('技能工具治理')
     expect(wrapper.text()).toContain('把复杂请求拆成 3-5 步')
   })
 })

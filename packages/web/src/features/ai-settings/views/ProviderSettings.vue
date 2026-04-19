@@ -38,6 +38,7 @@
         @set-default-model="setDefaultModel"
         @test-connection="testProviderConnection"
         @update-capabilities="updateCapabilities"
+        @update-context-length="updateContextLength"
       />
 
       <VisionFallbackPanel
@@ -119,6 +120,7 @@ const {
   deleteModel,
   setDefaultModel,
   updateCapabilities,
+  updateContextLength,
   testProviderConnection,
   saveVisionConfig,
   saveHostModelRoutingConfig,
