@@ -49,7 +49,48 @@ export class ConversationController {
   listConversations(@CurrentUser('id') userId: string) { return this.conversationStore.listConversations(userId); }
 
   @Get('conversations/:id')
-  getConversation(@CurrentUser('id') userId: string, @Param('id', routeUuidPipe) id: string) { return this.conversationStore.getConversation(id, userId); }
+  getConversation(@CurrentUser('id') userId: string, @Param('id', routeUuidPipe) id: string) {
+    return decorateConversationRuntimeState(
+      this.conversationStore.getConversation(id, userId) as unknown as RuntimeConversationRecord,
+      (messageId) => this.conversationTaskService.hasTask(messageId),
+    );
+  }
+
+  @Get('conversations/:id/events')
+  async streamConversationEvents(
+    @CurrentUser('id') userId: string,
+    @Param('id', routeUuidPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const conversation = this.requireOwnedConversation(userId, id);
+    if (conversation.kind === 'subagent' && conversation.subagent) {
+      const pluginId = conversation.subagent.pluginId;
+      await streamAttachedSubagentEvents(
+        res,
+        {
+          subscribe: (listener) => this.subagentRunner.subscribe(id, listener),
+          wait: async () => {
+            await this.subagentRunner.waitSubagent(pluginId, { conversationId: id });
+          },
+        },
+        () => readCurrentSubagentStreamStart(this.conversationStore.requireConversation(id, userId)),
+        conversation.subagent.status === 'queued' || conversation.subagent.status === 'running',
+      );
+      return;
+    }
+    await streamAttachedConversationTaskEvents(
+      res,
+      this.conversationTaskService,
+      () => readCurrentConversationTaskStart(
+        this.conversationStore.requireConversation(id, userId),
+        (messageId) => this.conversationTaskService.hasTask(messageId),
+      ),
+      async (assistantMessageId) => readConversationTaskContinuationStart(
+        this.conversationStore.requireConversation(id, userId),
+        assistantMessageId,
+      ),
+    );
+  }
 
   @Get('conversations/:id/context-window')
   getConversationContextWindow(
@@ -323,6 +364,243 @@ async function streamSubagentEvents(
   writeSse(res, '[DONE]', true);
 }
 
+async function streamAttachedConversationTaskEvents(
+  res: Response,
+  conversationTaskService: Pick<ConversationTaskService, 'subscribe' | 'waitForTask'>,
+  readCurrentTaskStart: () => { assistantMessageId: string; startPayload: object | null } | null,
+  readNextTaskStart?: (assistantMessageId: string) => Promise<{ assistantMessageId: string; startPayload: object } | null> | { assistantMessageId: string; startPayload: object } | null,
+) {
+  const stopHeartbeat = startSseHeartbeat(res);
+  initSse(res);
+  let unsubscribe: () => void = () => undefined;
+  res.on('close', () => {
+    unsubscribe();
+    stopHeartbeat();
+  });
+  try {
+    let nextTask = readCurrentTaskStart();
+    while (nextTask) {
+      const gate = createBufferedEventGate();
+      unsubscribe = conversationTaskService.subscribe(nextTask.assistantMessageId, (event) => {
+        if (gate.shouldBuffer()) {
+          gate.buffer(event);
+          return;
+        }
+        writeSse(res, event);
+      });
+      if (!nextTask.startPayload) {
+        activateBufferedEventGateLive(res, gate);
+        await conversationTaskService.waitForTask(nextTask.assistantMessageId);
+        unsubscribe();
+        unsubscribe = () => undefined;
+        nextTask = readNextTaskStart ? await readNextTaskStart(nextTask.assistantMessageId) : null;
+        continue;
+      }
+      const synchronized = synchronizeBufferedTaskStart(res, gate, readCurrentTaskStart);
+      flushBufferedAttachEvents(
+        res,
+        synchronized.consumedBufferedEvents,
+        synchronized.nextTask?.assistantMessageId ?? null,
+      );
+      if (!synchronized.nextTask) {
+        unsubscribe();
+        unsubscribe = () => undefined;
+        break;
+      }
+      const synchronizedTask = synchronized.nextTask;
+      if (!synchronizedTask.startPayload) {
+        unsubscribe();
+        unsubscribe = () => undefined;
+        nextTask = synchronizedTask;
+        continue;
+      }
+      if (synchronizedTask.assistantMessageId !== nextTask.assistantMessageId) {
+        unsubscribe();
+        unsubscribe = () => undefined;
+        nextTask = synchronizedTask;
+        continue;
+      }
+      activateBufferedEventGateLive(res, gate);
+      await conversationTaskService.waitForTask(nextTask.assistantMessageId);
+      unsubscribe();
+      unsubscribe = () => undefined;
+      nextTask = readNextTaskStart ? await readNextTaskStart(nextTask.assistantMessageId) : null;
+    }
+  } catch (error) {
+    writeSse(res, { error: error instanceof Error ? error.message : '未知错误', type: 'error' });
+  }
+  stopHeartbeat();
+  writeSse(res, '[DONE]', true);
+}
+
+async function streamAttachedSubagentEvents(
+  res: Response,
+  runtime: {
+    subscribe: (listener: (event: object) => void) => () => void;
+    wait: () => Promise<void>;
+  },
+  readCurrentTaskStart: () => { assistantMessageId: string; startPayload: object } | null,
+  keepAliveWithoutStart = false,
+) {
+  const stopHeartbeat = startSseHeartbeat(res);
+  initSse(res);
+  const gate = createBufferedEventGate();
+  let unsubscribe: () => void = runtime.subscribe((event) => {
+    if (gate.shouldBuffer()) {
+      gate.buffer(event);
+      return;
+    }
+    writeSse(res, event);
+  });
+  res.on('close', () => {
+    unsubscribe();
+    stopHeartbeat();
+  });
+  try {
+    const synchronized = synchronizeBufferedTaskStart(res, gate, readCurrentTaskStart);
+    flushBufferedAttachEvents(
+      res,
+      synchronized.consumedBufferedEvents,
+      synchronized.nextTask?.assistantMessageId ?? null,
+    );
+    if (synchronized.nextTask) {
+      activateBufferedEventGateLive(res, gate);
+      await runtime.wait();
+    } else if (keepAliveWithoutStart) {
+      activateBufferedEventGateLive(res, gate);
+      await runtime.wait();
+    } else {
+      unsubscribe();
+      unsubscribe = () => undefined;
+    }
+  } catch (error) {
+    writeSse(res, { error: error instanceof Error ? error.message : '未知错误', type: 'error' });
+  }
+  stopHeartbeat();
+  writeSse(res, '[DONE]', true);
+}
+
+export function createBufferedEventGate() {
+  const bufferedEvents: object[] = [];
+  let live = false;
+  return {
+    activateLive() {
+      live = true;
+      const pendingEvents = [...bufferedEvents];
+      bufferedEvents.length = 0;
+      return pendingEvents;
+    },
+    buffer(event: object) {
+      bufferedEvents.push(event);
+    },
+    shouldBuffer() {
+      return !live;
+    },
+    takeBufferedEvents() {
+      const pendingEvents = [...bufferedEvents];
+      bufferedEvents.length = 0;
+      return pendingEvents;
+    },
+  };
+}
+
+export function synchronizeBufferedTaskStart(
+  res: Response,
+  gate: ReturnType<typeof createBufferedEventGate>,
+  readCurrentTaskStart: () => { assistantMessageId: string; startPayload: object | null } | null,
+) {
+  const consumedBufferedEvents: object[] = [];
+  while (true) {
+    const nextTask = readCurrentTaskStart();
+    if (!nextTask) {
+      return { consumedBufferedEvents, nextTask: null };
+    }
+    if (!nextTask.startPayload) {
+      return { consumedBufferedEvents, nextTask };
+    }
+    writeSse(res, nextTask.startPayload);
+    const bufferedEvents = gate.takeBufferedEvents();
+    consumedBufferedEvents.push(...bufferedEvents);
+    if (bufferedEvents.length === 0) {
+      return { consumedBufferedEvents, nextTask };
+    }
+  }
+}
+
+export function activateBufferedEventGateLive(
+  res: Response,
+  gate: ReturnType<typeof createBufferedEventGate>,
+) {
+  for (const bufferedEvent of gate.activateLive()) {
+    writeSse(res, bufferedEvent);
+  }
+}
+
+function flushBufferedAttachEvents(
+  res: Response,
+  bufferedEvents: object[],
+  activeAssistantMessageId: string | null,
+) {
+  for (const event of bufferedEvents) {
+    if (
+      activeAssistantMessageId
+      && isAssistantSnapshotCoveredAttachEvent(event, activeAssistantMessageId)
+    ) {
+      continue;
+    }
+    writeSse(res, event);
+  }
+}
+
+function isAssistantSnapshotCoveredAttachEvent(
+  event: object,
+  activeAssistantMessageId: string,
+) {
+  const eventType = readBufferedAttachEventType(event);
+  if (!eventType) {
+    return false;
+  }
+  if (![
+    'error',
+    'finish',
+    'message-metadata',
+    'message-patch',
+    'message-start',
+    'retry',
+    'status',
+    'text-delta',
+    'tool-call',
+    'tool-result',
+  ].includes(eventType)) {
+    return false;
+  }
+  return readBufferedAttachEventMessageId(event) === activeAssistantMessageId;
+}
+
+function readBufferedAttachEventMessageId(event: object): string | null {
+  if (!isRecord(event)) {
+    return null;
+  }
+  if (typeof event.messageId === 'string' && event.messageId.trim()) {
+    return event.messageId;
+  }
+  if (
+    isRecord(event.assistantMessage)
+    && typeof event.assistantMessage.id === 'string'
+    && event.assistantMessage.id.trim()
+  ) {
+    return event.assistantMessage.id;
+  }
+  return null;
+}
+
+function readBufferedAttachEventType(event: object): string | null {
+  if (!isRecord(event) || typeof event.type !== 'string' || !event.type.trim()) {
+    return null;
+  }
+  return event.type;
+}
+
 function initSse(res: Response) {
   for (const [name, value] of [['Content-Type', 'text/event-stream'], ['Cache-Control', 'no-cache'], ['Connection', 'keep-alive'], ['Access-Control-Allow-Origin', '*']] as const) {res.setHeader(name, value);}
   res.flushHeaders();
@@ -426,6 +704,73 @@ function readConversationTaskContinuationStart(
       assistantMessage: serializeConversationMessage(continuation.nextAssistant as unknown as JsonObject),
       type: 'message-start' as const,
       userMessage: serializeConversationMessage(continuation.syntheticContinueUser as unknown as JsonObject),
+    },
+  };
+}
+
+function readCurrentConversationTaskStart(
+  conversation: RuntimeConversationRecord,
+  hasTask: (messageId: string) => boolean,
+): { assistantMessageId: string; startPayload: object | null } | null {
+  const activeMessage = readLastActiveConversationTaskMessage(conversation);
+  if (!activeMessage?.id) {
+    const runningAssistantMessageId = readLastConversationTaskMessageId(conversation, hasTask);
+    if (!runningAssistantMessageId) {
+      return null;
+    }
+    return {
+      assistantMessageId: runningAssistantMessageId,
+      startPayload: null,
+    };
+  }
+  return {
+    assistantMessageId: activeMessage.id,
+    startPayload: {
+      assistantMessage: serializeConversationMessage(activeMessage as unknown as JsonObject),
+      type: 'message-start' as const,
+    },
+  };
+}
+
+function decorateConversationRuntimeState(
+  conversation: RuntimeConversationRecord,
+  hasTask: (messageId: string) => boolean,
+) {
+  return {
+    ...conversation,
+    isRunning: readConversationRunningState(conversation, hasTask),
+  };
+}
+
+function readConversationRunningState(
+  conversation: RuntimeConversationRecord,
+  hasTask: (messageId: string) => boolean,
+): boolean {
+  if (
+    conversation.subagent
+    && (conversation.subagent.status === 'queued' || conversation.subagent.status === 'running')
+  ) {
+    return true;
+  }
+  if (readLastActiveConversationTaskMessage(conversation)?.id) {
+    return true;
+  }
+  return Boolean(readLastConversationTaskMessageId(conversation, hasTask));
+}
+
+function readCurrentSubagentStreamStart(
+  conversation: RuntimeConversationRecord,
+): { assistantMessageId: string; startPayload: object } | null {
+  const activeAssistantMessageId = readActiveSubagentAssistantMessageId(conversation);
+  if (!activeAssistantMessageId) {
+    return null;
+  }
+  const assistantMessage = requireConversationMessage(conversation, activeAssistantMessageId);
+  return {
+    assistantMessageId: activeAssistantMessageId,
+    startPayload: {
+      assistantMessage: serializeConversationMessage(assistantMessage as unknown as JsonObject),
+      type: 'message-start' as const,
     },
   };
 }
@@ -549,6 +894,39 @@ function readActiveConversationTaskMessageIds(conversation: RuntimeConversationR
       ? [message.id]
       : []
   ));
+}
+
+function readLastActiveConversationTaskMessage(
+  conversation: RuntimeConversationRecord,
+): (RuntimeConversationRecord['messages'][number] & { id: string }) | null {
+  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
+    const message = conversation.messages[index];
+    if (
+      (message.role === 'assistant' || message.role === 'display')
+      && typeof message.id === 'string'
+      && (message.status === 'pending' || message.status === 'streaming')
+    ) {
+      return message as RuntimeConversationRecord['messages'][number] & { id: string };
+    }
+  }
+  return null;
+}
+
+function readLastConversationTaskMessageId(
+  conversation: RuntimeConversationRecord,
+  hasTask: (messageId: string) => boolean,
+): string | null {
+  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
+    const message = conversation.messages[index];
+    if (
+      message.role === 'assistant'
+      && typeof message.id === 'string'
+      && hasTask(message.id)
+    ) {
+      return message.id;
+    }
+  }
+  return null;
 }
 
 function requireConversationMessage(

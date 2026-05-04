@@ -15,7 +15,7 @@ import type { ChatMessage } from './chat-store.types'
  * 一次流式请求在本地的占位上下文。
  */
 export interface StreamEventContext {
-  requestKind: 'send' | 'retry'
+  requestKind: 'attach' | 'send' | 'retry'
   optimisticUserId?: string
   optimisticAssistantId?: string
   targetMessageId?: string

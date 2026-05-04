@@ -13,6 +13,7 @@ import type {
 import {
   retryConversationMessage,
   sendConversationMessage,
+  streamConversationEvents,
 } from "@/modules/chat/modules/chat-conversation.data";
 import {
   startChatRecoveryPolling,
@@ -522,6 +523,88 @@ export async function dispatchRetryMessage(
       recoverStreamingConversationImmediately(
         state,
         requestConversationId,
+        params?.loadConversationDetail ?? (async () => undefined),
+      );
+    }
+  }
+}
+
+export async function attachConversationStream(
+  state: ChatStreamState,
+  conversationId: string,
+  params?: ConversationRefreshParams,
+) {
+  if (
+    state.currentConversationId.value !== conversationId
+    || state.streamController.value
+  ) {
+    return;
+  }
+
+  const controller = new AbortController();
+  state.streamController.value = controller;
+  stopChatRecovery(state);
+  let didRefreshConversationStateDuringStream = false;
+  let didChangeRuntimePermissionsDuringStream = false;
+
+  try {
+    await streamConversationEvents(
+      conversationId,
+      (event) => {
+        if (state.currentConversationId.value !== conversationId) {
+          return;
+        }
+
+        if (
+          event.type === "permission-request"
+          || event.type === "permission-resolved"
+        ) {
+          didChangeRuntimePermissionsDuringStream = true;
+          applyRuntimePermissionEvent(state, event);
+          return;
+        }
+        if (event.type === "todo-updated") {
+          applyTodoUpdatedEvent(state, event);
+          return;
+        }
+
+        if (!didRefreshConversationStateDuringStream) {
+          didRefreshConversationStateDuringStream = true;
+          void params?.refreshConversationSummary?.().catch(() => undefined);
+        }
+        const nextMessages = applySseEvent(getLatestMessages(state), event, {
+          requestKind: "attach",
+          targetMessageId: state.currentStreamingMessageId.value ?? undefined,
+        });
+        if (event.type === "message-start") {
+          commitMessagesImmediately(state, nextMessages);
+          if (isAutoCompactionContinuationStart(event)) {
+            void params?.refreshConversationSnapshot?.().catch(() => undefined);
+          }
+          return;
+        }
+        if (event.type === "text-delta") {
+          queueMessageCommit(state, nextMessages);
+          return;
+        }
+        commitMessagesImmediately(state, nextMessages);
+      },
+      controller.signal,
+    );
+  } finally {
+    flushPendingMessages(state);
+    if (state.streamController.value === controller) {
+      state.streamController.value = null;
+    }
+
+    void params?.refreshConversationState?.({
+      permissionStateChanged: didChangeRuntimePermissionsDuringStream,
+      summaryRefreshed: didRefreshConversationStateDuringStream,
+    }).catch(() => undefined);
+    if (state.currentConversationId.value === conversationId) {
+      recoverStreamingConversationImmediately(
+        state,
+        conversationId,
         params?.loadConversationDetail ?? (async () => undefined),
       );
     }

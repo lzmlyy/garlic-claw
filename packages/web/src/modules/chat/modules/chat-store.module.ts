@@ -8,6 +8,7 @@ import type {
   RuntimePermissionDecision,
 } from "@garlic-claw/shared";
 import {
+  attachConversationStream,
   abortChatStream,
   discardPendingMessageUpdates,
   dispatchRetryMessage,
@@ -26,6 +27,7 @@ import {
   loadConversationList,
   loadConversationMessages,
   loadConversationTodoRecord,
+  readLoadedConversationRunningState,
   replyRuntimePermissionRecord,
   stopConversationMessageRecord,
   updateConversationMessageRecord,
@@ -774,6 +776,22 @@ export function createChatStoreModule() {
 
     replaceMessages(nextMessages);
     syncChatStreamingState(streamState);
+    const conversationStillRunning = readLoadedConversationRunningState(conversationId);
+    if (
+      currentConversationId.value === conversationId
+      && !streamController.value
+      && (streaming.value || conversationStillRunning)
+    ) {
+      void attachConversationStream(streamState, conversationId, {
+        loadConversationDetail: loadConversationRecoverySnapshot,
+        refreshConversationSnapshot: () =>
+          loadConversationWindowSnapshot(conversationId),
+        refreshConversationSummary: () =>
+          refreshConversationSummary(conversationId),
+        refreshConversationState: (input) =>
+          refreshConversationStreamState(conversationId, input),
+      });
+    }
   }
 
   async function loadConversationContextWindow(conversationId: string) {

@@ -107,6 +107,10 @@ export class ConversationTaskService {
     return () => task.listeners.delete(listener);
   }
 
+  hasTask(messageId: string): boolean {
+    return this.tasks.has(messageId);
+  }
+
   async waitForTask(messageId: string): Promise<void> { await this.tasks.get(messageId)?.completion; }
 
   async stopTask(messageId: string): Promise<boolean> {

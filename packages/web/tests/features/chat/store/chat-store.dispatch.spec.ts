@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@/modules/chat/store/chat-store.types'
 import { BusinessError } from '@/shared/utils/error'
 import {
+  attachConversationStream,
   abortChatStream,
   discardPendingMessageUpdates,
   dispatchSendMessage,
@@ -15,6 +16,7 @@ vi.mock('@/modules/chat/modules/chat-conversation.data', () => ({
   sendConversationMessage: vi.fn(),
   retryConversationMessage: vi.fn(),
   loadConversationMessages: vi.fn(),
+  streamConversationEvents: vi.fn(),
 }))
 
 function createState(messages: ChatMessage[] = []) {
@@ -653,6 +655,87 @@ describe('dispatchSendMessage', () => {
 
     resolveStream?.()
     await sendTask
+  })
+
+  it('applies attached tool events immediately while an existing conversation stream is still open', async () => {
+    vi.useFakeTimers()
+    let resolveStream: (() => void) | null = null
+    vi.mocked(chatConversationData.streamConversationEvents).mockImplementation(
+      async (_conversationId, onEvent) => new Promise<void>((resolve) => {
+        onEvent({
+          type: 'tool-call',
+          messageId: 'assistant-1',
+          toolCallId: 'tool-call-1',
+          toolName: 'read',
+          input: {
+            filePath: 'docs/plan.md',
+          },
+        })
+        onEvent({
+          type: 'tool-result',
+          messageId: 'assistant-1',
+          toolCallId: 'tool-call-1',
+          toolName: 'read',
+          output: {
+            content: '阶段计划',
+          },
+        })
+        onEvent({
+          type: 'finish',
+          messageId: 'assistant-1',
+          status: 'completed',
+        })
+        resolveStream = resolve
+      }),
+    )
+    const state = createState([
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '继续执行',
+        status: 'completed',
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        status: 'streaming',
+        toolCalls: [],
+        toolResults: [],
+      },
+    ])
+    state.currentStreamingMessageId.value = 'assistant-1'
+    state.streaming.value = true
+
+    const attachTask = attachConversationStream(state, 'conversation-1')
+    await Promise.resolve()
+
+    expect(state.messages.value).toEqual([
+      expect.objectContaining({
+        id: 'user-1',
+        role: 'user',
+      }),
+      expect.objectContaining({
+        id: 'assistant-1',
+        role: 'assistant',
+        status: 'completed',
+        toolCalls: [
+          expect.objectContaining({
+            toolCallId: 'tool-call-1',
+            toolName: 'read',
+          }),
+        ],
+        toolResults: [
+          expect.objectContaining({
+            toolCallId: 'tool-call-1',
+            toolName: 'read',
+          }),
+        ],
+      }),
+    ])
+
+    resolveStream?.()
+    await attachTask
   })
 
   it('swallows summary refresh failures during streaming and still completes final refresh', async () => {

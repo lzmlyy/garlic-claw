@@ -451,7 +451,7 @@ describe('SubagentRunnerService', () => {
       })
       .mockResolvedValueOnce({ compactionTriggered: false, continuation: null });
 
-    const summary = await fixture.runner.spawnSubagent('builtin.memory', 'Memory', {
+    await fixture.runner.spawnSubagent('builtin.memory', 'Memory', {
       conversationId: fixture.parentConversationId,
       source: 'plugin',
       userId: 'user-1',

@@ -140,6 +140,26 @@ export async function retryMessageSSE(
   }
 }
 
+export async function streamConversationEventsSSE(
+  conversationId: string,
+  onEvent: (event: SSEEvent) => void,
+  signal?: AbortSignal,
+) {
+  try {
+    const response = await requestRaw(`/chat/conversations/${conversationId}/events`, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+      },
+      signal,
+      timeout: 0,
+    });
+    await consumeSseResponse(response, onEvent);
+  } catch (error) {
+    throw toAppError(error, "Attach conversation stream failed");
+  }
+}
+
 async function createSseRequest(
   path: string,
   payload: SendMessagePayload | RetryMessagePayload,

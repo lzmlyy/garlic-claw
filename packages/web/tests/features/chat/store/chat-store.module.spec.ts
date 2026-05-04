@@ -13,12 +13,14 @@ vi.mock('@/modules/chat/modules/chat-conversation.data', () => ({
   loadConversationList: vi.fn(),
   loadConversationMessages: vi.fn(),
   loadConversationTodoRecord: vi.fn(),
+  readLoadedConversationRunningState: vi.fn(),
   replyRuntimePermissionRecord: vi.fn(),
   stopConversationMessageRecord: vi.fn(),
   updateConversationMessageRecord: vi.fn(),
 }))
 
 vi.mock('@/modules/chat/modules/chat-stream.module', () => ({
+  attachConversationStream: vi.fn(),
   abortChatStream: vi.fn(),
   discardPendingMessageUpdates: vi.fn(),
   dispatchRetryMessage: vi.fn(),
@@ -62,6 +64,7 @@ describe('createChatStoreModule', () => {
     vi.mocked(chatConversationData.loadConversationList).mockReset().mockResolvedValue([])
     vi.mocked(chatConversationData.loadConversationMessages).mockReset().mockResolvedValue([])
     vi.mocked(chatConversationData.loadConversationTodoRecord).mockReset().mockResolvedValue([])
+    vi.mocked(chatConversationData.readLoadedConversationRunningState).mockReset().mockReturnValue(false)
     vi.mocked(chatConversationData.replyRuntimePermissionRecord).mockReset().mockResolvedValue({
       requestId: 'permission-1',
       resolution: 'approved',
@@ -69,6 +72,7 @@ describe('createChatStoreModule', () => {
     vi.mocked(chatConversationData.stopConversationMessageRecord).mockReset()
     vi.mocked(chatConversationData.updateConversationMessageRecord).mockReset()
     vi.mocked(chatStreamModule.abortChatStream).mockReset()
+    vi.mocked(chatStreamModule.attachConversationStream).mockReset()
     vi.mocked(chatStreamModule.discardPendingMessageUpdates).mockReset()
     vi.mocked(chatStreamModule.dispatchRetryMessage).mockReset().mockResolvedValue(undefined)
     vi.mocked(chatStreamModule.dispatchSendMessage).mockReset().mockResolvedValue(undefined)
@@ -155,6 +159,156 @@ describe('createChatStoreModule', () => {
     expect(chatConversationData.loadConversationMessages).not.toHaveBeenCalled()
     expect(chatConversationData.loadConversationTodoRecord).not.toHaveBeenCalled()
     expect(chatConversationData.loadPendingRuntimePermissionsRecord).not.toHaveBeenCalled()
+  })
+
+  it('attaches a live stream after selecting a running subagent conversation', async () => {
+    vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '继续执行',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: null,
+        model: null,
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        status: 'streaming',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
+    ])
+    vi.mocked(chatStreamModule.syncChatStreamingState).mockImplementation((state) => {
+      state.currentStreamingMessageId.value = 'assistant-1'
+      state.streaming.value = true
+    })
+    vi.mocked(chatStreamModule.attachConversationStream).mockImplementation(
+      (state) => {
+        state.streamController.value = new AbortController()
+        return Promise.resolve()
+      },
+    )
+
+    const store = createChatStoreModule()
+
+    await store.selectConversation('conversation-1')
+
+    expect(chatStreamModule.attachConversationStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentConversationId: expect.objectContaining({ value: 'conversation-1' }),
+      }),
+      'conversation-1',
+      expect.objectContaining({
+        loadConversationDetail: expect.any(Function),
+        refreshConversationState: expect.any(Function),
+      }),
+    )
+    expect(chatStreamModule.attachConversationStream.mock.invocationCallOrder[0]).toBeLessThanOrEqual(
+      chatStreamModule.scheduleChatRecoveryWithState.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    )
+  })
+
+  it('attaches a live stream after selecting a running main conversation', async () => {
+    vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '继续执行',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: null,
+        model: null,
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        status: 'streaming',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
+    ])
+    vi.mocked(chatStreamModule.syncChatStreamingState).mockImplementation((state) => {
+      state.currentStreamingMessageId.value = 'assistant-1'
+      state.streaming.value = true
+    })
+
+    const store = createChatStoreModule()
+
+    await store.selectConversation('conversation-1')
+
+    expect(chatStreamModule.attachConversationStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentConversationId: expect.objectContaining({ value: 'conversation-1' }),
+      }),
+      'conversation-1',
+      expect.objectContaining({
+        loadConversationDetail: expect.any(Function),
+        refreshConversationState: expect.any(Function),
+      }),
+    )
+  })
+
+  it('attaches a live stream when the server still marks the conversation as running without an active assistant message', async () => {
+    vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '继续执行',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: null,
+        model: null,
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '首轮完成',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
+    ])
+    vi.mocked(chatConversationData.readLoadedConversationRunningState).mockReturnValue(true)
+
+    const store = createChatStoreModule()
+
+    await store.selectConversation('conversation-1')
+
+    expect(chatStreamModule.attachConversationStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentConversationId: expect.objectContaining({ value: 'conversation-1' }),
+      }),
+      'conversation-1',
+      expect.objectContaining({
+        loadConversationDetail: expect.any(Function),
+        refreshConversationState: expect.any(Function),
+      }),
+    )
   })
 
   it('refreshes conversation-related state after a streamed send finishes', async () => {

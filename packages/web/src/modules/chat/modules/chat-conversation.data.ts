@@ -21,10 +21,13 @@ import {
   retryMessageSSE,
   sendMessageSSE,
   stopConversationMessage,
+  streamConversationEventsSSE,
   updateConversationMessage,
 } from '@/modules/chat/api/chat'
 import { dbMessageToChat } from '@/modules/chat/store/chat-store.helpers'
 import type { ChatMessage } from '@/modules/chat/store/chat-store.types'
+
+const loadedConversationRunningState = new Map<string, boolean>()
 
 export function loadConversationList(): Promise<Conversation[]> {
   return listConversations()
@@ -35,12 +38,25 @@ export function createConversationRecord(title?: string): Promise<Conversation> 
 }
 
 export function deleteConversationRecord(conversationId: string) {
+  loadedConversationRunningState.delete(conversationId)
   return deleteConversation(conversationId)
 }
 
 export async function loadConversationMessages(conversationId: string): Promise<ChatMessage[]> {
   const detail = await getConversation(conversationId)
+  loadedConversationRunningState.set(
+    conversationId,
+    Boolean(
+      detail.isRunning
+      || detail.subagent?.status === 'queued'
+      || detail.subagent?.status === 'running',
+    ),
+  )
   return detail.messages.map(dbMessageToChat)
+}
+
+export function readLoadedConversationRunningState(conversationId: string): boolean {
+  return loadedConversationRunningState.get(conversationId) ?? false
 }
 
 export function loadConversationTodoRecord(
@@ -96,6 +112,14 @@ export function retryConversationMessage(
   signal?: AbortSignal,
 ) {
   return retryMessageSSE(conversationId, messageId, payload, onEvent, signal)
+}
+
+export function streamConversationEvents(
+  conversationId: string,
+  onEvent: Parameters<typeof streamConversationEventsSSE>[1],
+  signal?: AbortSignal,
+) {
+  return streamConversationEventsSSE(conversationId, onEvent, signal)
 }
 
 export async function updateConversationMessageRecord(

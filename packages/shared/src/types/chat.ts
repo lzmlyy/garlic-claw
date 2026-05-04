@@ -285,6 +285,8 @@ export interface Conversation {
   updatedAt: string;
   /** 子代理元数据。 */
   subagent?: ConversationSubagentState;
+  /** 当前是否仍有运行中的主任务或子代理任务。 */
+  isRunning?: boolean;
   /** 消息数量统计。 */
   _count?: ConversationCount;
 }

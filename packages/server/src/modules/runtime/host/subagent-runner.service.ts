@@ -448,6 +448,9 @@ export class SubagentRunnerService {
     try {
       while (true) {
         const refreshed = this.requireSubagentConversation(conversation.id);
+        let liveToolCalls: JsonValue[] = [];
+        let liveToolResults: JsonValue[] = [];
+        this.conversationMessages.writeMessage(refreshed.id, assistantMessageId, { status: 'streaming' });
         this.emit(refreshed.id, { messageId: assistantMessageId, status: 'streaming', type: 'status' });
         const execution = normalizeResolvedSubagentExecution(await this.executeSubagent({
           abortSignal,
@@ -459,9 +462,34 @@ export class SubagentRunnerService {
             this.emit(refreshed.id, { messageId: assistantMessageId, text: delta, type: 'text-delta' });
           },
           onToolCall: (toolCall) => {
+            liveToolCalls = [
+              ...liveToolCalls,
+              asJsonValue({
+                input: toolCall.input,
+                toolCallId: toolCall.toolCallId,
+                toolName: toolCall.toolName,
+              }),
+            ];
+            this.conversationMessages.writeMessage(refreshed.id, assistantMessageId, {
+              status: 'streaming',
+              toolCalls: liveToolCalls,
+            });
             this.emit(refreshed.id, { ...toolCall, messageId: assistantMessageId, type: 'tool-call' });
           },
           onToolResult: (toolResult) => {
+            liveToolResults = [
+              ...liveToolResults,
+              asJsonValue({
+                output: toolResult.output,
+                toolCallId: toolResult.toolCallId,
+                toolName: toolResult.toolName,
+              }),
+            ];
+            this.conversationMessages.writeMessage(refreshed.id, assistantMessageId, {
+              status: 'streaming',
+              toolCalls: liveToolCalls,
+              toolResults: liveToolResults,
+            });
             this.emit(refreshed.id, { ...toolResult, messageId: assistantMessageId, type: 'tool-result' });
           },
         }));

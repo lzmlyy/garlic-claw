@@ -1,14 +1,19 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { ConversationController } from '../../src/modules/conversation/conversation.controller';
+import {
+  activateBufferedEventGateLive,
+  ConversationController,
+  createBufferedEventGate,
+  synchronizeBufferedTaskStart,
+} from '../../src/modules/conversation/conversation.controller';
 
 describe('ConversationController', () => {
   const conversationId = '11111111-1111-4111-8111-111111111111';
   const assistantMessageId = '22222222-2222-4222-8222-222222222222';
   const conversationMessagePlanningService = { getContextWindowPreview: jest.fn() };
   const conversationMessageLifecycleService = { retryMessageGeneration: jest.fn(), startMessageGeneration: jest.fn(), stopMessageGeneration: jest.fn() };
-  const conversationTaskService = { stopTask: jest.fn(), subscribe: jest.fn(), waitForTask: jest.fn() };
+  const conversationTaskService = { hasTask: jest.fn(), stopTask: jest.fn(), subscribe: jest.fn(), waitForTask: jest.fn() };
   const runtimeToolPermissionService = { listPendingRequests: jest.fn(), reply: jest.fn() };
   const conversationMessages = { deleteMessage: jest.fn(), updateMessage: jest.fn() };
   const conversationTodos = { deleteSessionTodo: jest.fn(), readSessionTodo: jest.fn(), replaceSessionTodo: jest.fn() };
@@ -27,6 +32,7 @@ describe('ConversationController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     subagentRunner.subscribe.mockReturnValue(() => undefined);
+    conversationTaskService.hasTask.mockReturnValue(false);
     conversationStore.requireConversation.mockReturnValue({
       createdAt: '2026-04-11T00:00:00.000Z',
       id: conversationId,
@@ -65,6 +71,66 @@ describe('ConversationController', () => {
     expect(source).toContain("@Param('messageId', routeUuidPipe) messageId: string");
   });
 
+  it('re-reads attach start snapshots while buffered events keep arriving', () => {
+    const response = createResponseStub();
+    const gate = createBufferedEventGate();
+    let readCount = 0;
+    response.write.mockImplementation((chunk: string) => {
+      if (chunk.includes('"assistant-1"') && readCount === 1) {
+        gate.buffer({ messageId: 'assistant-1', toolCallId: 'tool-call-1', toolName: 'read', type: 'tool-call' });
+      }
+      return true;
+    });
+
+    const synchronized = synchronizeBufferedTaskStart(
+      response as never,
+      gate,
+      () => {
+        readCount += 1;
+        return {
+          assistantMessageId: 'assistant-1',
+          startPayload: {
+            assistantMessage: { id: 'assistant-1', role: 'assistant', status: 'streaming' },
+            type: 'message-start',
+          },
+        };
+      },
+    );
+
+    expect(synchronized.nextTask?.assistantMessageId).toBe('assistant-1');
+    expect(synchronized.consumedBufferedEvents).toEqual([
+      expect.objectContaining({
+        messageId: 'assistant-1',
+        toolCallId: 'tool-call-1',
+        toolName: 'read',
+        type: 'tool-call',
+      }),
+    ]);
+    expect(readCount).toBe(2);
+    expect(response.write).toHaveBeenCalledTimes(2);
+  });
+
+  it('flushes attach events buffered after the last stable snapshot to SSE when live activates', () => {
+    const response = createResponseStub();
+    const gate = createBufferedEventGate();
+
+    expect(gate.takeBufferedEvents()).toEqual([]);
+
+    const lateBufferedEvent = {
+      messageId: 'assistant-1',
+      toolCallId: 'tool-call-1',
+      toolName: 'read',
+      type: 'tool-call',
+    };
+    gate.buffer(lateBufferedEvent);
+
+    activateBufferedEventGateLive(response as never, gate);
+
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('"tool-call-1"'));
+    expect(gate.shouldBuffer()).toBe(false);
+    expect(gate.takeBufferedEvents()).toEqual([]);
+  });
+
   it('creates, lists, reads and deletes conversations through user-owned conversation APIs', async () => {
     const overview = { _count: { messages: 0 }, createdAt: '2026-04-11T00:00:00.000Z', id: conversationId, title: '新的对话', updatedAt: '2026-04-11T00:00:00.000Z' };
     conversationStore.createConversation.mockReturnValue(overview);
@@ -95,7 +161,7 @@ describe('ConversationController', () => {
     expect(conversationStore.createConversation).toHaveBeenCalledWith({ title: '新的对话', userId: 'user-1' });
     expect(controller.listConversations('user-1')).toEqual([overview]);
     expect(conversationStore.listConversations).toHaveBeenCalledWith('user-1');
-    expect(controller.getConversation('user-1', conversationId)).toEqual({ ...overview, messages: [] });
+    expect(controller.getConversation('user-1', conversationId)).toEqual({ ...overview, isRunning: false, messages: [] });
     expect(conversationStore.getConversation).toHaveBeenCalledWith(conversationId, 'user-1');
     await expect(controller.deleteConversation('user-1', conversationId)).resolves.toEqual({ message: 'Conversation deleted' });
     expect(conversationStore.requireConversation).toHaveBeenCalledWith(conversationId, 'user-1');
@@ -242,6 +308,286 @@ describe('ConversationController', () => {
     expect(conversationMessageLifecycleService.startMessageGeneration).toHaveBeenCalledWith(conversationId, sendDto, 'user-1');
     expect(response.write).toHaveBeenNthCalledWith(1, sse({ assistantMessage: started.assistantMessage, type: 'message-start', userMessage: started.userMessage }));
     expect(response.write).toHaveBeenCalledWith(sse({ messageId: assistantMessageId, text: '你好', type: 'text-delta' }));
+    expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
+  });
+
+  it('streams live task events for an already running main conversation', async () => {
+    const response = createResponseStub();
+    const initialConversation = {
+      createdAt: '2026-04-11T00:00:00.000Z',
+      id: conversationId,
+      kind: 'main',
+      messages: [
+        { id: 'user-1', role: 'user', status: 'completed', content: '继续执行' },
+        { id: assistantMessageId, role: 'assistant', status: 'streaming', content: '' },
+      ],
+      title: 'Main Chat',
+      updatedAt: '2026-04-11T00:00:00.000Z',
+    };
+    const refreshedConversation = {
+      ...initialConversation,
+      messages: [
+        initialConversation.messages[0],
+        {
+          ...initialConversation.messages[1],
+          toolCalls: [{ input: { filePath: 'docs/plan.md' }, toolCallId: 'tool-call-1', toolName: 'read' }],
+        },
+      ],
+    };
+    conversationStore.requireConversation
+      .mockReturnValueOnce(initialConversation)
+      .mockReturnValueOnce(refreshedConversation)
+      .mockReturnValue(refreshedConversation);
+    conversationTaskService.subscribe.mockImplementation((_id: string, listener: (event: { type: string }) => void) => {
+      listener({ input: { filePath: 'docs/plan.md' }, messageId: assistantMessageId, toolCallId: 'tool-call-1', toolName: 'read', type: 'tool-call' } as never);
+      return jest.fn();
+    });
+    conversationTaskService.waitForTask.mockResolvedValue(undefined);
+
+    await controller.streamConversationEvents('user-1', conversationId, response as never);
+
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('"type":"message-start"'));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('"toolCalls":"['));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('tool-call-1'));
+    expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
+  });
+
+  it('keeps attach alive across the main-conversation continuation gap before the next assistant exists', async () => {
+    const response = createResponseStub();
+    const continuationAssistantId = '33333333-3333-4333-8333-333333333333';
+    const initialConversation = {
+      createdAt: '2026-04-11T00:00:00.000Z',
+      id: conversationId,
+      kind: 'main',
+      messages: [
+        { id: 'user-1', role: 'user', status: 'completed', content: '继续执行' },
+        { id: assistantMessageId, role: 'assistant', status: 'completed', content: '首轮完成' },
+      ],
+      title: 'Main Chat',
+      updatedAt: '2026-04-11T00:00:00.000Z',
+    };
+    const continuationConversation = {
+      ...initialConversation,
+      messages: [
+        initialConversation.messages[0],
+        initialConversation.messages[1],
+        {
+          id: 'continue-user-1',
+          role: 'user',
+          status: 'completed',
+          content: 'Continue if you have next steps',
+          metadataJson: JSON.stringify({
+            annotations: [
+              {
+                owner: 'conversation.context-governance',
+                type: 'context-compaction',
+                data: {
+                  role: 'continue',
+                  synthetic: true,
+                  trigger: 'after-response',
+                },
+              },
+            ],
+          }),
+        },
+        {
+          id: continuationAssistantId,
+          role: 'assistant',
+          status: 'streaming',
+          content: '',
+        },
+      ],
+    };
+    const bufferedContinuationConversation = {
+      ...continuationConversation,
+      messages: [
+        continuationConversation.messages[0],
+        continuationConversation.messages[1],
+        continuationConversation.messages[2],
+        {
+          ...continuationConversation.messages[3],
+          toolCalls: [{ input: { filePath: 'docs/plan.md' }, toolCallId: 'tool-call-1', toolName: 'read' }],
+        },
+      ],
+    };
+    conversationTaskService.hasTask.mockImplementation((messageId: string) => messageId === assistantMessageId);
+    conversationStore.requireConversation
+      .mockReturnValueOnce(initialConversation)
+      .mockReturnValueOnce(initialConversation)
+      .mockReturnValueOnce(continuationConversation)
+      .mockReturnValueOnce(continuationConversation)
+      .mockReturnValue(bufferedContinuationConversation);
+    conversationTaskService.subscribe.mockImplementation((messageId: string, listener: (event: { type: string }) => void) => {
+      if (messageId === continuationAssistantId) {
+        listener({ input: { filePath: 'docs/plan.md' }, messageId: continuationAssistantId, toolCallId: 'tool-call-1', toolName: 'read', type: 'tool-call' } as never);
+      }
+      return jest.fn();
+    });
+    conversationTaskService.waitForTask.mockResolvedValue(undefined);
+
+    await controller.streamConversationEvents('user-1', conversationId, response as never);
+
+    expect(conversationTaskService.subscribe).toHaveBeenNthCalledWith(1, assistantMessageId, expect.any(Function));
+    expect(conversationTaskService.subscribe).toHaveBeenNthCalledWith(2, continuationAssistantId, expect.any(Function));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining(`"id":"${continuationAssistantId}"`));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('tool-call-1'));
+    expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
+  });
+
+  it('flushes buffered tool events for the previous assistant before switching attach to the next assistant', async () => {
+    const response = createResponseStub();
+    const continuationAssistantId = '33333333-3333-4333-8333-333333333333';
+    const initialConversation = {
+      createdAt: '2026-04-11T00:00:00.000Z',
+      id: conversationId,
+      kind: 'main',
+      messages: [
+        { id: 'user-1', role: 'user', status: 'completed', content: '继续执行' },
+        { id: assistantMessageId, role: 'assistant', status: 'streaming', content: '' },
+      ],
+      title: 'Main Chat',
+      updatedAt: '2026-04-11T00:00:00.000Z',
+    };
+    const continuationConversation = {
+      ...initialConversation,
+      messages: [
+        initialConversation.messages[0],
+        {
+          ...initialConversation.messages[1],
+          status: 'completed',
+        },
+        {
+          id: 'continue-user-1',
+          role: 'user',
+          status: 'completed',
+          content: 'Continue if you have next steps',
+          metadataJson: JSON.stringify({
+            annotations: [
+              {
+                owner: 'conversation.context-governance',
+                type: 'context-compaction',
+                data: {
+                  role: 'continue',
+                  synthetic: true,
+                  trigger: 'after-response',
+                },
+              },
+            ],
+          }),
+        },
+        {
+          id: continuationAssistantId,
+          role: 'assistant',
+          status: 'streaming',
+          content: '',
+        },
+      ],
+      updatedAt: '2026-04-11T00:00:01.000Z',
+    };
+    conversationStore.requireConversation
+      .mockReturnValueOnce(initialConversation)
+      .mockReturnValueOnce(initialConversation)
+      .mockReturnValueOnce(continuationConversation)
+      .mockReturnValue(continuationConversation);
+    conversationTaskService.subscribe.mockImplementation((messageId: string, listener: (event: { type: string }) => void) => {
+      if (messageId === assistantMessageId) {
+        listener({ input: { filePath: 'docs/plan.md' }, messageId: assistantMessageId, toolCallId: 'tool-call-1', toolName: 'read', type: 'tool-call' } as never);
+      }
+      return jest.fn();
+    });
+    conversationTaskService.waitForTask.mockResolvedValue(undefined);
+
+    await controller.streamConversationEvents('user-1', conversationId, response as never);
+
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining(`"messageId":"${assistantMessageId}"`));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('tool-call-1'));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining(`"id":"${continuationAssistantId}"`));
+    expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
+  });
+
+  it('streams live task events for an already running subagent conversation', async () => {
+    const response = createResponseStub();
+    const initialConversation = {
+      createdAt: '2026-04-11T00:00:00.000Z',
+      id: conversationId,
+      kind: 'subagent',
+      messages: [
+        { id: 'user-1', role: 'user', status: 'completed', content: '继续执行' },
+        { id: 'assistant-1', role: 'assistant', status: 'streaming', content: '' },
+      ],
+      subagent: { activeAssistantMessageId: 'assistant-1', pluginId: 'plugin-a', status: 'running' },
+      title: 'Subagent',
+      updatedAt: '2026-04-11T00:00:00.000Z',
+    };
+    const refreshedConversation = {
+      ...initialConversation,
+      messages: [
+        initialConversation.messages[0],
+        {
+          ...initialConversation.messages[1],
+          toolCalls: [{ input: { filePath: 'docs/plan.md' }, toolCallId: 'tool-call-1', toolName: 'read' }],
+        },
+      ],
+    };
+    conversationStore.requireConversation
+      .mockReturnValueOnce(initialConversation)
+      .mockReturnValueOnce(refreshedConversation)
+      .mockReturnValue(refreshedConversation);
+    subagentRunner.subscribe.mockImplementation((_conversationId: string, next: (event: Record<string, unknown>) => void) => {
+      next({ input: { filePath: 'docs/plan.md' }, messageId: 'assistant-1', toolCallId: 'tool-call-1', toolName: 'read', type: 'tool-call' });
+      return jest.fn();
+    });
+    subagentRunner.waitSubagent.mockResolvedValue({ conversationId, result: '完成', status: 'completed' });
+
+    await controller.streamConversationEvents('user-1', conversationId, response as never);
+
+    expect(subagentRunner.waitSubagent).toHaveBeenCalledWith('plugin-a', { conversationId });
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('"type":"message-start"'));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('"toolCalls":"['));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('tool-call-1'));
+    expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
+  });
+
+  it('keeps attach alive for a running subagent even before the next assistant message exists', async () => {
+    const response = createResponseStub();
+    let listener: ((event: Record<string, unknown>) => void) | null = null;
+    const initialConversation = {
+      createdAt: '2026-04-11T00:00:00.000Z',
+      id: conversationId,
+      kind: 'subagent',
+      messages: [
+        { id: 'user-1', role: 'user', status: 'completed', content: '继续执行' },
+        { id: 'assistant-1', role: 'assistant', status: 'completed', content: '首轮完成' },
+      ],
+      subagent: { pluginId: 'plugin-a', status: 'running' },
+      title: 'Subagent',
+      updatedAt: '2026-04-11T00:00:00.000Z',
+    };
+    conversationStore.requireConversation.mockReturnValue(initialConversation);
+    subagentRunner.subscribe.mockImplementation((_conversationId: string, next: (event: Record<string, unknown>) => void) => {
+      listener = next;
+      return jest.fn();
+    });
+    subagentRunner.waitSubagent.mockImplementation(async () => {
+      listener?.({
+        assistantMessage: { id: 'assistant-2', role: 'assistant', status: 'streaming', content: '' },
+        type: 'message-start',
+      });
+      listener?.({
+        input: { filePath: 'docs/plan.md' },
+        messageId: 'assistant-2',
+        toolCallId: 'tool-call-1',
+        toolName: 'read',
+        type: 'tool-call',
+      });
+      return { conversationId, result: '完成', status: 'completed' };
+    });
+
+    await controller.streamConversationEvents('user-1', conversationId, response as never);
+
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('"type":"message-start"'));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('"assistant-2"'));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining('tool-call-1'));
     expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
   });
 
@@ -896,7 +1242,7 @@ describe('ConversationController', () => {
     };
     conversationStore.getConversation.mockReturnValue(detail);
 
-    expect(controller.getConversation('user-1', conversationId)).toEqual(detail);
+    expect(controller.getConversation('user-1', conversationId)).toEqual({ ...detail, isRunning: false });
     expect(conversationStore.getConversation).toHaveBeenCalledWith(conversationId, 'user-1');
   });
 });
