@@ -1,11 +1,13 @@
 import type { AiChatAutoRetryConfig, AiModelUsage, ChatMessageCustomBlock, ChatMessageMetadata, ChatMessagePart, ChatMessageStatus, JsonValue, PluginSubagentToolCall, PluginSubagentToolResult, SSEEvent } from '@garlic-claw/shared';
 import { DEFAULT_AI_CHAT_AUTO_RETRY_CONFIG } from '@garlic-claw/shared';
 import { APICallError } from '@ai-sdk/provider';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { normalizeAiSdkLanguageModelUsage } from '../ai/ai-model-execution.service';
 import { AiProviderSettingsService } from '../ai-management/ai-provider-settings.service';
 import { createConversationHistorySignatureFromHistoryMessages } from './conversation-history-signature';
 import type { ConversationCompactionContinuationState } from './conversation-compaction-continuation';
 import { appendConversationModelUsageMetadata, readConversationModelUsageAnnotation } from './conversation-model-usage.annotation';
+import { ContextGovernanceService } from './context-governance.service';
 import { RuntimeToolPermissionService } from '../execution/runtime/runtime-tool-permission.service';
 import { ConversationMessageService } from '../runtime/host/conversation-message.service';
 import { ConversationStoreService, serializeConversationMessage } from '../runtime/host/conversation-store.service';
@@ -62,6 +64,7 @@ type ConversationTaskRuntime = Omit<StartConversationTaskInput, 'createStream'> 
     hasAssistantTextOutput: boolean;
     hasToolActivity: boolean;
     metadata?: ChatMessageMetadata;
+    reachedContextThreshold?: boolean;
     toolCalls: ConversationTaskToolCall[];
     toolResults: ConversationTaskToolResult[];
   };
@@ -86,6 +89,7 @@ export class ConversationTaskService {
     private readonly runtimeToolPermissionService: RuntimeToolPermissionService,
     private readonly conversationTodos: ConversationTodoService,
     private readonly aiProviderSettingsService: AiProviderSettingsService = new AiProviderSettingsService(),
+    @Optional() private readonly contextGovernanceService?: ContextGovernanceService,
   ) {}
 
   startTask(input: StartConversationTaskInput): void {
@@ -120,6 +124,7 @@ export class ConversationTaskService {
         content: '',
         hasAssistantTextOutput: false,
         hasToolActivity: false,
+        reachedContextThreshold: false,
         toolCalls: [],
         toolResults: [],
       },
@@ -147,20 +152,27 @@ export class ConversationTaskService {
           this.emit(task, { messageId: runtime.assistantMessageId, status: 'streaming', type: 'status' });
 
           for await (const rawPart of stream.fullStream) {
+            const stepBoundary = this.processStepBoundary(runtime, rawPart);
             const events = readConversationTaskEvents(runtime.state, runtime.assistantMessageId, runtime.providerId, rawPart);
-            if (events.length === 0) {continue;}
+            if (events.length === 0 && !stepBoundary.metadataEvent) {
+              if (stepBoundary.stopAfterStep) {
+                break;
+              }
+              continue;
+            }
             await this.writeTaskSnapshot(runtime, 'streaming');
+            if (stepBoundary.metadataEvent) {
+              this.emit(task, stepBoundary.metadataEvent);
+            }
             this.emitAll(task, events);
+            if (stepBoundary.stopAfterStep) {
+              break;
+            }
           }
 
           const usage = await readConversationTaskUsage(stream.usage);
           if (usage) {
-            runtime.state.metadata = appendConversationModelUsageMetadata(runtime.state.metadata, {
-              ...usage,
-              modelId: runtime.modelId,
-              providerId: runtime.providerId,
-              ...(runtime.requestHistorySignature ? { requestHistorySignature: runtime.requestHistorySignature } : {}),
-            });
+            this.syncUsageState(runtime, usage);
           }
           await this.finishTask(task, runtime, { status: task.abortController.signal.aborted ? 'stopped' : 'completed' });
           return;
@@ -232,6 +244,7 @@ export class ConversationTaskService {
       continuationState: {
         hasAssistantTextOutput: runtime.state.hasAssistantTextOutput,
         hasToolActivity: runtime.state.hasToolActivity,
+        ...(runtime.state.reachedContextThreshold ? { reachedContextThreshold: true } : {}),
       },
       ...(runtime.state.metadata ? { metadata: finalizeConversationTaskMetadata(runtime.state.metadata, status) } : {}),
       modelId: runtime.modelId,
@@ -242,6 +255,51 @@ export class ConversationTaskService {
     };
     await this.conversationMessages.writeMessage(runtime.conversationId, runtime.assistantMessageId, readConversationTaskMessageBody(snapshot, status, error));
     return snapshot;
+  }
+
+  private processStepBoundary(
+    runtime: ConversationTaskRuntime,
+    rawPart: unknown,
+  ): { metadataEvent: ConversationTaskEvent | null; stopAfterStep: boolean } {
+    if (!isRecord(rawPart) || rawPart.type !== 'finish-step') {
+      return { metadataEvent: null, stopAfterStep: false };
+    }
+    const usage = normalizeAiSdkLanguageModelUsage(rawPart.usage);
+    if (!usage) {
+      return { metadataEvent: null, stopAfterStep: false };
+    }
+    const previousMetadata = JSON.stringify(runtime.state.metadata ?? null);
+    this.syncUsageState(runtime, usage);
+    const nextMetadata = JSON.stringify(runtime.state.metadata ?? null);
+    return {
+      metadataEvent: previousMetadata === nextMetadata
+        ? null
+        : {
+            messageId: runtime.assistantMessageId,
+            metadata: cloneJsonValue(runtime.state.metadata ?? {}),
+            type: 'message-metadata',
+          },
+      stopAfterStep: runtime.state.reachedContextThreshold === true,
+    };
+  }
+
+  private syncUsageState(runtime: ConversationTaskRuntime, usage: AiModelUsage): void {
+    runtime.state.metadata = appendConversationModelUsageMetadata(runtime.state.metadata, {
+      ...usage,
+      modelId: runtime.modelId,
+      providerId: runtime.providerId,
+      ...(runtime.requestHistorySignature ? { requestHistorySignature: runtime.requestHistorySignature } : {}),
+    });
+    if (
+      !runtime.state.reachedContextThreshold
+      && this.contextGovernanceService?.isAboveAutoCompactionThreshold({
+        modelId: runtime.modelId,
+        providerId: runtime.providerId,
+        totalTokens: usage.totalTokens,
+      })
+    ) {
+      runtime.state.reachedContextThreshold = true;
+    }
   }
 
   private async prepareTaskRetry(
@@ -598,4 +656,8 @@ function formatCustomBlockTitle(key: string): string {
 function toAssistantParts(content: string): ChatMessagePart[] {
   const text = content.trim();
   return text ? [{ text, type: 'text' }] : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

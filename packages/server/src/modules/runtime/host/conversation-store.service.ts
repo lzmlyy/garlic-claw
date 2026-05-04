@@ -34,7 +34,8 @@ export class ConversationStoreService {
     const stored = this.readStoredConversations();
     this.conversationSessions = stored.sessions;
     this.conversations = stored.records;
-    if (stored.migrated) {this.persistConversations();}
+    const settledInterruptedResponses = this.settleInterruptedMainConversationResponses();
+    if (stored.migrated || settledInterruptedResponses) {this.persistConversations();}
   }
 
   createConversation(input: { id?: string; title?: string; userId?: string; parentId?: string; kind?: ConversationKind; subagent?: ConversationSubagentState | null }): JsonValue {
@@ -274,6 +275,36 @@ export class ConversationStoreService {
     } catch {
       return { migrated: false, records: new Map(), sessions: new Map() };
     }
+  }
+
+  private settleInterruptedMainConversationResponses(): boolean {
+    let changed = false;
+    const interruptedAt = new Date().toISOString();
+    for (const conversation of this.conversations.values()) {
+      if (conversation.kind === 'subagent') {
+        continue;
+      }
+      let conversationChanged = false;
+      for (const message of conversation.messages) {
+        if (
+          (message.role === 'assistant' || message.role === 'display')
+          && (message.status === 'pending' || message.status === 'streaming')
+        ) {
+          message.status = 'stopped';
+          message.error = '服务重启时中断了正在运行的回复';
+          message.updatedAt = interruptedAt;
+          conversationChanged = true;
+        }
+      }
+      if (!conversationChanged) {
+        continue;
+      }
+      conversation.updatedAt = interruptedAt;
+      conversation.revisionVersion += 1;
+      conversation.revision = `${readRevisionSeed(conversation.revision)}:${conversation.revisionVersion}`;
+      changed = true;
+    }
+    return changed;
   }
 
   private pruneExpiredConversationSessions(): void {

@@ -89,7 +89,10 @@ export class ConversationAfterResponseCompactionService {
     providerId: string;
     userId?: string;
   }): Promise<AfterResponseCompactionResult> {
-    const compactionTriggered = await this.contextGovernanceService.rewriteHistoryAfterCompletedResponse(input);
+    const compactionTriggered = await this.contextGovernanceService.rewriteHistoryAfterCompletedResponse({
+      ...input,
+      force: input.continuationState?.reachedContextThreshold === true,
+    });
     return {
       compactionTriggered,
       continuation: compactionTriggered

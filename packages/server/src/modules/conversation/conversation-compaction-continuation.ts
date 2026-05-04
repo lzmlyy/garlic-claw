@@ -5,6 +5,7 @@ export const AUTO_COMPACTION_CONTINUE_TEXT = 'Continue if you have next steps, o
 export type ConversationCompactionContinuationState = {
   hasAssistantTextOutput: boolean;
   hasToolActivity: boolean;
+  reachedContextThreshold?: boolean;
 };
 
 export function createAutoCompactionContinuationMetadata(): ChatMessageMetadata {

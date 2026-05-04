@@ -242,7 +242,7 @@ function buildExecutionMessageContent(content: PluginLlmMessage['content']): str
 function buildProviderOptions(input: AiModelExecutionRequest): JsonObject | undefined { return input.variant ? { ...(input.providerOptions ?? {}), variant: input.variant } : input.providerOptions; }
 
 function readModelUsage(value: unknown, input: AiModelExecutionRequest, text: string): AiModelUsage {
-  const providerUsage = normalizeSdkUsage(value);
+  const providerUsage = normalizeAiSdkLanguageModelUsage(value);
   if (providerUsage) {return providerUsage;}
   const inputTokens = estimateTokenCount([input.system ?? '', ...input.messages.map((message) => readMessageText(message.content))].join('\n'));
   const outputTokens = estimateTokenCount(text);
@@ -251,7 +251,7 @@ function readModelUsage(value: unknown, input: AiModelExecutionRequest, text: st
 
 function readExecutionError(error: unknown, fallback: string): Error { return error instanceof Error ? error : new Error(fallback); }
 
-function normalizeSdkUsage(value: unknown): AiModelUsage | null {
+export function normalizeAiSdkLanguageModelUsage(value: unknown): AiModelUsage | null {
   const usage = readSdkUsageRecord(value);
   if (!usage) {return null;}
   const cachedInputTokens = readTokenPath(usage, [
@@ -295,7 +295,7 @@ function normalizeSdkUsage(value: unknown): AiModelUsage | null {
   };
 }
 
-function readSdkUsagePromise(value: unknown): Promise<AiModelUsage | undefined> | undefined { return value === undefined ? undefined : Promise.resolve(value).then((usage) => normalizeSdkUsage(usage) ?? undefined).catch(() => undefined); }
+function readSdkUsagePromise(value: unknown): Promise<AiModelUsage | undefined> | undefined { return value === undefined ? undefined : Promise.resolve(value).then((usage) => normalizeAiSdkLanguageModelUsage(usage) ?? undefined).catch(() => undefined); }
 function normalizeStreamResult(result: AiSdkStreamTextResult): NormalizedAiSdkStreamTextResult {
   const finishReason = readOptionalStreamResultValue(result, 'finishReason');
   const totalUsage = readOptionalStreamResultValue(result, 'totalUsage');

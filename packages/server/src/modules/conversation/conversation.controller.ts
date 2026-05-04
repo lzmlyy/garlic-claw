@@ -105,6 +105,8 @@ export class ConversationController {
       const pluginId = conversation.subagent.pluginId;
       await streamSubagentEvents(
         res,
+        this.subagentRunner,
+        id,
         async () => {
           await this.subagentRunner.sendInputSubagent(pluginId, {
             ...(conversation.activePersonaId ? { activePersonaId: conversation.activePersonaId } : {}),
@@ -127,7 +129,6 @@ export class ConversationController {
             throw new Error('子代理会话缺少起始消息');
           }
           return {
-            assistantMessageId: String(assistantMessage.id),
             startPayload: {
               assistantMessage: serializeConversationMessage(assistantMessage),
               type: 'message-start' as const,
@@ -135,10 +136,8 @@ export class ConversationController {
             },
           };
         },
-        async (assistantMessageId) => {
+        async () => {
           await this.subagentRunner.waitSubagent(pluginId, { conversationId: id });
-          const latestConversation = this.conversationStore.requireConversation(id, userId);
-          return readSubagentConversationEvents(latestConversation, assistantMessageId);
         },
       );
       return;
@@ -171,6 +170,8 @@ export class ConversationController {
       const pluginId = conversation.subagent.pluginId;
       await streamSubagentEvents(
         res,
+        this.subagentRunner,
+        id,
         async () => {
           const retriedInput = readRetrySubagentInput(requireConversationMessage(conversation, messageId), conversation, messageId);
           await this.subagentRunner.sendInputSubagent(pluginId, {
@@ -194,7 +195,6 @@ export class ConversationController {
             throw new Error('子代理会话缺少重试消息');
           }
           return {
-            assistantMessageId: String(assistantMessage.id),
             startPayload: {
               assistantMessage: serializeConversationMessage(assistantMessage),
               type: 'message-start' as const,
@@ -202,10 +202,8 @@ export class ConversationController {
             },
           };
         },
-        async (assistantMessageId) => {
+        async () => {
           await this.subagentRunner.waitSubagent(pluginId, { conversationId: id });
-          const latestConversation = this.conversationStore.requireConversation(id, userId);
-          return readSubagentConversationEvents(latestConversation, assistantMessageId);
         },
       );
       return;
@@ -274,8 +272,12 @@ async function streamTaskEvents(
   readNextTaskStart?: (assistantMessageId: string) => Promise<{ assistantMessageId: string; startPayload: object } | null> | { assistantMessageId: string; startPayload: object } | null,
 ) {
   let unsubscribe: () => void = () => undefined;
+  const stopHeartbeat = startSseHeartbeat(res);
   initSse(res);
-  res.on('close', () => unsubscribe());
+  res.on('close', () => {
+    unsubscribe();
+    stopHeartbeat();
+  });
   try {
     let nextTask: { assistantMessageId: string; startPayload: object } | null = await startTask();
     while (nextTask) {
@@ -289,24 +291,35 @@ async function streamTaskEvents(
   } catch (error) {
     writeSse(res, { error: error instanceof Error ? error.message : '未知错误', type: 'error' });
   }
+  stopHeartbeat();
   writeSse(res, '[DONE]', true);
 }
 
 async function streamSubagentEvents(
   res: Response,
-  startTask: () => Promise<{ assistantMessageId: string; startPayload: object }>,
-  finishTask: (assistantMessageId: string) => Promise<object[]>,
+  subagentRunner: Pick<SubagentRunnerService, 'subscribe'>,
+  conversationId: string,
+  startTask: () => Promise<{ startPayload: object }>,
+  finishTask: () => Promise<void>,
 ) {
+  let unsubscribe: () => void = () => undefined;
+  const stopHeartbeat = startSseHeartbeat(res);
   initSse(res);
+  res.on('close', () => {
+    unsubscribe();
+    stopHeartbeat();
+  });
   try {
-    const { assistantMessageId, startPayload } = await startTask();
+    const { startPayload } = await startTask();
     writeSse(res, startPayload);
-    for (const event of await finishTask(assistantMessageId)) {
-      writeSse(res, event);
-    }
+    unsubscribe = subagentRunner.subscribe(conversationId, (event) => writeSse(res, event));
+    await finishTask();
+    unsubscribe();
+    unsubscribe = () => undefined;
   } catch (error) {
     writeSse(res, { error: error instanceof Error ? error.message : '未知错误', type: 'error' });
   }
+  stopHeartbeat();
   writeSse(res, '[DONE]', true);
 }
 
@@ -320,6 +333,17 @@ function writeSse(res: Response, payload: object | '[DONE]', end = false) {
     res.write(`data: ${payload === '[DONE]' ? payload : JSON.stringify(payload)}\n\n`);
     if (end) {res.end();}
   }
+}
+
+function startSseHeartbeat(res: Response) {
+  const timer = setInterval(() => {
+    if (res.writableEnded || res.destroyed) {
+      clearInterval(timer);
+      return;
+    }
+    res.write(':\n\n');
+  }, 15000);
+  return () => clearInterval(timer);
 }
 
 function toSendMessagePayload(dto: SendMessageDto) {
@@ -384,122 +408,26 @@ function findLastConversationMessage(
   return null;
 }
 
-function readAssistantToolEvents(
-  assistantMessageId: string,
-  message: RuntimeConversationRecord['messages'][number],
-) {
-  const events: Array<{
-    input?: unknown;
-    messageId: string;
-    output?: unknown;
-    toolCallId: string;
-    toolName: string;
-    type: 'tool-call' | 'tool-result';
-  }> = [];
-  for (const toolCall of readToolEntries(message.toolCalls, 'input')) {
-    events.push({
-      input: toolCall.input,
-      messageId: assistantMessageId,
-      toolCallId: toolCall.toolCallId,
-      toolName: toolCall.toolName,
-      type: 'tool-call',
-    });
-  }
-  for (const toolResult of readToolEntries(message.toolResults, 'output')) {
-    events.push({
-      messageId: assistantMessageId,
-      output: toolResult.output,
-      toolCallId: toolResult.toolCallId,
-      toolName: toolResult.toolName,
-      type: 'tool-result',
-    });
-  }
-  return events;
-}
-
-function readSubagentConversationEvents(
-  conversation: RuntimeConversationRecord,
-  startedAssistantMessageId: string,
-) {
-  const startedIndex = conversation.messages.findIndex((message) => message.id === startedAssistantMessageId);
-  if (startedIndex < 0) {
-    return [];
-  }
-  const events: object[] = [];
-  for (let index = startedIndex; index < conversation.messages.length; index += 1) {
-    const message = conversation.messages[index];
-    if (message.role !== 'assistant' || typeof message.id !== 'string') {
-      continue;
-    }
-    if (message.id !== startedAssistantMessageId) {
-      const userMessage = readPreviousSubagentUserMessage(conversation, index);
-      events.push({
-        assistantMessage: serializeConversationMessage(message as unknown as JsonObject),
-        type: 'message-start' as const,
-        ...(userMessage ? { userMessage: serializeConversationMessage(userMessage as unknown as JsonObject) } : {}),
-      });
-    }
-    const status = String(message.status) as 'completed' | 'error' | 'pending' | 'stopped' | 'streaming';
-    events.push(...readAssistantToolEvents(message.id, message));
-    events.push({
-      content: typeof message.content === 'string' ? message.content : '',
-      messageId: message.id,
-      type: 'message-patch' as const,
-    });
-    events.push({
-      ...(typeof message.error === 'string' ? { error: message.error } : {}),
-      messageId: message.id,
-      status,
-      type: 'status' as const,
-    });
-    events.push({
-      messageId: message.id,
-      status,
-      type: 'finish' as const,
-    });
-  }
-  return events;
-}
-
 function readConversationTaskContinuationStart(
   conversation: RuntimeConversationRecord,
   completedAssistantMessageId: string,
 ): { assistantMessageId: string; startPayload: object } | null {
   const completedAssistantIndex = conversation.messages.findIndex((message) => message.id === completedAssistantMessageId);
-  if (completedAssistantIndex < 0 || completedAssistantIndex + 2 >= conversation.messages.length) {
+  if (completedAssistantIndex < 0) {
     return null;
   }
-  const syntheticContinueUser = conversation.messages[completedAssistantIndex + 1];
-  const nextAssistant = conversation.messages[completedAssistantIndex + 2];
-  if (
-    syntheticContinueUser?.role !== 'user'
-    || !isAutoCompactionContinueMessage(syntheticContinueUser)
-    || nextAssistant?.role !== 'assistant'
-    || typeof nextAssistant.id !== 'string'
-  ) {
+  const continuation = readNextAutoCompactionContinuation(conversation, completedAssistantIndex + 1);
+  if (!continuation) {
     return null;
   }
   return {
-    assistantMessageId: nextAssistant.id,
+    assistantMessageId: continuation.nextAssistant.id,
     startPayload: {
-      assistantMessage: serializeConversationMessage(nextAssistant as unknown as JsonObject),
+      assistantMessage: serializeConversationMessage(continuation.nextAssistant as unknown as JsonObject),
       type: 'message-start' as const,
-      userMessage: serializeConversationMessage(syntheticContinueUser as unknown as JsonObject),
+      userMessage: serializeConversationMessage(continuation.syntheticContinueUser as unknown as JsonObject),
     },
   };
-}
-
-function readPreviousSubagentUserMessage(
-  conversation: RuntimeConversationRecord,
-  assistantIndex: number,
-): RuntimeConversationRecord['messages'][number] | null {
-  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
-    const message = conversation.messages[index];
-    if (message.role === 'user') {
-      return message;
-    }
-  }
-  return null;
 }
 
 function isSubagentStopTargetInActiveContinuationChain(
@@ -518,46 +446,79 @@ function isSubagentStopTargetInActiveContinuationChain(
     return false;
   }
   let cursor = activeAssistantIndex;
-  while (cursor > 1) {
-    const syntheticContinueUser = conversation.messages[cursor - 1];
-    const previousAssistant = conversation.messages[cursor - 2];
-    if (
-      syntheticContinueUser?.role !== 'user'
-      || !isAutoCompactionContinueMessage(syntheticContinueUser)
-      || previousAssistant?.role !== 'assistant'
-      || typeof previousAssistant.id !== 'string'
-    ) {
+  while (cursor > 0) {
+    const previousAssistant = readPreviousAutoCompactionAssistant(conversation, cursor);
+    if (!previousAssistant) {
       return false;
     }
-    if (previousAssistant.id === messageId) {
+    if (previousAssistant.message.id === messageId) {
       return true;
     }
-    cursor -= 2;
+    cursor = previousAssistant.index;
   }
   return false;
 }
 
-function readToolEntries(
-  value: unknown,
-  payloadKey: 'input' | 'output',
-): Array<{ input?: unknown; output?: unknown; toolCallId: string; toolName: string }> {
-  if (!Array.isArray(value)) {
-    return [];
+function readNextAutoCompactionContinuation(
+  conversation: RuntimeConversationRecord,
+  startIndex: number,
+): {
+  nextAssistant: RuntimeConversationRecord['messages'][number] & { id: string; role: 'assistant' };
+  syntheticContinueUser: RuntimeConversationRecord['messages'][number] & { role: 'user' };
+} | null {
+  let syntheticContinueUser: (RuntimeConversationRecord['messages'][number] & { role: 'user' }) | null = null;
+  for (let index = startIndex; index < conversation.messages.length; index += 1) {
+    const message = conversation.messages[index];
+    if (message.role === 'display') {
+      continue;
+    }
+    if (!syntheticContinueUser) {
+      if (message.role !== 'user' || !isAutoCompactionContinueMessage(message)) {
+        return null;
+      }
+      syntheticContinueUser = message as RuntimeConversationRecord['messages'][number] & { role: 'user' };
+      continue;
+    }
+    if (message.role !== 'assistant' || typeof message.id !== 'string') {
+      return null;
+    }
+    return {
+      nextAssistant: message as RuntimeConversationRecord['messages'][number] & { id: string; role: 'assistant' },
+      syntheticContinueUser,
+    };
   }
-  return value.flatMap((entry) => {
-    if (!entry || typeof entry !== 'object') {
-      return [];
+  return null;
+}
+
+function readPreviousAutoCompactionAssistant(
+  conversation: RuntimeConversationRecord,
+  assistantIndex: number,
+): {
+  index: number;
+  message: RuntimeConversationRecord['messages'][number] & { id: string; role: 'assistant' };
+} | null {
+  let foundSyntheticContinue = false;
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = conversation.messages[index];
+    if (message.role === 'display') {
+      continue;
     }
-    const object = entry as Record<string, unknown>;
-    if (typeof object.toolCallId !== 'string' || typeof object.toolName !== 'string') {
-      return [];
+    if (!foundSyntheticContinue) {
+      if (message.role !== 'user' || !isAutoCompactionContinueMessage(message)) {
+        return null;
+      }
+      foundSyntheticContinue = true;
+      continue;
     }
-    return [{
-      [payloadKey]: object[payloadKey],
-      toolCallId: object.toolCallId,
-      toolName: object.toolName,
-    }];
-  });
+    if (message.role !== 'assistant' || typeof message.id !== 'string') {
+      return null;
+    }
+    return {
+      index,
+      message: message as RuntimeConversationRecord['messages'][number] & { id: string; role: 'assistant' },
+    };
+  }
+  return null;
 }
 
 async function stopActiveConversationTreeWork(

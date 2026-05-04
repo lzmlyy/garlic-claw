@@ -1,6 +1,26 @@
-import { WriteToolService } from '../../../src/execution/write/write-tool.service';
+import { WriteToolService } from '../../../src/modules/execution/write/write-tool.service';
 
 describe('WriteToolService', () => {
+  it('uses direct write guidance instead of speculative directory planning', () => {
+    const service = new WriteToolService(
+      {
+        getDescriptor: () => ({ visibleRoot: '/' }),
+      } as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(service.buildToolDescription()).toBe([
+      '直接把完整内容写入目标文件。',
+      'filePath 可传相对路径或 backend 可见的绝对路径；相对路径按当前 backend 可见根解析。',
+      '需要写新文件时直接调用 write；不需要先描述将要创建哪些文件，也不需要先创建目录。',
+      '父目录不存在时工具会自动创建。',
+      '如果文件已存在，写入前必须先拿到该文件的当前内容；可先用 read 工具读取，或沿用同一 session 中最新一次成功 write/edit 后记录的当前版本。',
+      '如果文件自上次读取或修改后又发生变化，需要重新 read 再写入。',
+      '该工具不执行命令，只负责文件系统写入。',
+    ].join('\n'));
+  });
+
   it('formats write metadata for the model', async () => {
     const freshness = {
       withWriteFreshnessGuard: jest.fn().mockImplementation(async (_sessionId, _filePath, run) => run()),

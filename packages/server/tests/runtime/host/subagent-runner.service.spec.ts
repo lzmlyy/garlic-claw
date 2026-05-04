@@ -1,11 +1,11 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectSubagentTypeRegistryService } from '../../../src/execution/project/project-subagent-type-registry.service';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { ConversationMessageService } from '../../../src/runtime/host/conversation-message.service';
-import { ConversationStoreService } from '../../../src/runtime/host/conversation-store.service';
-import { SubagentRunnerService } from '../../../src/runtime/host/subagent-runner.service';
+import { ProjectSubagentTypeRegistryService } from '../../../src/modules/execution/project/project-subagent-type-registry.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { ConversationMessageService } from '../../../src/modules/runtime/host/conversation-message.service';
+import { ConversationStoreService } from '../../../src/modules/runtime/host/conversation-store.service';
+import { SubagentRunnerService } from '../../../src/modules/runtime/host/subagent-runner.service';
 
 describe('SubagentRunnerService', () => {
   let conversationsPath: string;
@@ -255,6 +255,365 @@ describe('SubagentRunnerService', () => {
     expect(fixture.contextGovernanceService.rewriteHistoryAfterCompletedResponse).not.toHaveBeenCalled();
   });
 
+  it('emits subagent tool events and auto-compaction continuation starts through the live conversation subscription', async () => {
+    const fixture = createFixture();
+    const events: Array<Record<string, unknown>> = [];
+    fixture.afterResponseCompactionService.run
+      .mockResolvedValueOnce({
+        compactionTriggered: true,
+        continuation: {
+          content: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.',
+          metadata: { annotations: [{ data: { role: 'continue', synthetic: true, trigger: 'after-response' }, owner: 'conversation.context-governance', type: 'context-compaction', version: '1' }] },
+          parts: [{ text: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.', type: 'text' }],
+        },
+      })
+      .mockResolvedValueOnce({ compactionTriggered: false, continuation: null });
+    fixture.aiModelExecutionService.streamText
+      .mockReturnValueOnce({
+        finishReason: Promise.resolve('tool-calls'),
+        fullStream: (async function* () {
+          yield { input: { topic: 'smoke' }, toolCallId: 'tool-call-1', toolName: 'save_memory', type: 'tool-call' };
+          yield { output: { kind: 'tool:text', value: 'done' }, toolCallId: 'tool-call-1', toolName: 'save_memory', type: 'tool-result' };
+        })(),
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        usage: Promise.resolve({
+          inputTokens: 10,
+          outputTokens: 5,
+          source: 'provider',
+          totalTokens: 15,
+        }),
+      })
+      .mockReturnValueOnce({
+        finishReason: Promise.resolve('stop'),
+        fullStream: (async function* () {
+          yield { text: 'Generated: 自动续跑后的第二轮', type: 'text-delta' };
+        })(),
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        usage: Promise.resolve({
+          inputTokens: 20,
+          outputTokens: 10,
+          source: 'provider',
+          totalTokens: 30,
+        }),
+      });
+
+    const summary = await fixture.runner.spawnSubagent('builtin.memory', 'Memory', {
+      conversationId: fixture.parentConversationId,
+      source: 'plugin',
+      userId: 'user-1',
+    }, {
+      messages: [{ content: '先调用工具，再继续', role: 'user' }],
+      providerId: 'openai',
+    } as never) as { conversationId: string };
+
+    const unsubscribe = fixture.runner.subscribe(summary.conversationId, (event) => {
+      events.push(event as Record<string, unknown>);
+    });
+
+    await jest.runAllTimersAsync();
+    unsubscribe();
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        assistantMessage: expect.objectContaining({ id: expect.any(String), role: 'assistant', status: 'pending' }),
+        type: 'message-start',
+        userMessage: expect.objectContaining({ id: expect.any(String), role: 'user' }),
+      }),
+      expect.objectContaining({
+        input: { topic: 'smoke' },
+        messageId: expect.any(String),
+        toolCallId: 'tool-call-1',
+        toolName: 'save_memory',
+        type: 'tool-call',
+      }),
+      expect.objectContaining({
+        messageId: expect.any(String),
+        output: { kind: 'tool:text', value: 'done' },
+        toolCallId: 'tool-call-1',
+        toolName: 'save_memory',
+        type: 'tool-result',
+      }),
+      expect.objectContaining({
+        messageId: expect.any(String),
+        text: 'Generated: 自动续跑后的第二轮',
+        type: 'text-delta',
+      }),
+      expect.objectContaining({
+        content: 'Generated: 自动续跑后的第二轮',
+        messageId: expect.any(String),
+        type: 'message-patch',
+      }),
+      expect.objectContaining({
+        messageId: expect.any(String),
+        status: 'completed',
+        type: 'finish',
+      }),
+    ]));
+    const toolCallIndex = events.findIndex((event) => event.type === 'tool-call' && event.toolCallId === 'tool-call-1');
+    const toolResultIndex = events.findIndex((event) => event.type === 'tool-result' && event.toolCallId === 'tool-call-1');
+    const firstFinishIndex = events.findIndex((event) => event.messageId && event.type === 'finish');
+    const continuationStartIndex = events.findIndex((event) => event.type === 'message-start' && event.userMessage);
+    expect(toolCallIndex).toBeGreaterThanOrEqual(0);
+    expect(toolResultIndex).toBeGreaterThan(toolCallIndex);
+    expect(firstFinishIndex).toBeGreaterThanOrEqual(0);
+    expect(firstFinishIndex).toBeGreaterThan(toolResultIndex);
+    expect(continuationStartIndex).toBeGreaterThan(firstFinishIndex);
+  });
+
+  it('rebuilds subagent continuation requests from compacted visible history instead of replaying covered raw turns', async () => {
+    const fixture = createFixture();
+    const executeSubagent = jest.fn()
+      .mockResolvedValueOnce({
+        finishReason: 'tool-calls',
+        message: {
+          content: '',
+          role: 'assistant',
+        },
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        text: '',
+        toolCalls: [{ input: { topic: 'smoke' }, toolCallId: 'tool-call-1', toolName: 'save_memory' }],
+        toolResults: [{ output: { kind: 'tool:text', value: 'done' }, toolCallId: 'tool-call-1', toolName: 'save_memory' }],
+      })
+      .mockResolvedValueOnce({
+        finishReason: 'stop',
+        message: {
+          content: 'Generated: 自动续跑后的第二轮',
+          role: 'assistant',
+        },
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        text: 'Generated: 自动续跑后的第二轮',
+        toolCalls: [],
+        toolResults: [],
+      });
+    Reflect.set(fixture.runner as object, 'executeSubagent', executeSubagent);
+    fixture.afterResponseCompactionService.run
+      .mockImplementationOnce(async ({ conversationId }) => {
+        const conversation = fixture.recordService.requireConversation(conversationId, 'user-1');
+        const compactionId = 'compaction-1';
+        const summaryMessageId = 'context-compaction:summary-1';
+        const coveredAnnotation = {
+          owner: 'conversation.context-governance',
+          type: 'context-compaction',
+          version: '1',
+          data: {
+            compactionId,
+            coveredAt: '2026-04-11T00:00:02.000Z',
+            markerVisible: false,
+            role: 'covered',
+            summaryMessageId,
+          },
+        };
+        fixture.recordService.replaceMessages(conversationId, [
+          {
+            ...conversation.messages[0],
+            metadataJson: JSON.stringify({ annotations: [coveredAnnotation] }),
+          } as never,
+          {
+            ...conversation.messages[1],
+            metadataJson: JSON.stringify({ annotations: [coveredAnnotation] }),
+          } as never,
+          {
+            content: '压缩摘要：保留工具结论与下一步。',
+            createdAt: '2026-04-11T00:00:02.050Z',
+            id: summaryMessageId,
+            metadataJson: JSON.stringify({
+              annotations: [{
+                owner: 'conversation.context-governance',
+                type: 'context-compaction',
+                version: '1',
+                data: {
+                  compactionId,
+                  role: 'summary',
+                  trigger: 'after-response',
+                },
+              }],
+            }),
+            model: 'gpt-5.4',
+            parts: [{ text: '压缩摘要：保留工具结论与下一步。', type: 'text' }],
+            provider: 'openai',
+            role: 'display',
+            status: 'completed',
+            updatedAt: '2026-04-11T00:00:02.050Z',
+          } as never,
+        ], 'user-1');
+        return {
+          compactionTriggered: true,
+          continuation: {
+            content: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.',
+            metadata: { annotations: [{ data: { role: 'continue', synthetic: true, trigger: 'after-response' }, owner: 'conversation.context-governance', type: 'context-compaction', version: '1' }] },
+            parts: [{ text: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.', type: 'text' }],
+          },
+        };
+      })
+      .mockResolvedValueOnce({ compactionTriggered: false, continuation: null });
+
+    const summary = await fixture.runner.spawnSubagent('builtin.memory', 'Memory', {
+      conversationId: fixture.parentConversationId,
+      source: 'plugin',
+      userId: 'user-1',
+    }, {
+      messages: [{ content: '第一轮原始输入', role: 'user' }],
+      providerId: 'openai',
+    } as never) as { conversationId: string };
+
+    await jest.runAllTimersAsync();
+
+    const secondRequestMessages = executeSubagent.mock.calls[1]?.[0]?.request?.messages;
+    const serializedSecondRequest = JSON.stringify(secondRequestMessages);
+    expect(serializedSecondRequest).toContain('压缩摘要：保留工具结论与下一步。');
+    expect(serializedSecondRequest).toContain('Continue if you have next steps');
+    expect(serializedSecondRequest).not.toContain('第一轮原始输入');
+  });
+
+  it('propagates finish-step threshold overflow from a subagent run into automatic compaction continuation', async () => {
+    const fixture = createFixture();
+    fixture.afterResponseCompactionService.run
+      .mockResolvedValueOnce({
+        compactionTriggered: true,
+        continuation: {
+          content: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.',
+          metadata: { annotations: [{ data: { role: 'continue', synthetic: true, trigger: 'after-response' }, owner: 'conversation.context-governance', type: 'context-compaction', version: '1' }] },
+          parts: [{ text: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.', type: 'text' }],
+        },
+      })
+      .mockResolvedValueOnce({ compactionTriggered: false, continuation: null });
+    fixture.contextGovernanceService.isAboveAutoCompactionThreshold
+      .mockReturnValue(true);
+    fixture.aiModelExecutionService.streamText
+      .mockReturnValueOnce({
+        finishReason: Promise.resolve('tool-calls'),
+        fullStream: (async function* () {
+          yield { type: 'start-step', request: { model: 'gpt-5.4' }, warnings: [] };
+          yield { input: { topic: 'subagent' }, toolCallId: 'tool-call-1', toolName: 'save_memory', type: 'tool-call' };
+          yield { output: { kind: 'tool:text', value: 'done' }, toolCallId: 'tool-call-1', toolName: 'save_memory', type: 'tool-result' };
+          yield {
+            finishReason: 'tool-calls',
+            providerMetadata: undefined,
+            rawFinishReason: 'tool_calls',
+            response: { id: 'step-1' },
+            type: 'finish-step',
+            usage: {
+              inputTokens: 180,
+              outputTokens: 40,
+              totalTokens: 220,
+            },
+          };
+          yield { type: 'start-step', request: { model: 'gpt-5.4' }, warnings: [] };
+          yield { text: '不应该出现在第一轮子代理结果里', type: 'text-delta' };
+        })(),
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        usage: Promise.resolve({
+          inputTokens: 180,
+          outputTokens: 40,
+          source: 'provider',
+          totalTokens: 220,
+        }),
+      })
+      .mockReturnValueOnce({
+        finishReason: Promise.resolve('stop'),
+        fullStream: (async function* () {
+          yield { text: 'Generated: 自动续跑后的第二轮', type: 'text-delta' };
+        })(),
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        usage: Promise.resolve({
+          inputTokens: 40,
+          outputTokens: 12,
+          source: 'provider',
+          totalTokens: 52,
+        }),
+      });
+
+    const summary = await fixture.runner.spawnSubagent('builtin.memory', 'Memory', {
+      conversationId: fixture.parentConversationId,
+      source: 'plugin',
+      userId: 'user-1',
+    }, {
+      messages: [{ content: '先调用工具，再继续', role: 'user' }],
+      providerId: 'openai',
+    } as never) as { conversationId: string };
+
+    const waitPromise = fixture.runner.waitSubagent('builtin.memory', {
+      conversationId: summary.conversationId,
+    });
+
+    await jest.runAllTimersAsync();
+
+    await expect(waitPromise).resolves.toMatchObject({
+      conversationId: summary.conversationId,
+      result: 'Generated: 自动续跑后的第二轮',
+      status: 'completed',
+    });
+    expect(fixture.afterResponseCompactionService.run).toHaveBeenNthCalledWith(1, {
+      conversationId: summary.conversationId,
+      continuationState: {
+        hasAssistantTextOutput: false,
+        hasToolActivity: true,
+        reachedContextThreshold: true,
+      },
+      modelId: 'gpt-5.4',
+      providerId: 'openai',
+      userId: 'user-1',
+    });
+
+    const conversation = fixture.recordService.requireConversation(summary.conversationId, 'user-1');
+    expect(conversation.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        content: '',
+        role: 'assistant',
+        status: 'completed',
+        toolCalls: expect.arrayContaining([
+          expect.objectContaining({ toolCallId: 'tool-call-1', toolName: 'save_memory' }),
+        ]),
+        toolResults: expect.arrayContaining([
+          expect.objectContaining({ toolCallId: 'tool-call-1', toolName: 'save_memory' }),
+        ]),
+      }),
+      expect.objectContaining({
+        content: 'Generated: 自动续跑后的第二轮',
+        role: 'assistant',
+        status: 'completed',
+      }),
+    ]));
+  });
+
+  it('prunes old tool outputs after a subagent conversation fully finishes', async () => {
+    const fixture = createFixture();
+    Reflect.set(fixture.runner as object, 'executeSubagent', jest.fn(async ({ request }) => ({
+      finishReason: 'stop',
+      message: {
+        content: `Generated: ${readLatestPrompt(request.messages)}`,
+        role: 'assistant',
+      },
+      modelId: request.modelId ?? 'gpt-5.4',
+      providerId: request.providerId ?? 'openai',
+      text: `Generated: ${readLatestPrompt(request.messages)}`,
+      toolCalls: [],
+      toolResults: [],
+    })));
+
+    const summary = await fixture.runner.spawnSubagent('builtin.memory', 'Memory', {
+      conversationId: fixture.parentConversationId,
+      source: 'plugin',
+      userId: 'user-1',
+    }, {
+      messages: [{ content: '完成后裁剪旧工具输出', role: 'user' }],
+      providerId: 'openai',
+    } as never) as { conversationId: string };
+
+    await jest.runAllTimersAsync();
+
+    expect(fixture.afterResponseCompactionService.pruneToolOutputs).toHaveBeenCalledWith({
+      conversationId: summary.conversationId,
+      userId: 'user-1',
+    });
+  });
+
   it('interrupts a queued subagent before it starts running', async () => {
     const fixture = createFixture();
     const executeSubagent = jest.fn(async ({ request }) => ({
@@ -477,11 +836,16 @@ describe('SubagentRunnerService', () => {
 });
 
 function createFixture() {
+  const aiModelExecutionService = {
+    streamText: jest.fn(),
+  };
   const recordService = new ConversationStoreService();
   const contextGovernanceService = {
+    isAboveAutoCompactionThreshold: jest.fn().mockReturnValue(false),
     rewriteHistoryAfterCompletedResponse: jest.fn().mockResolvedValue(undefined),
   };
   const afterResponseCompactionService = {
+    pruneToolOutputs: jest.fn().mockResolvedValue(undefined),
     run: jest.fn().mockResolvedValue({ compactionTriggered: false, continuation: null }),
   };
   const parentConversationId = (recordService.createConversation({
@@ -489,7 +853,7 @@ function createFixture() {
     userId: 'user-1',
   }) as { id: string }).id;
   const runner = new SubagentRunnerService(
-    {} as never,
+    aiModelExecutionService as never,
     new ConversationMessageService(recordService),
     {
       buildToolSet: jest.fn().mockResolvedValue(undefined),
@@ -510,6 +874,7 @@ function createFixture() {
     recordService,
   );
   return {
+    aiModelExecutionService,
     afterResponseCompactionService,
     contextGovernanceService,
     parentConversationId,

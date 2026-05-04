@@ -2,12 +2,12 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { SINGLE_USER_ID } from '../../../src/auth/single-user-auth';
-import { createConversationHistorySignatureFromHistoryMessages } from '../../../src/conversation/conversation-history-signature';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
-import { ConversationStoreService } from '../../../src/runtime/host/conversation-store.service';
-import { ConversationTodoService } from '../../../src/runtime/host/conversation-todo.service';
-import { PluginDispatchService } from '../../../src/runtime/host/plugin-dispatch.service';
+import { SINGLE_USER_ID } from '../../../src/modules/auth/single-user-auth';
+import { createConversationHistorySignatureFromHistoryMessages } from '../../../src/modules/conversation/conversation-history-signature';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
+import { ConversationStoreService } from '../../../src/modules/runtime/host/conversation-store.service';
+import { ConversationTodoService } from '../../../src/modules/runtime/host/conversation-todo.service';
+import { PluginDispatchService } from '../../../src/modules/runtime/host/plugin-dispatch.service';
 
 describe('ConversationStoreService', () => {
   const conversationsEnvKey = 'GARLIC_CLAW_CONVERSATIONS_PATH';
@@ -1150,5 +1150,76 @@ describe('ConversationStoreService', () => {
       conversations: {},
     });
   });
-});
 
+  it('settles lingering main-conversation assistant and display responses after restart', () => {
+    process.env[conversationsEnvKey] = storagePath;
+    const conversationId = '019dc88c-1a11-7806-a2ff-9f4ab8d4fb47';
+    fs.writeFileSync(storagePath, JSON.stringify({
+      conversations: {
+        [conversationId]: {
+          createdAt: '2026-04-10T00:00:00.000Z',
+          id: conversationId,
+          kind: 'main',
+          messages: [
+            {
+              content: '仍在生成的主回复',
+              createdAt: '2026-04-10T00:00:01.000Z',
+              id: '019dc88c-1a11-7806-a2ff-9f4ab8d4fb48',
+              role: 'assistant',
+              status: 'streaming',
+              updatedAt: '2026-04-10T00:00:01.000Z',
+            },
+            {
+              content: '',
+              createdAt: '2026-04-10T00:00:02.000Z',
+              id: '019dc88c-1a11-7806-a2ff-9f4ab8d4fb49',
+              role: 'display',
+              status: 'pending',
+              updatedAt: '2026-04-10T00:00:02.000Z',
+            },
+          ],
+          revision: `${conversationId}:seed:0`,
+          revisionVersion: 0,
+          title: 'Legacy Chat',
+          updatedAt: '2026-04-10T00:00:00.000Z',
+          userId: SINGLE_USER_ID,
+        },
+      },
+    }, null, 2), 'utf-8');
+
+    const service = new ConversationStoreService();
+    const reloaded = service.requireConversation(conversationId, SINGLE_USER_ID);
+
+    expect(reloaded.messages).toMatchObject([
+      {
+        content: '仍在生成的主回复',
+        error: '服务重启时中断了正在运行的回复',
+        role: 'assistant',
+        status: 'stopped',
+      },
+      {
+        content: '',
+        error: '服务重启时中断了正在运行的回复',
+        role: 'display',
+        status: 'stopped',
+      },
+    ]);
+    expect(JSON.parse(fs.readFileSync(storagePath, 'utf-8'))).toEqual({
+      conversations: {
+        [conversationId]: expect.objectContaining({
+          id: conversationId,
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              id: '019dc88c-1a11-7806-a2ff-9f4ab8d4fb48',
+              status: 'stopped',
+            }),
+            expect.objectContaining({
+              id: '019dc88c-1a11-7806-a2ff-9f4ab8d4fb49',
+              status: 'stopped',
+            }),
+          ]),
+        }),
+      },
+    });
+  });
+});

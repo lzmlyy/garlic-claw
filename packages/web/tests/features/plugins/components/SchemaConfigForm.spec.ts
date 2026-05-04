@@ -453,7 +453,7 @@ describe('SchemaConfigForm', () => {
           values: {
             contextCompaction: {
               strategy: 'summary',
-              compressionThreshold: 72,
+              compressionThreshold: 80,
             },
           },
         },

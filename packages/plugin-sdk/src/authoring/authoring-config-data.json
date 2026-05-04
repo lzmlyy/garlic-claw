@@ -8,7 +8,7 @@
     "conversationTitleMaxMessages": 4,
     "providerRouterDefaultShortCircuitReply": "本轮请求已由 provider-router 直接处理。",
     "contextCompactionStrategy": "summary",
-    "contextCompactionCompressionThreshold": 72,
+    "contextCompactionCompressionThreshold": 80,
     "contextCompactionKeepRecentMessages": 0,
     "contextCompactionFrontendMessageWindowSize": 200,
     "contextCompactionReservedTokens": 12000,
@@ -90,7 +90,7 @@
         "condition": {
           "strategy": "summary"
         },
-        "defaultValue": 72
+        "defaultValue": 80
       },
       "keepRecentMessages": {
         "type": "int",

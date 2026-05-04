@@ -951,6 +951,7 @@ test('plugin-sdk exposes shared host result readers for conversation, memory and
   assert.ok(contextCompactionRuntimeConfig.summaryPrompt.includes('最近用户目标 / 限制 / 待办 / 下一步事项'));
   assert.equal(CONTEXT_COMPACTION_CONFIG_SCHEMA.items.keepRecentMessages.type, 'int');
   assert.equal(CONTEXT_COMPACTION_CONFIG_SCHEMA.items.keepRecentMessages.defaultValue, 0);
+  assert.equal(CONTEXT_COMPACTION_CONFIG_SCHEMA.items.compressionThreshold.defaultValue, 80);
   assert.equal(CONTEXT_COMPACTION_CONFIG_SCHEMA.items.frontendMessageWindowSize.type, 'int');
   assert.equal(CONTEXT_COMPACTION_CONFIG_SCHEMA.items.strategy.type, 'string');
   assert.equal(CONTEXT_COMPACTION_CONFIG_SCHEMA.items.slidingWindowUsagePercent.type, 'int');

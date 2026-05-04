@@ -1,8 +1,9 @@
-import type { ChatMessagePart, ConversationSubagentState, JsonObject, JsonValue, PluginCallContext, PluginLlmMessage, PluginSubagentCloseParams, PluginSubagentDetail, PluginSubagentExecutionResult, PluginSubagentHandle, PluginSubagentOverview, PluginSubagentRequest, PluginSubagentSendInputParams, PluginSubagentSpawnParams, PluginSubagentSummary, PluginSubagentWaitParams, PluginSubagentWaitResult, SubagentAfterRunHookResult, SubagentBeforeRunHookResult } from '@garlic-claw/shared';
+import type { ChatMessagePart, ConversationSubagentState, JsonObject, JsonValue, PluginCallContext, PluginConversationHistoryMessage, PluginLlmMessage, PluginSubagentCloseParams, PluginSubagentDetail, PluginSubagentExecutionResult, PluginSubagentHandle, PluginSubagentOverview, PluginSubagentRequest, PluginSubagentSendInputParams, PluginSubagentSpawnParams, PluginSubagentSummary, PluginSubagentWaitParams, PluginSubagentWaitResult, SSEEvent, SubagentAfterRunHookResult, SubagentBeforeRunHookResult } from '@garlic-claw/shared';
 import { BadRequestException, Inject, Injectable, NotFoundException, Optional, forwardRef } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { uuidv7 } from 'uuidv7';
 import { AiModelExecutionService } from '../../ai/ai-model-execution.service';
+import { normalizeAiSdkLanguageModelUsage } from '../../ai/ai-model-execution.service';
 import {
   type ConversationCompactionContinuationState,
 } from '../../conversation/conversation-compaction-continuation';
@@ -11,11 +12,13 @@ import {
   type AfterResponseCompactionContinuation,
   type AfterResponseCompactionResult,
 } from '../../conversation/conversation-after-response-compaction.service';
+import { buildConversationVisibleModelMessages } from '../../conversation/conversation-model-visible-history';
+import { ContextGovernanceService, readCompactedConversationHistory } from '../../conversation/context-governance.service';
 import { ProjectSubagentTypeRegistryService } from '../../execution/project/project-subagent-type-registry.service';
 import { ToolRegistryService } from '../../execution/tool/tool-registry.service';
 import { applyMutatingDispatchableHooks, runDispatchableHookChain } from '../kernel/runtime-plugin-hook-governance';
 import { ConversationMessageService } from './conversation-message.service';
-import { ConversationStoreService, type RuntimeConversationRecord } from './conversation-store.service';
+import { ConversationStoreService, serializeConversationMessage, type RuntimeConversationRecord } from './conversation-store.service';
 import { PluginDispatchService } from './plugin-dispatch.service';
 import { asJsonValue, cloneJsonValue, readAssistantStreamPart, readJsonObject, readJsonStringRecord, readPluginLlmMessages, readPositiveInteger } from './host-input.codec';
 
@@ -24,6 +27,7 @@ type RuntimeSubagentExecutionState = {
   abortController: AbortController;
   completion: Promise<PluginSubagentWaitResult>;
 };
+type SubagentConversationEvent = Extract<SSEEvent, { type: 'finish' | 'message-patch' | 'message-start' | 'status' | 'text-delta' | 'tool-call' | 'tool-result' }>;
 type ResolvedSubagentExecutionResult = {
   continuationState: ConversationCompactionContinuationState;
   result: PluginSubagentExecutionResult;
@@ -32,6 +36,7 @@ type ResolvedSubagentExecutionResult = {
 @Injectable()
 export class SubagentRunnerService {
   private readonly activeExecutions = new Map<string, RuntimeSubagentExecutionState>();
+  private readonly listeners = new Map<string, Set<(event: SubagentConversationEvent) => void>>();
   private readonly scheduledExecutionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly waiters = new Map<string, Set<() => void>>();
 
@@ -94,6 +99,18 @@ export class SubagentRunnerService {
 
   listTypes() {
     return this.projectSubagentTypeRegistryService.listTypes();
+  }
+
+  subscribe(conversationId: string, listener: (event: SubagentConversationEvent) => void): () => void {
+    const listeners = this.listeners.get(conversationId) ?? new Set<(event: SubagentConversationEvent) => void>();
+    listeners.add(listener);
+    this.listeners.set(conversationId, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        this.listeners.delete(conversationId);
+      }
+    };
   }
 
   async spawnSubagent(pluginId: string, pluginDisplayName: string | undefined, context: PluginCallContext, params: JsonObject): Promise<JsonValue> {
@@ -358,7 +375,7 @@ export class SubagentRunnerService {
         ...(conversation.subagent?.providerId ? { providerId: conversation.subagent.providerId } : {}),
         ...(conversation.subagent?.modelId ? { modelId: conversation.subagent.modelId } : {}),
         ...(conversation.subagent?.system ? { system: conversation.subagent.system } : {}),
-        messages: buildConversationLlmMessages(conversation),
+        messages: this.buildSubagentRequestMessages(conversation),
         ...(conversation.subagent?.toolNames ? { toolNames: cloneJsonValue(conversation.subagent.toolNames) as string[] } : {}),
         ...(conversation.subagent?.variant ? { variant: conversation.subagent.variant } : {}),
         ...(conversation.subagent?.providerOptions ? { providerOptions: cloneJsonValue(conversation.subagent.providerOptions) as JsonObject } : {}),
@@ -431,25 +448,42 @@ export class SubagentRunnerService {
     try {
       while (true) {
         const refreshed = this.requireSubagentConversation(conversation.id);
+        this.emit(refreshed.id, { messageId: assistantMessageId, status: 'streaming', type: 'status' });
         const execution = normalizeResolvedSubagentExecution(await this.executeSubagent({
           abortSignal,
           context: createSubagentContext(refreshed),
           pluginId: subagent.pluginId,
           request: this.buildSubagentDetail(refreshed).request,
-          onTextDelta: (text) => {
+          onTextDelta: ({ delta, text }) => {
             this.conversationMessages.writeMessage(refreshed.id, assistantMessageId, { content: `${text}…`, status: 'streaming' });
+            this.emit(refreshed.id, { messageId: assistantMessageId, text: delta, type: 'text-delta' });
+          },
+          onToolCall: (toolCall) => {
+            this.emit(refreshed.id, { ...toolCall, messageId: assistantMessageId, type: 'tool-call' });
+          },
+          onToolResult: (toolResult) => {
+            this.emit(refreshed.id, { ...toolResult, messageId: assistantMessageId, type: 'tool-result' });
           },
         }));
         const { result } = execution;
+        const nextParts = result.message.content ? [{ text: result.message.content, type: 'text' as const }] : [];
         this.conversationMessages.writeMessage(refreshed.id, assistantMessageId, {
           content: result.text,
           model: result.modelId,
-          parts: result.message.content ? [{ text: result.message.content, type: 'text' as const }] : [],
+          parts: nextParts,
           provider: result.providerId,
           status: 'completed',
           toolCalls: result.toolCalls as unknown as JsonValue[],
           toolResults: result.toolResults as unknown as JsonValue[],
         });
+        this.emit(refreshed.id, {
+          content: result.text,
+          messageId: assistantMessageId,
+          ...(nextParts.length > 0 ? { parts: nextParts } : {}),
+          type: 'message-patch',
+        });
+        this.emit(refreshed.id, { messageId: assistantMessageId, status: 'completed', type: 'status' });
+        this.emit(refreshed.id, { messageId: assistantMessageId, status: 'completed', type: 'finish' });
         const compaction = await this.runSubagentPostCompletionCompaction({
           conversationId: refreshed.id,
           continuationState: execution.continuationState,
@@ -467,6 +501,7 @@ export class SubagentRunnerService {
           });
           continue;
         }
+        await this.pruneSubagentToolOutputs(refreshed.id, refreshed.userId);
         this.conversationStore?.updateConversationSubagent(refreshed.id, (currentSubagent) => ({
           nextSubagent: currentSubagent
             ? {
@@ -509,6 +544,23 @@ export class SubagentRunnerService {
           : null,
         result: null,
       }));
+      this.emit(conversation.id, {
+        content: message,
+        messageId: assistantMessageId,
+        parts: [{ text: message, type: 'text' }],
+        type: 'message-patch',
+      });
+      this.emit(conversation.id, {
+        error: message,
+        messageId: assistantMessageId,
+        status: abortSignal.aborted ? 'stopped' : 'error',
+        type: 'status',
+      });
+      this.emit(conversation.id, {
+        messageId: assistantMessageId,
+        status: abortSignal.aborted ? 'stopped' : 'error',
+        type: 'finish',
+      });
       return this.buildSubagentWaitResult(this.requireSubagentConversation(conversation.id, subagent.pluginId));
     }
   }
@@ -535,7 +587,7 @@ export class SubagentRunnerService {
     providerId: string;
     userId?: string;
   }): string {
-    this.conversationMessages.createMessage(input.conversationId, {
+    const userMessage = this.conversationMessages.createMessage(input.conversationId, {
       content: input.continuation.content,
       metadata: input.continuation.metadata,
       model: input.modelId,
@@ -572,14 +624,78 @@ export class SubagentRunnerService {
     if (!assistantMessageId) {
       throw new BadRequestException('创建自动续跑 assistant 消息失败');
     }
+    const serializedAssistantMessage = serializeConversationMessage(assistantMessage as unknown as JsonObject) as unknown as Extract<
+      SubagentConversationEvent,
+      { type: 'message-start' }
+    >['assistantMessage'];
+    const serializedUserMessage = serializeConversationMessage(userMessage as unknown as JsonObject) as unknown as Extract<
+      SubagentConversationEvent,
+      { type: 'message-start' }
+    >['userMessage'];
+    this.emit(input.conversationId, {
+      assistantMessage: serializedAssistantMessage,
+      type: 'message-start',
+      userMessage: serializedUserMessage,
+    });
     return assistantMessageId;
+  }
+
+  private emit(conversationId: string, event: SubagentConversationEvent): void {
+    for (const listener of this.listeners.get(conversationId) ?? []) {
+      listener(event);
+    }
   }
 
   private readAfterResponseCompactionService(): ConversationAfterResponseCompactionService | undefined {
     return this.moduleRef.get(ConversationAfterResponseCompactionService, { strict: false });
   }
 
-  private async executeSubagent(input: { abortSignal: AbortSignal; context: PluginCallContext; pluginId: string; request: PluginSubagentRequest; onTextDelta?: (text: string) => void }): Promise<ResolvedSubagentExecutionResult> {
+  private readContextGovernanceService(): { isAboveAutoCompactionThreshold: (input: { modelId: string; providerId: string; totalTokens: number }) => boolean } | undefined {
+    return this.moduleRef.get(ContextGovernanceService, { strict: false });
+  }
+
+  private buildSubagentRequestMessages(conversation: RuntimeConversationRecord): PluginLlmMessage[] {
+    const history = this.conversationStore?.readConversationHistory(conversation.id, conversation.userId) as {
+      messages?: PluginConversationHistoryMessage[];
+    } | null | undefined;
+    if (Array.isArray(history?.messages)) {
+      return buildConversationVisibleModelMessages(
+        readCompactedConversationHistory(history.messages, true),
+      ).map((message) => ({
+        content: Array.isArray(message.content)
+          ? cloneJsonValue(message.content) as ChatMessagePart[]
+          : message.content,
+        role: message.role,
+      }));
+    }
+    return conversation.messages.flatMap((message) => {
+      const role = typeof message.role === 'string' ? message.role : '';
+      if (role !== 'assistant' && role !== 'system' && role !== 'user') {
+        return [];
+      }
+      const parts = Array.isArray(message.parts) ? cloneJsonValue(message.parts) as unknown as ChatMessagePart[] : [];
+      const content = parts.length > 0 ? parts : typeof message.content === 'string' ? message.content : '';
+      return [{ content, role }];
+    });
+  }
+
+  private async pruneSubagentToolOutputs(conversationId: string, userId?: string): Promise<void> {
+    try {
+      await this.readAfterResponseCompactionService()?.pruneToolOutputs({ conversationId, userId });
+    } catch {
+      // 旧工具输出裁剪失败不应反写已完成子代理状态。
+    }
+  }
+
+  private async executeSubagent(input: {
+    abortSignal: AbortSignal;
+    context: PluginCallContext;
+    onTextDelta?: (entry: { delta: string; text: string }) => void;
+    onToolCall?: (entry: { input: JsonValue; toolCallId: string; toolName: string }) => void;
+    onToolResult?: (entry: { output: JsonValue; toolCallId: string; toolName: string }) => void;
+    pluginId: string;
+    request: PluginSubagentRequest;
+  }): Promise<ResolvedSubagentExecutionResult> {
     const beforeHooks = await runDispatchableHookChain<PluginSubagentRequest, SubagentBeforeRunHookResult, PluginSubagentExecutionResult>({
       applyResponse: (request, response) => readSubagentBeforeRunResponse(request, response),
       hookName: 'subagent:before-run',
@@ -612,11 +728,15 @@ export class SubagentRunnerService {
       variant: request.variant,
     });
     const collected = await collectSubagentRunResult({
+      contextGovernanceService: this.readContextGovernanceService(),
       finishReason: stream.finishReason,
       fullStream: stream.fullStream,
       modelId: stream.modelId,
       onTextDelta: input.onTextDelta,
+      onToolCall: input.onToolCall,
+      onToolResult: input.onToolResult,
       providerId: stream.providerId,
+      usage: stream.usage,
     });
     return {
       continuationState: collected.continuationState,
@@ -746,18 +866,6 @@ function createSubagentContext(conversation: RuntimeConversationRecord): PluginC
     source: 'http-route',
     userId: conversation.userId,
   };
-}
-
-function buildConversationLlmMessages(conversation: RuntimeConversationRecord): PluginLlmMessage[] {
-  return conversation.messages.flatMap((message) => {
-    const role = typeof message.role === 'string' ? message.role : '';
-    if (role !== 'assistant' && role !== 'system' && role !== 'user') {
-      return [];
-    }
-    const parts = Array.isArray(message.parts) ? cloneJsonValue(message.parts) as unknown as ChatMessagePart[] : [];
-    const content = parts.length > 0 ? parts : typeof message.content === 'string' ? message.content : '';
-    return [{ content, role }];
-  });
 }
 
 function readConversationExecutionResult(conversation: RuntimeConversationRecord): PluginSubagentExecutionResult | null {
@@ -947,25 +1055,67 @@ function normalizeResolvedSubagentExecution(
   };
 }
 
-async function collectSubagentRunResult(input: { finishReason?: Promise<unknown> | unknown; fullStream: AsyncIterable<unknown>; modelId: string; providerId: string; onTextDelta?: (text: string) => void }): Promise<ResolvedSubagentExecutionResult> {
+async function collectSubagentRunResult(input: {
+  contextGovernanceService?: { isAboveAutoCompactionThreshold: (entry: { modelId: string; providerId: string; totalTokens: number }) => boolean };
+  finishReason?: Promise<unknown> | unknown;
+  fullStream: AsyncIterable<unknown>;
+  modelId: string;
+  onTextDelta?: (entry: { delta: string; text: string }) => void;
+  onToolCall?: (entry: { input: JsonValue; toolCallId: string; toolName: string }) => void;
+  onToolResult?: (entry: { output: JsonValue; toolCallId: string; toolName: string }) => void;
+  providerId: string;
+  usage?: Promise<unknown> | unknown;
+}): Promise<ResolvedSubagentExecutionResult> {
   let text = '';
   const toolCalls: PluginSubagentExecutionResult['toolCalls'] = [];
   const toolResults: PluginSubagentExecutionResult['toolResults'] = [];
+  let reachedContextThreshold = false;
   for await (const rawPart of input.fullStream) {
+    if (isRecord(rawPart) && rawPart.type === 'finish-step') {
+      const usage = normalizeAiSdkLanguageModelUsage(rawPart.usage);
+      if (
+        usage
+        && input.contextGovernanceService?.isAboveAutoCompactionThreshold({
+          modelId: input.modelId,
+          providerId: input.providerId,
+          totalTokens: usage.totalTokens,
+        })
+      ) {
+        reachedContextThreshold = true;
+        break;
+      }
+    }
     const part = readAssistantStreamPart(rawPart);
     if (!part) {
       continue;
     }
     if (part.type === 'text-delta') {
       text += part.text;
-      input.onTextDelta?.(text);
+      input.onTextDelta?.({ delta: part.text, text });
       continue;
     }
     const payload = { toolCallId: part.toolCallId, toolName: part.toolName };
     if (part.type === 'tool-call') {
-      toolCalls.push({ ...payload, input: asJsonValue(part.input) });
+      const toolCall = { ...payload, input: asJsonValue(part.input) };
+      toolCalls.push(toolCall);
+      input.onToolCall?.(toolCall);
     } else {
-      toolResults.push({ ...payload, output: compactSubagentToolResultOutput(part.output) });
+      const toolResult = { ...payload, output: compactSubagentToolResultOutput(part.output) };
+      toolResults.push(toolResult);
+      input.onToolResult?.(toolResult);
+    }
+  }
+  if (!reachedContextThreshold) {
+    const usage = normalizeAiSdkLanguageModelUsage(await readSubagentUsage(input.usage));
+    if (
+      usage
+      && input.contextGovernanceService?.isAboveAutoCompactionThreshold({
+        modelId: input.modelId,
+        providerId: input.providerId,
+        totalTokens: usage.totalTokens,
+      })
+    ) {
+      reachedContextThreshold = true;
     }
   }
   const finishReason = await input.finishReason;
@@ -973,6 +1123,7 @@ async function collectSubagentRunResult(input: { finishReason?: Promise<unknown>
     continuationState: {
       hasAssistantTextOutput: text.trim().length > 0,
       hasToolActivity: toolCalls.length > 0 || toolResults.length > 0,
+      ...(reachedContextThreshold ? { reachedContextThreshold: true } : {}),
     },
     result: {
       ...(finishReason !== undefined ? { finishReason: finishReason === null ? null : String(finishReason) } : {}),
@@ -984,6 +1135,18 @@ async function collectSubagentRunResult(input: { finishReason?: Promise<unknown>
       toolResults,
     },
   };
+}
+
+async function readSubagentUsage(value: Promise<unknown> | unknown): Promise<unknown> {
+  try {
+    return await value;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function compactSubagentToolResultOutput(value: unknown): JsonValue {

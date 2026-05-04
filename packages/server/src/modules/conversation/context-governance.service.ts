@@ -97,12 +97,13 @@ export class ContextGovernanceService {
     }
   }
 
-  async rewriteHistoryAfterCompletedResponse(input: { conversationId: string; modelId: string; providerId: string; userId?: string }): Promise<boolean> {
+  async rewriteHistoryAfterCompletedResponse(input: { conversationId: string; force?: boolean; modelId: string; providerId: string; userId?: string }): Promise<boolean> {
     const runtimeConfig = this.contextGovernanceSettingsService.readRuntimeConfig().contextCompaction;
     if (!runtimeConfig.enabled || runtimeConfig.strategy !== 'summary') {return false;}
     try {
       const result = await this.runCompaction({
         conversationId: input.conversationId,
+        force: input.force === true,
         modelId: input.modelId,
         providerId: input.providerId,
         trigger: 'after-response',
@@ -182,6 +183,20 @@ export class ContextGovernanceService {
     return runtimeConfig.strategy === 'sliding' ? this.readSlidingContextWindowPreview(input.conversationId, history.messages, runtimeConfig, windowBudgetTokens, contextLength, windowTarget.modelId, windowTarget.providerId, input.userId) : this.readSummaryContextWindowPreview(input.conversationId, history.messages, runtimeConfig, contextLength, windowTarget.modelId, windowTarget.providerId, input.userId);
   }
 
+  isAboveAutoCompactionThreshold(input: {
+    modelId: string;
+    providerId: string;
+    totalTokens: number;
+  }): boolean {
+    const runtimeConfig = this.contextGovernanceSettingsService.readRuntimeConfig().contextCompaction;
+    if (!runtimeConfig.enabled || runtimeConfig.strategy !== 'summary') {
+      return false;
+    }
+    const windowTarget = this.readContextWindowTarget(input.providerId, input.modelId);
+    const thresholdTokens = readContextWindowBudget(windowTarget, runtimeConfig.reservedTokens, runtimeConfig.compressionThreshold);
+    return input.totalTokens >= thresholdTokens;
+  }
+
   listCommandCatalogEntries(): Array<{ aliases: string[]; canonicalCommand: string; commandId: string; conflictTriggers: string[]; connected: boolean; defaultEnabled: boolean; description: string; kind: 'command'; path: string[]; pluginDisplayName: string; pluginId: string; runtimeKind: 'local'; source: 'manifest'; variants: string[] }> {
     return [{ aliases: ['/compress'], canonicalCommand: '/compact', commandId: 'internal.context-governance:/compact:command', conflictTriggers: [], connected: true, defaultEnabled: true, description: '手动触发当前会话的上下文压缩', kind: 'command', path: ['compact'], pluginDisplayName: '上下文治理', pluginId: 'internal.context-governance', runtimeKind: 'local', source: 'manifest', variants: ['/compact', '/compress'] }];
   }
@@ -213,6 +228,7 @@ export class ContextGovernanceService {
 
   async runCompaction(input: {
     conversationId: string;
+    force?: boolean;
     modelId?: string;
     providerId?: string;
     trigger: ContextCompactionTrigger;
@@ -234,7 +250,7 @@ export class ContextGovernanceService {
       input.userId,
       'exact',
     );
-    if (input.trigger !== 'manual' && beforePreview.estimatedTokens < thresholdTokens) {
+    if (!input.force && input.trigger !== 'manual' && beforePreview.estimatedTokens < thresholdTokens) {
       return { beforePreview, compacted: false, reason: 'threshold-not-reached', thresholdTokens };
     }
     let lastAfterPreview: PluginConversationHistoryPreviewResult | undefined;
@@ -264,7 +280,7 @@ export class ContextGovernanceService {
       const predictedMessages = applyContextCompaction({ compactionId, coveredMessageIds, createdAt, historyMessages: history.messages, markerVisible: runtimeConfig.showCoveredMarker, summaryMessageId, summaryText });
       const afterState = readContextCompactionHistoryState(predictedMessages, omitTrailingPendingAssistant);
       const afterPreview = this.previewHistoryMessages(input.conversationId, afterState.modelMessages, windowTarget.modelId, windowTarget.providerId, input.userId);
-      if (afterPreview.estimatedTokens >= thresholdTokens) {
+      if (!input.force && afterPreview.estimatedTokens >= thresholdTokens) {
         lastAfterPreview = afterPreview;
         lastReason = 'still-over-budget';
         continue;
@@ -483,6 +499,13 @@ function readConversationHistorySnapshot(value: unknown): { messages: PluginConv
       : [],
     revision: typeof record?.revision === 'string' ? record.revision : '',
   };
+}
+
+export function readCompactedConversationHistory(
+  messages: PluginConversationHistoryMessage[],
+  omitTrailingPendingAssistant = false,
+): PluginConversationHistoryMessage[] {
+  return readContextCompactionHistoryState(messages, omitTrailingPendingAssistant).visibleMessages;
 }
 
 function readContextCompactionHistoryState(messages: PluginConversationHistoryMessage[], omitTrailingPendingAssistant = false): ContextCompactionHistoryState {

@@ -1899,6 +1899,35 @@ describe('createChatStoreModule', () => {
     expect(store.messages.value).toEqual([])
   })
 
+  it('drops an invalid legacy conversation id locally instead of calling the delete API', async () => {
+    const legacyConversationId = '11111111-1111-4111-8111-111111111111'
+    const store = createChatStoreModule()
+    store.currentConversationId.value = legacyConversationId
+    store.conversations.value = [
+      {
+        id: legacyConversationId,
+        title: '旧会话',
+        createdAt: '2026-04-18T09:00:00.000Z',
+        updatedAt: '2026-04-18T09:00:00.000Z',
+        _count: { messages: 1 },
+      },
+    ]
+    store.selectedProvider.value = 'provider-a'
+    store.selectedModel.value = 'model-a'
+    store.messages.value = [
+      createChatMessage('assistant-1', '旧消息'),
+    ]
+
+    await store.deleteConversation(legacyConversationId)
+
+    expect(chatConversationData.deleteConversationRecord).not.toHaveBeenCalled()
+    expect(store.currentConversationId.value).toBeNull()
+    expect(store.conversations.value).toEqual([])
+    expect(store.selectedProvider.value).toBeNull()
+    expect(store.selectedModel.value).toBeNull()
+    expect(store.messages.value).toEqual([])
+  })
+
   it('loads pending runtime permissions for the selected conversation', async () => {
     vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([])
     vi.mocked(chatConversationData.loadConversationTodoRecord).mockResolvedValue([])

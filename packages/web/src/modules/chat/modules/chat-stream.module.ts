@@ -143,6 +143,16 @@ function flushPendingMessages(state: ChatStreamState) {
   syncMessageList(state, nextMessages);
 }
 
+function commitMessagesImmediately(
+  state: ChatStreamState,
+  nextMessages: ChatMessage[],
+) {
+  const pendingCommit = getPendingMessageCommit(state);
+  clearPendingCommit(pendingCommit);
+  pendingCommit.nextMessages = null;
+  syncMessageList(state, nextMessages);
+}
+
 function queueMessageCommit(
   state: ChatStreamState,
   nextMessages: ChatMessage[],
@@ -344,14 +354,17 @@ export async function dispatchSendMessage(
           optimisticAssistantId,
         });
         if (event.type === "message-start") {
-          syncMessageList(state, nextMessages);
+          commitMessagesImmediately(state, nextMessages);
           if (isAutoCompactionContinuationStart(event)) {
             void params?.refreshConversationSnapshot?.().catch(() => undefined);
           }
           return;
         }
-
-        queueMessageCommit(state, nextMessages);
+        if (event.type === "text-delta") {
+          queueMessageCommit(state, nextMessages);
+          return;
+        }
+        commitMessagesImmediately(state, nextMessages);
       },
       controller.signal,
     );
@@ -467,14 +480,17 @@ export async function dispatchRetryMessage(
           targetMessageId: messageId,
         });
         if (event.type === "message-start") {
-          syncMessageList(state, nextMessages);
+          commitMessagesImmediately(state, nextMessages);
           if (isAutoCompactionContinuationStart(event)) {
             void params?.refreshConversationSnapshot?.().catch(() => undefined);
           }
           return;
         }
-
-        queueMessageCommit(state, nextMessages);
+        if (event.type === "text-delta") {
+          queueMessageCommit(state, nextMessages);
+          return;
+        }
+        commitMessagesImmediately(state, nextMessages);
       },
       controller.signal,
     );

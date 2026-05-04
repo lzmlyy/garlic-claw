@@ -518,6 +518,16 @@ export function createChatStoreModule() {
   }
 
   async function deleteConversation(id: string) {
+    if (!isValidConversationRouteId(id)) {
+      conversations.value = conversations.value.filter(
+        (conversation) => conversation.id !== id,
+      );
+      if (currentConversationId.value === id) {
+        clearCurrentConversationState();
+      }
+      deleteQueuedSendRequests(id);
+      return;
+    }
     if (currentConversationId.value === id) {
       abortChatStream(streamState);
       discardPendingMessageUpdates(streamState);

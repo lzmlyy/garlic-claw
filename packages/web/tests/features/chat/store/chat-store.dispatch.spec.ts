@@ -381,6 +381,92 @@ describe('dispatchSendMessage', () => {
     expect(capturedState?.streaming.value).toBe(true)
   })
 
+  it('applies tool events immediately while the stream is still open', async () => {
+    vi.useFakeTimers()
+    let resolveStream: (() => void) | null = null
+    vi.mocked(chatConversationData.sendConversationMessage).mockImplementation(
+      async (_conversationId, _payload, onEvent) => new Promise<void>((resolve) => {
+        onEvent({
+          type: 'message-start',
+          assistantMessage: {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: '',
+            partsJson: null,
+            toolCalls: null,
+            toolResults: null,
+            metadataJson: null,
+            provider: 'demo-provider',
+            model: 'demo-model',
+            status: 'pending',
+            error: null,
+            createdAt: '2026-05-04T12:00:00.000Z',
+            updatedAt: '2026-05-04T12:00:00.000Z',
+          },
+        })
+        onEvent({
+          type: 'tool-call',
+          messageId: 'assistant-1',
+          toolCallId: 'tool-call-1',
+          toolName: 'write',
+          input: {
+            content: 'hello',
+            filePath: 'docs/output.txt',
+          },
+        })
+        onEvent({
+          type: 'tool-result',
+          messageId: 'assistant-1',
+          toolCallId: 'tool-call-1',
+          toolName: 'write',
+          output: {
+            path: 'docs/output.txt',
+            status: 'created',
+          },
+        })
+        onEvent({
+          type: 'finish',
+          messageId: 'assistant-1',
+          status: 'completed',
+        })
+        resolveStream = resolve
+      }),
+    )
+    const state = createState()
+
+    const sendTask = dispatchSendMessage(state, {
+      content: 'hello',
+    })
+    await Promise.resolve()
+
+    expect(state.messages.value).toEqual([
+      expect.objectContaining({
+        role: 'user',
+        content: 'hello',
+      }),
+      expect.objectContaining({
+        id: 'assistant-1',
+        role: 'assistant',
+        status: 'completed',
+        toolCalls: [
+          expect.objectContaining({
+            toolCallId: 'tool-call-1',
+            toolName: 'write',
+          }),
+        ],
+        toolResults: [
+          expect.objectContaining({
+            toolCallId: 'tool-call-1',
+            toolName: 'write',
+          }),
+        ],
+      }),
+    ])
+
+    resolveStream?.()
+    await sendTask
+  })
+
   it('swallows summary refresh failures during streaming and still completes final refresh', async () => {
     vi.mocked(chatConversationData.retryConversationMessage).mockImplementation(
       async (_conversationId, _messageId, _payload, onEvent) => {

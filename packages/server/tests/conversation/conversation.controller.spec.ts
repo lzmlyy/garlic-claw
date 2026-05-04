@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { ConversationController } from '../../src/conversation/conversation.controller';
+import { ConversationController } from '../../src/modules/conversation/conversation.controller';
 
 describe('ConversationController', () => {
   const conversationId = '11111111-1111-4111-8111-111111111111';
@@ -12,7 +12,7 @@ describe('ConversationController', () => {
   const runtimeToolPermissionService = { listPendingRequests: jest.fn(), reply: jest.fn() };
   const conversationMessages = { deleteMessage: jest.fn(), updateMessage: jest.fn() };
   const conversationTodos = { deleteSessionTodo: jest.fn(), readSessionTodo: jest.fn(), replaceSessionTodo: jest.fn() };
-  const subagentRunner = { interruptSubagent: jest.fn(), sendInputSubagent: jest.fn(), waitSubagent: jest.fn() };
+  const subagentRunner = { interruptSubagent: jest.fn(), sendInputSubagent: jest.fn(), subscribe: jest.fn(), waitSubagent: jest.fn() };
   const conversationStore = {
     createConversation: jest.fn(),
     deleteConversation: jest.fn(),
@@ -26,6 +26,7 @@ describe('ConversationController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    subagentRunner.subscribe.mockReturnValue(() => undefined);
     conversationStore.requireConversation.mockReturnValue({
       createdAt: '2026-04-11T00:00:00.000Z',
       id: conversationId,
@@ -53,7 +54,7 @@ describe('ConversationController', () => {
 
   it('keeps UUID route param validation on conversation and message routes', () => {
     const source = fs.readFileSync(
-      path.join(__dirname, '../../src/conversation/conversation.controller.ts'),
+      path.join(__dirname, '../../src/modules/conversation/conversation.controller.ts'),
       'utf8',
     );
 
@@ -286,6 +287,39 @@ describe('ConversationController', () => {
             updatedAt: '2026-04-11T00:00:02.000Z',
           },
           {
+            content: '压缩摘要：保留目标、约束与下一步。',
+            createdAt: '2026-04-11T00:00:02.050Z',
+            id: 'summary-1',
+            metadataJson: JSON.stringify({
+              annotations: [
+                {
+                  data: {
+                    afterPreview: { estimatedTokens: 320, messageCount: 1, source: 'estimated', textBytes: 1280 },
+                    beforePreview: { estimatedTokens: 4096, messageCount: 2, source: 'provider', textBytes: 16000 },
+                    compactionId: 'compaction-1',
+                    coveredCount: 2,
+                    createdAt: '2026-04-11T00:00:02.050Z',
+                    modelId: 'gpt-5.4',
+                    providerId: 'openai',
+                    role: 'summary',
+                    trigger: 'after-response',
+                  },
+                  owner: 'conversation.context-governance',
+                  type: 'context-compaction',
+                  version: '1',
+                },
+              ],
+            }),
+            model: 'gpt-5.4',
+            partsJson: '[{"type":"text","text":"压缩摘要：保留目标、约束与下一步。"}]',
+            provider: 'openai',
+            role: 'display',
+            status: 'completed',
+            toolCalls: null,
+            toolResults: null,
+            updatedAt: '2026-04-11T00:00:02.050Z',
+          },
+          {
             content: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.',
             createdAt: '2026-04-11T00:00:02.100Z',
             id: 'user-2',
@@ -349,6 +383,39 @@ describe('ConversationController', () => {
             toolCalls: null,
             toolResults: null,
             updatedAt: '2026-04-11T00:00:02.000Z',
+          },
+          {
+            content: '压缩摘要：保留目标、约束与下一步。',
+            createdAt: '2026-04-11T00:00:02.050Z',
+            id: 'summary-1',
+            metadataJson: JSON.stringify({
+              annotations: [
+                {
+                  data: {
+                    afterPreview: { estimatedTokens: 320, messageCount: 1, source: 'estimated', textBytes: 1280 },
+                    beforePreview: { estimatedTokens: 4096, messageCount: 2, source: 'provider', textBytes: 16000 },
+                    compactionId: 'compaction-1',
+                    coveredCount: 2,
+                    createdAt: '2026-04-11T00:00:02.050Z',
+                    modelId: 'gpt-5.4',
+                    providerId: 'openai',
+                    role: 'summary',
+                    trigger: 'after-response',
+                  },
+                  owner: 'conversation.context-governance',
+                  type: 'context-compaction',
+                  version: '1',
+                },
+              ],
+            }),
+            model: 'gpt-5.4',
+            partsJson: '[{"type":"text","text":"压缩摘要：保留目标、约束与下一步。"}]',
+            provider: 'openai',
+            role: 'display',
+            status: 'completed',
+            toolCalls: null,
+            toolResults: null,
+            updatedAt: '2026-04-11T00:00:02.050Z',
           },
           {
             content: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.',
@@ -551,6 +618,31 @@ describe('ConversationController', () => {
       messages: [
         { id: 'old-assistant', role: 'assistant', status: 'completed' },
         {
+          id: 'summary-1',
+          metadata: {
+            annotations: [
+              {
+                data: {
+                  afterPreview: { estimatedTokens: 320, messageCount: 1, source: 'estimated', textBytes: 1280 },
+                  beforePreview: { estimatedTokens: 4096, messageCount: 2, source: 'provider', textBytes: 16000 },
+                  compactionId: 'compaction-1',
+                  coveredCount: 2,
+                  createdAt: '2026-04-11T00:00:02.050Z',
+                  modelId: 'gpt-5.4',
+                  providerId: 'openai',
+                  role: 'summary',
+                  trigger: 'after-response',
+                },
+                owner: 'conversation.context-governance',
+                type: 'context-compaction',
+                version: '1',
+              },
+            ],
+          },
+          role: 'display',
+          status: 'completed',
+        },
+        {
           id: 'synthetic-continue',
           metadata: {
             annotations: [
@@ -618,6 +710,7 @@ describe('ConversationController', () => {
 
   it('streams subagent auto-compaction continuation messages in the same SSE response', async () => {
     const response = createResponseStub();
+    let listener: ((event: Record<string, unknown>) => void) | null = null;
     const initialConversation = {
       createdAt: '2026-04-11T00:00:00.000Z',
       id: conversationId,
@@ -657,74 +750,62 @@ describe('ConversationController', () => {
       title: 'Subagent',
       updatedAt: '2026-04-11T00:00:01.500Z',
     };
-    const finishedConversation = {
-      createdAt: '2026-04-11T00:00:00.000Z',
-      id: conversationId,
-      kind: 'subagent',
-      messages: [
-        {
-          content: '先做第一轮',
-          createdAt: '2026-04-11T00:00:01.000Z',
-          id: 'user-1',
-          parts: [{ text: '先做第一轮', type: 'text' }],
-          role: 'user',
-          status: 'completed',
-          updatedAt: '2026-04-11T00:00:01.000Z',
-        },
-        {
-          content: '第一轮工具完成',
-          createdAt: '2026-04-11T00:00:01.500Z',
-          id: 'assistant-1',
-          model: 'gpt-5.4',
-          parts: [{ text: '第一轮工具完成', type: 'text' }],
-          provider: 'openai',
-          role: 'assistant',
-          status: 'completed',
-          toolCalls: [{ input: { city: 'Hangzhou' }, toolCallId: 'tool-call-1', toolName: 'weather.search' }],
-          toolResults: [{ output: { kind: 'tool:text', value: '晴' }, toolCallId: 'tool-call-1', toolName: 'weather.search' }],
-          updatedAt: '2026-04-11T00:00:02.000Z',
-        },
-        {
-          content: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.',
-          createdAt: '2026-04-11T00:00:02.100Z',
-          id: 'user-2',
-          metadata: {
-            annotations: [
-              {
-                data: { role: 'continue', synthetic: true, trigger: 'after-response' },
-                owner: 'conversation.context-governance',
-                type: 'context-compaction',
-                version: '1',
-              },
-            ],
-          },
-          parts: [{ text: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.', type: 'text' }],
-          role: 'user',
-          status: 'completed',
-          updatedAt: '2026-04-11T00:00:02.100Z',
-        },
-        {
-          content: '第二轮自动续跑完成',
-          createdAt: '2026-04-11T00:00:02.200Z',
-          id: 'assistant-2',
-          model: 'gpt-5.4',
-          parts: [{ text: '第二轮自动续跑完成', type: 'text' }],
-          provider: 'openai',
-          role: 'assistant',
-          status: 'completed',
-          updatedAt: '2026-04-11T00:00:02.500Z',
-        },
-      ],
-      subagent: { activeAssistantMessageId: undefined, pluginId: 'plugin-a', status: 'completed' },
-      title: 'Subagent',
-      updatedAt: '2026-04-11T00:00:02.500Z',
-    };
     conversationStore.requireConversation
       .mockReturnValueOnce(initialConversation)
-      .mockReturnValueOnce(afterSendConversation)
-      .mockReturnValueOnce(finishedConversation);
+      .mockReturnValueOnce(afterSendConversation);
     subagentRunner.sendInputSubagent.mockResolvedValue(undefined);
-    subagentRunner.waitSubagent.mockResolvedValue({ conversationId, result: '第二轮自动续跑完成', status: 'completed' });
+    subagentRunner.subscribe.mockImplementation((_conversationId: string, next: (event: Record<string, unknown>) => void) => {
+      listener = next;
+      return () => {
+        listener = null;
+      };
+    });
+    subagentRunner.waitSubagent.mockImplementation(async () => {
+      listener?.({ messageId: 'assistant-1', status: 'streaming', type: 'status' });
+      listener?.({ input: { city: 'Hangzhou' }, messageId: 'assistant-1', toolCallId: 'tool-call-1', toolName: 'weather.search', type: 'tool-call' });
+      listener?.({ output: { kind: 'tool:text', value: '晴' }, messageId: 'assistant-1', toolCallId: 'tool-call-1', toolName: 'weather.search', type: 'tool-result' });
+      listener?.({ content: '第一轮工具完成', messageId: 'assistant-1', type: 'message-patch' });
+      listener?.({ messageId: 'assistant-1', status: 'completed', type: 'status' });
+      listener?.({ messageId: 'assistant-1', status: 'completed', type: 'finish' });
+      listener?.({
+        assistantMessage: {
+          content: '',
+          createdAt: '2026-04-11T00:00:02.200Z',
+          error: null,
+          id: 'assistant-2',
+          metadataJson: null,
+          model: 'gpt-5.4',
+          partsJson: '[]',
+          provider: 'openai',
+          role: 'assistant',
+          status: 'pending',
+          toolCalls: null,
+          toolResults: null,
+          updatedAt: '2026-04-11T00:00:02.200Z',
+        },
+        type: 'message-start',
+        userMessage: {
+          content: 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.',
+          createdAt: '2026-04-11T00:00:02.100Z',
+          error: null,
+          id: 'user-2',
+          metadataJson: '{"annotations":[{"data":{"role":"continue","synthetic":true,"trigger":"after-response"},"owner":"conversation.context-governance","type":"context-compaction","version":"1"}]}',
+          model: 'gpt-5.4',
+          partsJson: '[{"text":"Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.","type":"text"}]',
+          provider: 'openai',
+          role: 'user',
+          status: 'completed',
+          toolCalls: null,
+          toolResults: null,
+          updatedAt: '2026-04-11T00:00:02.100Z',
+        },
+      });
+      listener?.({ messageId: 'assistant-2', status: 'streaming', type: 'status' });
+      listener?.({ content: '第二轮自动续跑完成', messageId: 'assistant-2', type: 'message-patch' });
+      listener?.({ messageId: 'assistant-2', status: 'completed', type: 'status' });
+      listener?.({ messageId: 'assistant-2', status: 'completed', type: 'finish' });
+      return { conversationId, result: '第二轮自动续跑完成', status: 'completed' };
+    });
 
     await controller.sendMessage(
       'user-1',
@@ -734,8 +815,25 @@ describe('ConversationController', () => {
     );
 
     const writes = response.write.mock.calls.map(([payload]) => payload);
+    expect(subagentRunner.subscribe).toHaveBeenCalledWith(conversationId, expect.any(Function));
     expect(writes.some((payload) => payload.includes('"type":"message-start"') && payload.includes('"id":"assistant-1"') && payload.includes('"id":"user-1"'))).toBe(true);
     expect(writes.some((payload) => payload.includes('"type":"message-start"') && payload.includes('"id":"assistant-2"') && payload.includes('"id":"user-2"'))).toBe(true);
+    expect(writes).toContain(sse({
+      input: { city: 'Hangzhou' },
+      messageId: 'assistant-1',
+      toolCallId: 'tool-call-1',
+      toolName: 'weather.search',
+      type: 'tool-call',
+    }));
+    expect(
+      writes.some((payload) => (
+        payload.includes('"type":"tool-result"')
+        && payload.includes('"messageId":"assistant-1"')
+        && payload.includes('"toolCallId":"tool-call-1"')
+        && payload.includes('"toolName":"weather.search"')
+        && payload.includes('"value":"晴"')
+      )),
+    ).toBe(true);
     expect(writes).toContain(sse({
       content: '第二轮自动续跑完成',
       messageId: 'assistant-2',

@@ -2,17 +2,17 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { ChatMessagePart } from '@garlic-claw/shared';
-import { ConversationAfterResponseCompactionService } from '../../src/conversation/conversation-after-response-compaction.service';
-import { ConversationMessagePlanningService } from '../../src/conversation/conversation-message-planning.service';
-import { ContextGovernanceService } from '../../src/conversation/context-governance.service';
-import { ContextGovernanceSettingsService } from '../../src/conversation/context-governance-settings.service';
-import { ConversationMessageService } from '../../src/runtime/host/conversation-message.service';
-import { ConversationStoreService } from '../../src/runtime/host/conversation-store.service';
-import { ConversationTodoService } from '../../src/runtime/host/conversation-todo.service';
-import { ConversationMessageLifecycleService } from '../../src/conversation/conversation-message-lifecycle.service';
-import { ConversationTaskService } from '../../src/conversation/conversation-task.service';
-import { RuntimeToolPermissionService } from '../../src/execution/runtime/runtime-tool-permission.service';
-import type { PersonaService } from '../../src/persona/persona.service';
+import { ConversationAfterResponseCompactionService } from '../../src/modules/conversation/conversation-after-response-compaction.service';
+import { ConversationMessagePlanningService } from '../../src/modules/conversation/conversation-message-planning.service';
+import { ContextGovernanceService } from '../../src/modules/conversation/context-governance.service';
+import { ContextGovernanceSettingsService } from '../../src/modules/conversation/context-governance-settings.service';
+import { ConversationMessageService } from '../../src/modules/runtime/host/conversation-message.service';
+import { ConversationStoreService } from '../../src/modules/runtime/host/conversation-store.service';
+import { ConversationTodoService } from '../../src/modules/runtime/host/conversation-todo.service';
+import { ConversationMessageLifecycleService } from '../../src/modules/conversation/conversation-message-lifecycle.service';
+import { ConversationTaskService } from '../../src/modules/conversation/conversation-task.service';
+import { RuntimeToolPermissionService } from '../../src/modules/execution/runtime/runtime-tool-permission.service';
+import type { PersonaService } from '../../src/modules/persona/persona.service';
 
 let activeConversationId = '';
 
@@ -95,18 +95,20 @@ describe('ConversationMessageLifecycleService', () => {
     conversationTodos = new ConversationTodoService(
       conversationStore,
     );
-    conversationTaskService = new ConversationTaskService(
-      conversationMessages,
-      conversationStore,
-      new RuntimeToolPermissionService(),
-      conversationTodos,
-    );
     contextGovernanceSettingsService = new ContextGovernanceSettingsService();
     contextGovernanceService = new ContextGovernanceService(
       aiManagementService as never,
       aiModelExecutionService as never,
       contextGovernanceSettingsService,
       conversationStore,
+    );
+    conversationTaskService = new ConversationTaskService(
+      conversationMessages,
+      conversationStore,
+      new RuntimeToolPermissionService(),
+      conversationTodos,
+      undefined,
+      contextGovernanceService,
     );
     conversationMessagePlanningService = new ConversationMessagePlanningService(
       aiModelExecutionService as never,
@@ -1022,6 +1024,105 @@ describe('ConversationMessageLifecycleService', () => {
       modelId: 'gpt-5.4',
       providerId: 'openai',
     }))
+  })
+
+  it('auto-compacts and continues immediately when a finish-step usage crosses the threshold mid tool loop', async () => {
+    aiManagementService.getProviderModel.mockReturnValue({
+      contextLength: 256,
+      id: 'gpt-5.4',
+      providerId: 'openai',
+    })
+    contextGovernanceSettingsService.updateConfig({
+      contextCompaction: {
+        compressionThreshold: 60,
+        enabled: true,
+        keepRecentMessages: 1,
+        reservedTokens: 1,
+        strategy: 'summary',
+        summaryPrompt: '请整理下面的对话摘要',
+      },
+    })
+    conversationStore.replaceMessages(conversationId, [
+      createHistoryMessage('history-1', 'user', '第一条较长历史消息，用于触发 step 级自动压缩。'.repeat(8)),
+      createHistoryMessage('history-2', 'assistant', '第二条较长历史回复，确保压缩候选存在。'.repeat(8)),
+      createHistoryMessage('history-3', 'user', '第三条消息，请先调用工具，再继续。'.repeat(6)),
+    ])
+    aiModelExecutionService.generateText.mockResolvedValueOnce({
+      modelId: 'gpt-5.4',
+      providerId: 'openai',
+      text: '压缩后的历史摘要',
+    })
+    aiModelExecutionService.streamText
+      .mockReturnValueOnce({
+        finishReason: Promise.resolve('tool-calls'),
+        fullStream: (async function* () {
+          yield { type: 'start-step', request: { model: 'gpt-5.4' }, warnings: [] }
+          yield { input: { topic: 'threshold' }, toolCallId: 'tool-call-1', toolName: 'save_memory', type: 'tool-call' }
+          yield { output: { kind: 'tool:text', value: '第一轮工具执行完成' }, toolCallId: 'tool-call-1', toolName: 'save_memory', type: 'tool-result' }
+          yield {
+            finishReason: 'tool-calls',
+            providerMetadata: undefined,
+            rawFinishReason: 'tool_calls',
+            response: { id: 'step-1' },
+            type: 'finish-step',
+            usage: {
+              inputTokens: 180,
+              outputTokens: 40,
+              totalTokens: 220,
+            },
+          }
+          yield { type: 'start-step', request: { model: 'gpt-5.4' }, warnings: [] }
+          yield { text: '这段文本不应该留在压缩前的第一轮 assistant 中', type: 'text-delta' }
+        })(),
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        usage: Promise.resolve({
+          inputTokens: 180,
+          outputTokens: 40,
+          source: 'provider',
+          totalTokens: 220,
+        }),
+      })
+      .mockReturnValueOnce(streamed('gpt-5.4', 'openai', '压缩后继续执行补充步骤。'))
+
+    const started = await startAndWait(service, conversationTaskService, {
+      content: '请先调用工具，再继续。',
+      model: 'gpt-5.4',
+      provider: 'openai',
+    }, 'user-1')
+
+    await waitForConversationToSettle(conversationTaskService, conversationStore)
+
+    const messages = readConversation(conversationStore).messages
+    const syntheticContinueMessage = messages.find((message) => (
+      message.role === 'user'
+      && message.content === 'Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.'
+      && hasContextCompactionContinueAnnotation(message)
+    ))
+    const firstAssistant = messages.find((message) => message.id === started.assistantMessage.id)
+
+    expect(aiModelExecutionService.streamText).toHaveBeenCalledTimes(2)
+    expect(syntheticContinueMessage).toBeTruthy()
+    expect(firstAssistant).toMatchObject({
+      content: '',
+      role: 'assistant',
+      status: 'completed',
+      toolCalls: [{ toolCallId: 'tool-call-1', toolName: 'save_memory' }],
+      toolResults: [{ toolCallId: 'tool-call-1', toolName: 'save_memory' }],
+    })
+    expect(firstAssistant?.content).not.toContain('这段文本不应该留在压缩前的第一轮 assistant 中')
+    expect(messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        content: '压缩后的历史摘要',
+        role: 'display',
+        status: 'completed',
+      }),
+      expect.objectContaining({
+        content: '压缩后继续执行补充步骤。',
+        role: 'assistant',
+        status: 'completed',
+      }),
+    ]))
   })
 
   it('marks the assistant message as error when pre-model auto compaction still cannot fit the context', async () => {
