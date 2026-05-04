@@ -235,7 +235,7 @@ describe('createChatStoreModule', () => {
       {
         id: 'display-summary-1',
         role: 'display',
-        content: '压缩摘要',
+        content: '压缩摘要：最近任务与约束。',
         status: 'completed',
         parts: [],
         toolCalls: [],
@@ -304,6 +304,7 @@ describe('createChatStoreModule', () => {
       expect.objectContaining({
         id: 'display-summary-1',
         role: 'display',
+        content: '压缩摘要：最近任务与约束。',
       }),
       expect.objectContaining({
         id: 'assistant-2',

@@ -136,10 +136,7 @@
                   </details>
                 </div>
                 <template
-                  v-if="
-                    !contextCompactionSummary(row.message) &&
-                      shouldRenderMessageContentBeforeTools(row.message)
-                  "
+                  v-if="shouldRenderMessageContentBeforeTools(row.message)"
                 >
                   <div v-if="row.message.parts?.length" class="message-parts">
                     <template
@@ -229,10 +226,7 @@
                 </div>
 
                 <template
-                  v-if="
-                    !contextCompactionSummary(row.message) &&
-                      shouldRenderMessageContentAfterTools(row.message)
-                  "
+                  v-if="shouldRenderMessageContentAfterTools(row.message)"
                 >
                   <div v-if="row.message.parts?.length" class="message-parts">
                     <template

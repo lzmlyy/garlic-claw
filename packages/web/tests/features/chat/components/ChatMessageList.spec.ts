@@ -199,7 +199,7 @@ describe('ChatMessageList', () => {
     expect(displayMessage.text()).not.toContain('覆盖 3 条消息')
     expect(displayMessage.text()).not.toContain('Token 估算')
     expect(displayMessage.text()).not.toContain('仅展示，不进入 LLM 上下文')
-    expect(displayMessage.text()).not.toContain('压缩后的历史摘要')
+    expect(displayMessage.text()).toContain('压缩后的历史摘要')
     expect(displayMessage.classes()).toContain('display')
     expect(displayMessage.find('.message-role-avatar-image').exists()).toBe(false)
     expect(displayMessage.find('.retry-text').exists()).toBe(false)
@@ -490,7 +490,7 @@ describe('ChatMessageList', () => {
     expect(summaryMessage.text()).not.toContain('自动触发')
     expect(summaryMessage.text()).not.toContain('openai/gpt-5.4')
     expect(summaryMessage.text()).not.toContain('Token 估算 980 -> 420')
-    expect(summaryMessage.text()).not.toContain('压缩摘要：最近任务与约束。')
+    expect(summaryMessage.text()).toContain('压缩摘要：最近任务与约束。')
   })
 
   it('renders tool calls and tool results as collapsed timeline blocks before the assistant reply', () => {
