@@ -2,7 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import type { EventLogListResult, EventLogQuery, JsonObject, JsonValue, McpConfigSnapshot, McpServerConfig, McpServerDeleteResult, PluginParamSchema, ToolInfo, ToolSourceActionResult, ToolSourceInfo } from '@garlic-claw/shared';
+import type {
+  EventLogListResult,
+  EventLogQuery,
+  JsonObject,
+  JsonValue,
+  McpConfigSnapshot,
+  McpServerConfig,
+  McpServerDeleteResult,
+  PluginParamSchema,
+  ToolInfo,
+  ToolSourceActionResult,
+  ToolSourceInfo,
+} from '@garlic-claw/shared';
 import { Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createMcpConnectionConnectedEvent, createMcpConnectionErrorEvent, createMcpGovernanceEvent, createMcpToolErrorEvent, type LogEventPayload } from '../../../core/logging/log-event-payloads';
@@ -49,17 +61,31 @@ export class McpService implements OnModuleDestroy, OnModuleInit {
   getSnapshot(): McpConfigSnapshot { return this.mcpServerStoreService.getSnapshot(); }
 
   async reloadServersFromConfig(): Promise<void> {
+    const snapshot = this.getSnapshot();
     const previousRecords = new Map(this.serverRecords);
     await this.disconnectAllClients();
     this.serverRecords.clear();
-    for (const server of this.getSnapshot().servers) {
-      await this.syncServerRecord(server.name, server, this.readSourceEnabled(server.name), previousRecords.get(server.name)?.tools ?? []);
+    for (const server of snapshot.servers) {
+      await this.syncServerRecord(
+        server.name,
+        this.requireServerConfig(server.name),
+        this.readSourceEnabled(server.name),
+        previousRecords.get(server.name)?.tools ?? [],
+      );
     }
   }
 
   async reloadServer(name: string): Promise<void> { const normalized = name.trim(); await this.syncServerRecord(normalized, this.requireServerConfig(normalized)); }
-  async applyServerConfig(config: McpServerConfig, previousName?: string): Promise<void> { const previous = previousName?.trim(); if (previous && previous !== config.name) {await this.removeServer(previous);} await this.syncServerRecord(config.name, config); }
-  async saveServer(server: McpServerConfig, previousName?: string): Promise<McpServerConfig> { return this.mcpServerStoreService.saveServer(server, previousName); }
+  async applyServerConfig(config: McpServerConfig, previousName?: string): Promise<void> {
+    const previous = previousName?.trim();
+    if (previous && previous !== config.name) {
+      await this.removeServer(previous);
+    }
+    await this.syncServerRecord(config.name, this.requireServerConfig(config.name));
+  }
+  async saveServer(server: McpServerConfig, previousName?: string): Promise<McpServerConfig> {
+    return this.mcpServerStoreService.saveServer(server, previousName);
+  }
   async removeServer(name: string): Promise<void> {
     const normalized = name.trim();
     await this.disconnectServer(normalized);
@@ -227,7 +253,22 @@ export class McpService implements OnModuleDestroy, OnModuleInit {
   }
 
   private buildTransportConfig(config: McpServerConfig): { command: string; args: string[]; env: Record<string, string> } {
-    return { command: process.execPath, args: [resolveMcpStdioLauncherPath(), config.command, ...config.args], env: Object.fromEntries([...Object.entries(process.env).flatMap(([key, value]) => value === undefined ? [] : [[key, value]]), ...Object.entries(config.env ?? {}).map(([key, value]) => [key, value.startsWith('${') && value.endsWith('}') ? this.configService.get<string>(value.slice(2, -1)) || '' : value])]) };
+    const runtimeConfig = this.resolveTransportConfig(config);
+    return {
+      command: process.execPath,
+      args: [resolveMcpStdioLauncherPath(), runtimeConfig.command, ...runtimeConfig.args],
+      env: Object.fromEntries([
+        ...Object.entries(process.env).flatMap(([key, value]) => value === undefined ? [] : [[key, value]]),
+        ...readTransportEnvEntries(runtimeConfig).map(([key, value]) => [key, resolveTransportEnvValue(key, value, this.configService)]),
+      ]),
+    };
+  }
+
+  private resolveTransportConfig(config: McpServerConfig): McpServerConfig {
+    if (!config.envEntries?.some((entry) => entry.source === 'stored-secret' && entry.hasStoredValue && entry.value.trim().length === 0)) {
+      return config;
+    }
+    return this.mcpServerStoreService.getServer(config.name) ?? config;
   }
 
   private async runHealthCheck(sourceId: string): Promise<ToolSourceActionResult> {
@@ -295,4 +336,25 @@ function resolveMcpStdioLauncherPath(): string {
   if (fs.existsSync(directPath)) {return directPath;}
   const distPath = path.resolve(__dirname, '../../../dist/src/execution/mcp/mcp-stdio-launcher.js');
   return fs.existsSync(distPath) ? distPath : directPath;
+}
+
+function readTransportEnvEntries(config: McpServerConfig): Array<[string, string]> {
+  if (Array.isArray(config.envEntries) && config.envEntries.length > 0) {
+    return config.envEntries
+      .map((entry): [string, string] => [entry.key, entry.value])
+      .filter(([key]) => key.trim().length > 0);
+  }
+  return Object.entries(config.env ?? {});
+}
+
+function resolveTransportEnvValue(
+  key: string,
+  value: string,
+  configService: ConfigService,
+): string {
+  const normalizedValue = value.trim();
+  if (normalizedValue.startsWith('${') && normalizedValue.endsWith('}')) {
+    return configService.get<string>(normalizedValue.slice(2, -1)) || '';
+  }
+  return normalizedValue;
 }

@@ -1,30 +1,52 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
+import { McpSecretStoreService } from '../../../src/execution/mcp/mcp-secret-store.service';
 import { McpServerStoreService } from '../../../src/execution/mcp/mcp-server-store.service';
+import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
+
+type McpServerConfigWithEntries = Parameters<McpServerStoreService['saveServer']>[0] & {
+  envEntries: Array<{
+    key: string;
+    source: 'env-ref' | 'literal' | 'stored-secret';
+    value: string;
+    hasStoredValue?: boolean;
+  }>;
+};
 
 describe('McpServerStoreService', () => {
   const envKey = 'GARLIC_CLAW_MCP_CONFIG_PATH';
+  const secretEnvKey = 'GARLIC_CLAW_MCP_SECRET_STATE_PATH';
   let tempConfigRoot: string;
+  let tempSecretStorePath: string;
   let originalCwd: string;
+  let projectWorktreeRootService: ProjectWorktreeRootService;
+  let mcpSecretStoreService: McpSecretStoreService;
 
   beforeEach(() => {
     delete process.env[envKey];
+    delete process.env[secretEnvKey];
     tempConfigRoot = path.join(os.tmpdir(), `mcp-config.service.spec-${Date.now()}-${Math.random()}`, 'servers');
+    tempSecretStorePath = path.join(os.tmpdir(), `mcp-secret.service.spec-${Date.now()}-${Math.random()}`, 'mcp-secrets.server.json');
     fs.rmSync(path.dirname(tempConfigRoot), { recursive: true, force: true });
+    fs.rmSync(path.dirname(tempSecretStorePath), { recursive: true, force: true });
     originalCwd = process.cwd();
+    projectWorktreeRootService = new ProjectWorktreeRootService();
+    process.env[secretEnvKey] = tempSecretStorePath;
+    mcpSecretStoreService = new McpSecretStoreService(projectWorktreeRootService);
   });
 
   afterEach(() => {
     delete process.env[envKey];
+    delete process.env[secretEnvKey];
     fs.rmSync(path.dirname(tempConfigRoot), { recursive: true, force: true });
+    fs.rmSync(path.dirname(tempSecretStorePath), { recursive: true, force: true });
     process.chdir(originalCwd);
   });
 
   it('returns an empty snapshot when the MCP config directory does not exist', async () => {
     process.env[envKey] = tempConfigRoot;
-    const service = new McpServerStoreService(new ProjectWorktreeRootService());
+    const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
 
     expect(service.getSnapshot()).toEqual({
       configPath: tempConfigRoot,
@@ -51,7 +73,7 @@ describe('McpServerStoreService', () => {
     process.chdir(nestedServerRoot);
 
     try {
-      const service = new McpServerStoreService(new ProjectWorktreeRootService());
+      const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
 
       expect(service.getSnapshot()).toEqual({
         configPath: 'config/mcp/servers',
@@ -66,6 +88,13 @@ describe('McpServerStoreService', () => {
             env: {
               TAVILY_API_KEY: '${TAVILY_API_KEY}',
             },
+            envEntries: [
+              {
+                key: 'TAVILY_API_KEY',
+                source: 'env-ref',
+                value: '${TAVILY_API_KEY}',
+              },
+            ],
           },
         ],
       });
@@ -85,7 +114,7 @@ describe('McpServerStoreService', () => {
       args: ['-y', '@mariox/weather-mcp-server'],
     }, null, 2));
 
-    const service = new McpServerStoreService(new ProjectWorktreeRootService());
+    const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
 
     expect(service.saveServer({
       name: 'tavily',
@@ -103,6 +132,13 @@ describe('McpServerStoreService', () => {
       eventLog: {
         maxFileSizeMb: 1,
       },
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'env-ref',
+          value: '${TAVILY_API_KEY}',
+        },
+      ],
     });
 
     expect(service.saveServer(
@@ -127,6 +163,18 @@ describe('McpServerStoreService', () => {
         TAVILY_API_KEY: '${TAVILY_API_KEY}',
         SEARCH_DEPTH: 'advanced',
       },
+      envEntries: [
+        {
+          key: 'SEARCH_DEPTH',
+          source: 'literal',
+          value: 'advanced',
+        },
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'env-ref',
+          value: '${TAVILY_API_KEY}',
+        },
+      ],
       eventLog: {
         maxFileSizeMb: 1,
       },
@@ -169,7 +217,7 @@ describe('McpServerStoreService', () => {
       args: ['-y', 'tavily-mcp@latest'],
     }, null, 2));
 
-    const service = new McpServerStoreService(new ProjectWorktreeRootService());
+    const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
 
     expect(service.deleteServer('weather')).toEqual({
       deleted: true,
@@ -191,5 +239,138 @@ describe('McpServerStoreService', () => {
       ],
     });
     expect(fs.existsSync(path.join(tempConfigRoot, 'weather.json'))).toBe(false);
+  });
+
+  it('keeps stored secrets out of tracked config files and exposes stored-secret metadata in the snapshot', () => {
+    process.env[envKey] = tempConfigRoot;
+
+    const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
+    const payload: McpServerConfigWithEntries = {
+      name: 'tavily',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {},
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'stored-secret',
+          value: 'real-secret-key',
+        },
+        {
+          key: 'SEARCH_DEPTH',
+          source: 'literal',
+          value: 'advanced',
+        },
+        {
+          key: 'TAVILY_PROFILE',
+          source: 'env-ref',
+          value: '${TAVILY_PROFILE}',
+        },
+      ],
+      eventLog: {
+        maxFileSizeMb: 1,
+      },
+    };
+
+    service.saveServer(payload);
+
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(tempConfigRoot, 'tavily.json'), 'utf-8'),
+    ) as {
+      env?: Record<string, string>;
+    };
+    const snapshot = service.getSnapshot();
+
+    expect(persisted.env).toEqual({
+      SEARCH_DEPTH: 'advanced',
+      TAVILY_PROFILE: '${TAVILY_PROFILE}',
+    });
+    expect(snapshot.servers).toEqual([
+      expect.objectContaining({
+        name: 'tavily',
+        env: {
+          SEARCH_DEPTH: 'advanced',
+          TAVILY_API_KEY: '',
+          TAVILY_PROFILE: '${TAVILY_PROFILE}',
+        },
+        envEntries: [
+          {
+            key: 'SEARCH_DEPTH',
+            source: 'literal',
+            value: 'advanced',
+          },
+          {
+            key: 'TAVILY_API_KEY',
+            source: 'stored-secret',
+            value: '',
+            hasStoredValue: true,
+          },
+          {
+            key: 'TAVILY_PROFILE',
+            source: 'env-ref',
+            value: '${TAVILY_PROFILE}',
+          },
+        ],
+      }),
+    ]);
+  });
+
+  it('migrates legacy literal secret values out of config files during load', () => {
+    process.env[envKey] = tempConfigRoot;
+    fs.mkdirSync(tempConfigRoot, { recursive: true });
+    fs.writeFileSync(path.join(tempConfigRoot, 'tavily-mcp.json'), JSON.stringify({
+      name: 'tavily-mcp',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {
+        TAVILY_API_KEY: 'real-secret-key',
+        DEFAULT_PARAMETERS: '{"include_images": true}',
+      },
+      eventLog: {
+        maxFileSizeMb: 1,
+      },
+    }, null, 2));
+
+    const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
+    const snapshot = service.getSnapshot();
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(tempConfigRoot, 'tavily-mcp.json'), 'utf-8'),
+    ) as {
+      env?: Record<string, string>;
+    };
+
+    expect(persisted.env).toEqual({
+      DEFAULT_PARAMETERS: '{"include_images": true}',
+    });
+    expect(snapshot.servers).toEqual([
+      expect.objectContaining({
+        name: 'tavily-mcp',
+        env: {
+          DEFAULT_PARAMETERS: '{"include_images": true}',
+          TAVILY_API_KEY: '',
+        },
+        envEntries: [
+          {
+            key: 'DEFAULT_PARAMETERS',
+            source: 'literal',
+            value: '{"include_images": true}',
+          },
+          {
+            key: 'TAVILY_API_KEY',
+            source: 'stored-secret',
+            value: '',
+            hasStoredValue: true,
+          },
+        ],
+      }),
+    ]);
+    expect(service.getServer('tavily-mcp')).toEqual(
+      expect.objectContaining({
+        env: {
+          DEFAULT_PARAMETERS: '{"include_images": true}',
+          TAVILY_API_KEY: 'real-secret-key',
+        },
+      }),
+    );
   });
 });

@@ -1,4 +1,10 @@
-import type { EventLogListResult, McpConfigSnapshot, McpServerConfig, McpServerDeleteResult } from '@garlic-claw/shared';
+import type {
+  EventLogListResult,
+  McpConfigSnapshot,
+  McpServerConfig,
+  McpServerDeleteResult,
+  McpServerEnvEntry,
+} from '@garlic-claw/shared';
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { McpService } from './mcp.service';
 import { normalizeEventLogSettings } from '../../../core/logging/runtime-event-log.service';
@@ -10,6 +16,20 @@ interface McpEventQueryInput {
   type?: string;
   keyword?: string;
   cursor?: string;
+}
+
+interface McpServerInput {
+  name: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  envEntries?: Array<{
+    key: string;
+    value: string;
+    source?: McpServerEnvEntry['source'];
+    hasStoredValue?: boolean;
+  }>;
+  eventLog?: McpServerConfig['eventLog'];
 }
 
 @Controller('mcp')
@@ -30,20 +50,11 @@ export class McpController {
   }
 
   @Post('servers')
-  async createServer(@Body() dto: {
-    name: string;
-    command: string;
-    args: string[];
-    env?: Record<string, string>;
-    envEntries?: Array<{ key: string; value: string }>;
-  }): Promise<McpServerConfig> {
+  async createServer(@Body() dto: McpServerInput): Promise<McpServerConfig> {
+    const normalizedServer = toMcpServerConfig(dto);
     const server = await this.mcpService.saveServer({
-      ...dto,
-      env: {
-        ...(dto.env ?? {}),
-        ...Object.fromEntries((dto.envEntries ?? []).map((entry) => [entry.key, entry.value])),
-      },
-      eventLog: normalizeEventLogSettings((dto as { eventLog?: McpServerConfig['eventLog'] }).eventLog),
+      ...normalizedServer,
+      eventLog: normalizeEventLogSettings(normalizedServer.eventLog),
     });
     await this.mcpService.applyServerConfig(server);
     return server;
@@ -52,21 +63,12 @@ export class McpController {
   @Put('servers/:name')
   async updateServer(
     @Param('name') name: string,
-    @Body() dto: {
-      name: string;
-      command: string;
-      args: string[];
-      env?: Record<string, string>;
-      envEntries?: Array<{ key: string; value: string }>;
-    },
+    @Body() dto: McpServerInput,
   ): Promise<McpServerConfig> {
+    const normalizedServer = toMcpServerConfig(dto);
     const server = await this.mcpService.saveServer({
-      ...dto,
-      env: {
-        ...(dto.env ?? {}),
-        ...Object.fromEntries((dto.envEntries ?? []).map((entry) => [entry.key, entry.value])),
-      },
-      eventLog: normalizeEventLogSettings((dto as { eventLog?: McpServerConfig['eventLog'] }).eventLog),
+      ...normalizedServer,
+      eventLog: normalizeEventLogSettings(normalizedServer.eventLog),
     }, name);
     await this.mcpService.applyServerConfig(server, name);
     return server;
@@ -78,4 +80,44 @@ export class McpController {
     await this.mcpService.removeServer(name);
     return deleted;
   }
+}
+
+function toMcpServerConfig(input: McpServerInput): McpServerConfig {
+  const envEntries = normalizeEnvEntries(input.envEntries);
+  const env = {
+    ...(input.env ?? {}),
+    ...Object.fromEntries(
+      envEntries
+        .filter((entry) => entry.source !== 'stored-secret')
+        .map((entry) => [entry.key, entry.value]),
+    ),
+  };
+  return {
+    name: input.name,
+    command: input.command,
+    args: input.args,
+    env,
+    ...(envEntries.length > 0 ? { envEntries } : {}),
+    eventLog: normalizeEventLogSettings(input.eventLog),
+  };
+}
+
+function normalizeEnvEntries(
+  envEntries: McpServerInput['envEntries'],
+): McpServerEnvEntry[] {
+  return (envEntries ?? [])
+    .map((entry) => ({
+      key: entry.key.trim(),
+      source: entry.source ?? inferEnvSource(entry.value),
+      value: entry.value.trim(),
+      ...(entry.hasStoredValue ? { hasStoredValue: true } : {}),
+    }))
+    .filter((entry) => entry.key.length > 0);
+}
+
+function inferEnvSource(value: string): McpServerEnvEntry['source'] {
+  const normalizedValue = value.trim();
+  return normalizedValue.startsWith('${') && normalizedValue.endsWith('}')
+    ? 'env-ref'
+    : 'literal';
 }

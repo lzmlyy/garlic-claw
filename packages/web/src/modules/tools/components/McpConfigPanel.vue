@@ -131,10 +131,19 @@
                   <ElInput
                     :data-test="`mcp-env-value-${index}`"
                     v-model="entry.value"
-                    placeholder="${TAVILY_API_KEY}"
+                    :placeholder="entry.usesStoredSecret ? '输入新的 secret' : '${TAVILY_API_KEY}'"
                   />
                   <ElButton
-                    class="action-icon-button danger-icon-button"
+                    :data-test="`mcp-env-secret-toggle-${index}`"
+                    class="mcp-env-mode-button"
+                    :type="entry.usesStoredSecret ? 'primary' : 'default'"
+                    @click="toggleStoredSecret(index)"
+                  >
+                    {{ entry.usesStoredSecret ? '本地 secret' : '普通值 / 引用' }}
+                  </ElButton>
+                  <ElButton
+                    data-test="mcp-env-delete-button"
+                    class="action-icon-button danger-icon-button mcp-env-delete-button"
                     title="删除"
                     :disabled="envRows.length === 1"
                     @click="removeEnvRow(index)"
@@ -142,6 +151,12 @@
                     <Icon :icon="trashBinMinimalisticBold" class="action-icon" aria-hidden="true" />
                   </ElButton>
                 </div>
+                <p
+                  v-if="entry.usesStoredSecret && entry.hasStoredValue && !entry.value.trim()"
+                  class="sidebar-inline-hint"
+                >
+                  已保存本地 secret。留空则保留，输入新值则覆盖。
+                </p>
               </div>
             </div>
           </section>
@@ -219,6 +234,8 @@ interface EnvRow {
   id: number
   key: string
   value: string
+  usesStoredSecret: boolean
+  hasStoredValue: boolean
 }
 
 const {
@@ -394,6 +411,17 @@ function removeEnvRow(index: number) {
   envRows.value.splice(index, 1)
 }
 
+function toggleStoredSecret(index: number) {
+  const entry = envRows.value[index]
+  if (!entry) {
+    return
+  }
+  entry.usesStoredSecret = !entry.usesStoredSecret
+  if (!entry.usesStoredSecret) {
+    entry.hasStoredValue = false
+  }
+}
+
 async function removeSelectedServer() {
   if (!selectedServer.value) {
     return
@@ -423,6 +451,23 @@ function buildPayload(): McpServerConfig {
     throw new Error('命令不能为空')
   }
 
+  const envEntries = envRows.value
+    .map((entry) => ({
+      key: entry.key.trim(),
+      value: entry.value.trim(),
+      usesStoredSecret: entry.usesStoredSecret,
+      hasStoredValue: entry.hasStoredValue,
+    }))
+    .filter((entry) => entry.key.length > 0)
+  const storedSecretEntries = envEntries
+    .filter((entry) => entry.usesStoredSecret && (entry.value.length > 0 || entry.hasStoredValue))
+    .map((entry) => ({
+      key: entry.key,
+      value: entry.value,
+      source: 'stored-secret' as const,
+      ...(entry.hasStoredValue ? { hasStoredValue: true } : {}),
+    }))
+
   return {
     name,
     command,
@@ -431,10 +476,11 @@ function buildPayload(): McpServerConfig {
       .map((line) => line.trim())
       .filter(Boolean),
     env: Object.fromEntries(
-      envRows.value
-        .map((entry) => [entry.key.trim(), entry.value.trim()] as const)
-        .filter(([key, value]) => key.length > 0 && value.length > 0),
+      envEntries
+        .filter((entry) => !entry.usesStoredSecret && entry.value.length > 0)
+        .map((entry) => [entry.key, entry.value] as const),
     ),
+    ...(storedSecretEntries.length > 0 ? { envEntries: storedSecretEntries } : {}),
     eventLog: selectedServer.value?.eventLog ?? {
       maxFileSizeMb: 1,
     },
@@ -476,7 +522,14 @@ function applyServerToDraft(server: McpServerConfig) {
   draftName.value = server.name
   draftCommand.value = server.command
   draftArgsText.value = server.args.join('\n')
-  envRows.value = Object.entries(server.env).map(([key, value]) => createEnvRow(key, value))
+  envRows.value = (server.envEntries && server.envEntries.length > 0
+    ? server.envEntries.map((entry) => createEnvRow(
+      entry.key,
+      entry.source === 'stored-secret' ? '' : entry.value,
+      entry.source === 'stored-secret',
+      entry.hasStoredValue === true,
+    ))
+    : Object.entries(server.env).map(([key, value]) => createEnvRow(key, value)))
   if (envRows.value.length === 0) {
     envRows.value = [createEnvRow()]
   }
@@ -489,12 +542,19 @@ function resetDraft() {
   envRows.value = [createEnvRow()]
 }
 
-function createEnvRow(key = '', value = ''): EnvRow {
+function createEnvRow(
+  key = '',
+  value = '',
+  usesStoredSecret = false,
+  hasStoredValue = false,
+): EnvRow {
   envRowId += 1
   return {
     id: envRowId,
     key,
     value,
+    usesStoredSecret,
+    hasStoredValue,
   }
 }
 
@@ -564,6 +624,14 @@ function serializeServerDraft(server: McpServerConfig) {
       Object.entries(server.env)
         .sort(([left], [right]) => left.localeCompare(right)),
     ),
+    envEntries: [...(server.envEntries ?? [])]
+      .map((entry) => ({
+        key: entry.key,
+        source: entry.source,
+        value: entry.value,
+        ...(entry.hasStoredValue ? { hasStoredValue: true } : {}),
+      }))
+      .sort((left, right) => left.key.localeCompare(right.key)),
     eventLog: server.eventLog,
     name: server.name,
   })
@@ -939,7 +1007,7 @@ defineExpose({
 .mcp-env-inputs {
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto;
   gap: 8px 10px;
   flex: 1 1 auto;
   min-width: 0;
@@ -954,9 +1022,14 @@ defineExpose({
   grid-column: 1;
 }
 
-.mcp-env-inputs button {
+.mcp-env-mode-button {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.mcp-env-delete-button {
   grid-column: 2;
-  grid-row: 1 / 3;
+  grid-row: 1 / 4;
 }
 
 .action-icon-button {

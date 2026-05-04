@@ -50,11 +50,21 @@ export interface ToolOverview {
   tools: ToolInfo[];
 }
 
+export type McpEnvValueSource = 'env-ref' | 'literal' | 'stored-secret';
+
+export interface McpServerEnvEntry {
+  key: string;
+  source: McpEnvValueSource;
+  value: string;
+  hasStoredValue?: boolean;
+}
+
 export interface McpServerConfig {
   name: string;
   command: string;
   args: string[];
   env: Record<string, string>;
+  envEntries?: McpServerEnvEntry[];
   eventLog: EventLogSettings;
 }
 

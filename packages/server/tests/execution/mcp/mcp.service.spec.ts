@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { McpServerConfig } from '@garlic-claw/shared';
+import { McpSecretStoreService } from '../../../src/execution/mcp/mcp-secret-store.service';
 import { McpServerStoreService } from '../../../src/execution/mcp/mcp-server-store.service';
 import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
 import { McpService } from '../../../src/execution/mcp/mcp.service';
@@ -10,13 +11,26 @@ import { ToolManagementSettingsService } from '../../../src/execution/tool/tool-
 import { RuntimeEventLogService } from '../../../src/core/logging/runtime-event-log.service';
 import { createServerTestArtifactPath } from '../../../src/core/runtime/server-workspace-paths';
 
+type McpServerConfigWithEntries = McpServerConfig & {
+  envEntries: Array<{
+    key: string;
+    source: 'env-ref' | 'literal' | 'stored-secret';
+    value: string;
+    hasStoredValue?: boolean;
+  }>;
+};
+
 describe('McpService', () => {
   const envKey = 'GARLIC_CLAW_MCP_CONFIG_PATH';
+  const secretEnvKey = 'GARLIC_CLAW_MCP_SECRET_STATE_PATH';
   const toolManagementEnvKey = 'GARLIC_CLAW_TOOL_MANAGEMENT_CONFIG_PATH';
   const configService = { get: jest.fn() };
   let tempConfigRoot: string;
   let tempLogRoot: string;
+  let tempSecretStorePath: string;
   let tempToolManagementPath: string;
+  let projectWorktreeRootService: ProjectWorktreeRootService;
+  let mcpSecretStoreService: McpSecretStoreService;
 
   let service: McpService;
 
@@ -35,19 +49,25 @@ describe('McpService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env[envKey];
+    delete process.env[secretEnvKey];
     delete process.env.GARLIC_CLAW_SETTINGS_CONFIG_PATH;
     tempConfigRoot = path.join(os.tmpdir(), `mcp.service.spec-${Date.now()}-${Math.random()}`, 'servers');
     tempLogRoot = path.join(os.tmpdir(), `mcp.service.logs-${Date.now()}-${Math.random()}`);
+    tempSecretStorePath = path.join(os.tmpdir(), `mcp.service.secret-${Date.now()}-${Math.random()}`, 'mcp-secrets.server.json');
     tempToolManagementPath = path.join(os.tmpdir(), `mcp.service.tool-management-${Date.now()}-${Math.random()}`, 'tool-management.json');
     fs.rmSync(path.dirname(tempConfigRoot), { recursive: true, force: true });
+    fs.rmSync(path.dirname(tempSecretStorePath), { recursive: true, force: true });
     fs.rmSync(path.dirname(tempToolManagementPath), { recursive: true, force: true });
     process.env[envKey] = tempConfigRoot;
     process.env.GARLIC_CLAW_LOG_ROOT = tempLogRoot;
+    process.env[secretEnvKey] = tempSecretStorePath;
     process.env[toolManagementEnvKey] = tempToolManagementPath;
     process.env.GARLIC_CLAW_SETTINGS_CONFIG_PATH = tempToolManagementPath;
+    projectWorktreeRootService = new ProjectWorktreeRootService();
+    mcpSecretStoreService = new McpSecretStoreService(projectWorktreeRootService);
     service = new McpService(
       configService as never,
-      new McpServerStoreService(new ProjectWorktreeRootService()),
+      new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService),
       new RuntimeEventLogService(),
       new ToolManagementSettingsService(),
     );
@@ -55,11 +75,13 @@ describe('McpService', () => {
 
   afterEach(() => {
     delete process.env[envKey];
+    delete process.env[secretEnvKey];
     delete process.env.GARLIC_CLAW_LOG_ROOT;
     delete process.env.GARLIC_CLAW_SETTINGS_CONFIG_PATH;
     delete process.env[toolManagementEnvKey];
     fs.rmSync(path.dirname(tempConfigRoot), { recursive: true, force: true });
     fs.rmSync(tempLogRoot, { recursive: true, force: true });
+    fs.rmSync(path.dirname(tempSecretStorePath), { recursive: true, force: true });
     fs.rmSync(path.dirname(tempToolManagementPath), { recursive: true, force: true });
   });
 
@@ -203,7 +225,7 @@ describe('McpService', () => {
 
     const reloaded = new McpService(
       configService as never,
-      new McpServerStoreService(new ProjectWorktreeRootService()),
+      new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService),
       new RuntimeEventLogService(),
       new ToolManagementSettingsService(),
     );
@@ -492,5 +514,45 @@ describe('McpService', () => {
     expect(transport.args[0]).toMatch(/mcp-stdio-launcher\.js$/);
     expect(transport.args.slice(1)).toEqual(['npx', '-y', 'weather-mcp']);
     expect(typeof transport.env).toBe('object');
+  });
+
+  it('resolves stored-secret env entries from the local MCP secret store at runtime', async () => {
+    const payload: McpServerConfigWithEntries = {
+      name: 'tavily',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {},
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'stored-secret',
+          value: 'real-secret-key',
+        },
+        {
+          key: 'SEARCH_DEPTH',
+          source: 'literal',
+          value: 'advanced',
+        },
+      ],
+      eventLog: {
+        maxFileSizeMb: 1,
+      },
+    };
+
+    await service.saveServer(payload);
+    const saved = service.getSnapshot().servers.find((entry) => entry.name === 'tavily');
+    const buildTransportConfig = service as unknown as {
+      buildTransportConfig(config: McpServerConfig): {
+        args: string[];
+        command: string;
+        env: Record<string, string>;
+      };
+    };
+
+    expect(saved).toBeTruthy();
+    const transport = buildTransportConfig.buildTransportConfig(saved as McpServerConfig);
+
+    expect(transport.env.TAVILY_API_KEY).toBe('real-secret-key');
+    expect(transport.env.SEARCH_DEPTH).toBe('advanced');
   });
 });

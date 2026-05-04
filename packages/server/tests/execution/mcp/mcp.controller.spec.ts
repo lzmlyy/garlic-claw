@@ -143,6 +143,58 @@ describe('McpController', () => {
     }, 'tavily');
   });
 
+  it('preserves env entry source metadata when creating a server with a stored secret', async () => {
+    mcpService.saveServer.mockResolvedValue({
+      name: 'tavily',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {
+        TAVILY_API_KEY: '',
+      },
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'stored-secret',
+          value: '',
+          hasStoredValue: true,
+        },
+      ],
+      eventLog: {
+        maxFileSizeMb: 1,
+      },
+    });
+
+    await controller.createServer({
+      name: 'tavily',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          value: 'real-secret-key',
+          source: 'stored-secret',
+        },
+      ],
+    } as never);
+
+    expect(mcpService.saveServer).toHaveBeenCalledWith({
+      name: 'tavily',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {},
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          value: 'real-secret-key',
+          source: 'stored-secret',
+        },
+      ],
+      eventLog: {
+        maxFileSizeMb: 1,
+      },
+    });
+  });
+
   it('deletes MCP server config', async () => {
     mcpService.deleteServer.mockResolvedValue({
       deleted: true,

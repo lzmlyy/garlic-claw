@@ -2,24 +2,43 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {
   McpConfigSnapshot,
+  McpServerEnvEntry,
   McpServerConfig,
   McpServerDeleteResult,
 } from '@garlic-claw/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ProjectWorktreeRootService } from '../project/project-worktree-root.service';
 import { normalizeEventLogSettings } from '../../../core/logging/runtime-event-log.service';
+import { McpSecretStoreService } from './mcp-secret-store.service';
 
-type StoredMcpServerFile = Partial<McpServerConfig> & {
+type StoredMcpServerFile = Partial<StoredMcpServerRecord> & {
   name?: string;
 };
+
+interface StoredMcpServerRecord {
+  name: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  eventLog: McpServerConfig['eventLog'];
+}
+
+interface LegacySecretMigrationResult {
+  record: StoredMcpServerRecord;
+  secretEnv: Record<string, string>;
+  changed: boolean;
+}
 
 @Injectable()
 export class McpServerStoreService {
   private readonly configRootPath: string;
   private readonly reportedConfigPath: string;
-  private servers: McpServerConfig[];
+  private servers: StoredMcpServerRecord[];
 
-  constructor(private readonly projectWorktreeRootService: ProjectWorktreeRootService) {
+  constructor(
+    private readonly projectWorktreeRootService: ProjectWorktreeRootService,
+    private readonly mcpSecretStoreService: McpSecretStoreService,
+  ) {
     this.configRootPath = this.resolveMcpConfigRootPath();
     this.reportedConfigPath = readReportedMcpConfigPath(this.configRootPath);
     this.servers = this.loadServers();
@@ -28,28 +47,41 @@ export class McpServerStoreService {
   getSnapshot(): McpConfigSnapshot {
     return {
       configPath: this.reportedConfigPath,
-      servers: this.servers.map(cloneServerConfig),
+      servers: this.servers.map((server) =>
+        toSnapshotServerConfig(server, this.mcpSecretStoreService.readServerSecrets(server.name))),
     };
   }
 
   getServer(name: string): McpServerConfig | null {
-    return this.servers.find((entry) => entry.name === name) ?? null;
+    const server = this.servers.find((entry) => entry.name === name);
+    if (!server) {
+      return null;
+    }
+    return toRuntimeServerConfig(server, this.mcpSecretStoreService.readServerSecrets(server.name));
   }
 
   saveServer(server: McpServerConfig, previousName?: string): McpServerConfig {
+    const currentSecrets = this.mcpSecretStoreService.readServerSecrets(previousName ?? server.name);
+    const normalizedServer = normalizeIncomingServer(server, currentSecrets);
     fs.mkdirSync(this.configRootPath, { recursive: true });
     fs.writeFileSync(
-      resolveServerFilePath(this.configRootPath, server.name),
-      JSON.stringify(serializeServer(server), null, 2),
+      resolveServerFilePath(this.configRootPath, normalizedServer.record.name),
+      JSON.stringify(serializeStoredServer(normalizedServer.record), null, 2),
       'utf-8',
     );
 
-    if (previousName && previousName !== server.name) {
+    this.mcpSecretStoreService.saveServerSecrets(
+      normalizedServer.record.name,
+      normalizedServer.secretEnv,
+      previousName,
+    );
+
+    if (previousName && previousName !== normalizedServer.record.name) {
       fs.rmSync(resolveServerFilePath(this.configRootPath, previousName), { force: true });
     }
 
-    this.servers = this.upsertServer(server, previousName);
-    return cloneServerConfig(server);
+    this.servers = this.upsertServer(normalizedServer.record, previousName);
+    return toSnapshotServerConfig(normalizedServer.record, normalizedServer.secretEnv);
   }
 
   deleteServer(name: string): McpServerDeleteResult {
@@ -59,26 +91,43 @@ export class McpServerStoreService {
     }
 
     fs.rmSync(resolveServerFilePath(this.configRootPath, name), { force: true });
+    this.mcpSecretStoreService.deleteServerSecrets(name);
     this.servers = this.servers.filter((entry) => entry.name !== name);
     return { deleted: true, name };
   }
 
-  private loadServers(): McpServerConfig[] {
+  private loadServers(): StoredMcpServerRecord[] {
     try {
       fs.mkdirSync(this.configRootPath, { recursive: true });
       return fs.readdirSync(this.configRootPath, { withFileTypes: true })
         .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
-        .map((entry) => readServerFile(path.join(this.configRootPath, entry.name)))
-        .filter((server): server is McpServerConfig => server !== null)
+        .map((entry) => this.readAndMigrateServerFile(path.join(this.configRootPath, entry.name)))
+        .filter((server): server is StoredMcpServerRecord => server !== null)
         .sort((left, right) => left.name.localeCompare(right.name));
     } catch {
       return [];
     }
   }
 
-  private upsertServer(server: McpServerConfig, previousName?: string): McpServerConfig[] {
+  private readAndMigrateServerFile(filePath: string): StoredMcpServerRecord | null {
+    const server = readServerFile(filePath);
+    if (!server) {
+      return null;
+    }
+    const migration = migrateLegacyStoredSecrets(
+      server,
+      this.mcpSecretStoreService.readServerSecrets(server.name),
+    );
+    if (migration.changed) {
+      fs.writeFileSync(filePath, JSON.stringify(serializeStoredServer(migration.record), null, 2), 'utf-8');
+      this.mcpSecretStoreService.saveServerSecrets(server.name, migration.secretEnv);
+    }
+    return migration.record;
+  }
+
+  private upsertServer(server: StoredMcpServerRecord, previousName?: string): StoredMcpServerRecord[] {
     const nextServers = this.servers.filter((entry) => entry.name !== (previousName ?? server.name));
-    nextServers.push(cloneServerConfig(server));
+    nextServers.push(cloneStoredServerRecord(server));
     return nextServers.sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -91,17 +140,17 @@ export class McpServerStoreService {
   }
 }
 
-function readServerFile(filePath: string): McpServerConfig | null {
+function readServerFile(filePath: string): StoredMcpServerRecord | null {
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StoredMcpServerFile;
     const fallbackName = decodeURIComponent(path.basename(filePath, path.extname(filePath)));
-    return toServerConfig(raw, fallbackName);
+    return toStoredServerRecord(raw, fallbackName);
   } catch {
     return null;
   }
 }
 
-function toServerConfig(raw: StoredMcpServerFile, fallbackName: string): McpServerConfig | null {
+function toStoredServerRecord(raw: StoredMcpServerFile, fallbackName: string): StoredMcpServerRecord | null {
   const name = typeof raw.name === 'string' && raw.name.trim().length > 0
     ? raw.name.trim()
     : fallbackName;
@@ -122,7 +171,7 @@ function toServerConfig(raw: StoredMcpServerFile, fallbackName: string): McpServ
   };
 }
 
-function serializeServer(server: McpServerConfig): McpServerConfig {
+function serializeStoredServer(server: StoredMcpServerRecord): StoredMcpServerRecord {
   return {
     name: server.name,
     command: server.command,
@@ -132,8 +181,197 @@ function serializeServer(server: McpServerConfig): McpServerConfig {
   };
 }
 
-function cloneServerConfig(server: McpServerConfig): McpServerConfig {
-  return serializeServer(server);
+function cloneStoredServerRecord(server: StoredMcpServerRecord): StoredMcpServerRecord {
+  return serializeStoredServer(server);
+}
+
+function toSnapshotServerConfig(
+  server: StoredMcpServerRecord,
+  secretEnv: Record<string, string>,
+): McpServerConfig {
+  return toServerConfigWithSecrets(server, secretEnv, false);
+}
+
+function toRuntimeServerConfig(
+  server: StoredMcpServerRecord,
+  secretEnv: Record<string, string>,
+): McpServerConfig {
+  return toServerConfigWithSecrets(server, secretEnv, true);
+}
+
+function toServerConfigWithSecrets(
+  server: StoredMcpServerRecord,
+  secretEnv: Record<string, string>,
+  exposeStoredSecretValue: boolean,
+): McpServerConfig {
+  const envEntries = mergeEnvEntries(server.env, secretEnv, exposeStoredSecretValue);
+  const config: McpServerConfig = {
+    name: server.name,
+    command: server.command,
+    args: [...server.args],
+    env: Object.fromEntries(
+      envEntries.map((entry) => [
+        entry.key,
+        entry.source === 'stored-secret' && !exposeStoredSecretValue ? '' : entry.value,
+      ]),
+    ),
+    eventLog: normalizeEventLogSettings(server.eventLog),
+  };
+  if (envEntries.length > 0) {
+    config.envEntries = envEntries;
+  }
+  return config;
+}
+
+function mergeEnvEntries(
+  configEnv: Record<string, string>,
+  secretEnv: Record<string, string>,
+  exposeStoredSecretValue: boolean,
+): McpServerEnvEntry[] {
+  const entriesByKey = new Map<string, McpServerEnvEntry>();
+  for (const [key, value] of Object.entries(configEnv)) {
+    entriesByKey.set(key, {
+      key,
+      source: isEnvReference(value) ? 'env-ref' : 'literal',
+      value,
+    });
+  }
+  for (const [key, value] of Object.entries(secretEnv)) {
+    entriesByKey.set(key, {
+      key,
+      source: 'stored-secret',
+      value: exposeStoredSecretValue ? value : '',
+      hasStoredValue: true,
+    });
+  }
+  return [...entriesByKey.values()].sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function normalizeIncomingServer(
+  server: McpServerConfig,
+  currentSecrets: Record<string, string>,
+): { record: StoredMcpServerRecord; secretEnv: Record<string, string> } {
+  const visibleEnv = readVisibleEnv(server);
+  const secretEnv = readNextSecretEnv(server, currentSecrets);
+  const storedEnv = {
+    ...visibleEnv,
+  };
+  for (const secretKey of Object.keys(secretEnv)) {
+    delete storedEnv[secretKey];
+  }
+  return {
+    record: {
+      name: server.name,
+      command: server.command,
+      args: [...server.args],
+      env: storedEnv,
+      eventLog: normalizeEventLogSettings(server.eventLog),
+    },
+    secretEnv,
+  };
+}
+
+function normalizeEnvMap(env: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env)
+      .map(([key, value]) => [key.trim(), value.trim()] as const)
+      .filter(([key, value]) => key.length > 0 && value.length > 0),
+  );
+}
+
+function readVisibleEnv(server: McpServerConfig): Record<string, string> {
+  const visibleEntries = normalizeIncomingEnvEntries(server)
+    .filter((entry) => entry.source !== 'stored-secret')
+    .map((entry) => [entry.key, entry.value] as const);
+  return {
+    ...normalizeEnvMap(server.env),
+    ...Object.fromEntries(visibleEntries),
+  };
+}
+
+function readNextSecretEnv(
+  server: McpServerConfig,
+  currentSecrets: Record<string, string>,
+): Record<string, string> {
+  const nextSecrets: Record<string, string> = {};
+  for (const entry of normalizeIncomingEnvEntries(server)) {
+    if (entry.source !== 'stored-secret') {
+      continue;
+    }
+    const key = entry.key.trim();
+    const value = entry.value.trim();
+    if (value.length > 0) {
+      nextSecrets[key] = value;
+      continue;
+    }
+    if (entry.hasStoredValue && currentSecrets[key]) {
+      nextSecrets[key] = currentSecrets[key];
+    }
+  }
+  return nextSecrets;
+}
+
+function normalizeIncomingEnvEntries(server: McpServerConfig): McpServerEnvEntry[] {
+  if (!Array.isArray(server.envEntries) || server.envEntries.length === 0) {
+    return Object.entries(normalizeEnvMap(server.env)).map(([key, value]) => ({
+      key,
+      source: isEnvReference(value) ? 'env-ref' : 'literal',
+      value,
+    }));
+  }
+  return server.envEntries
+    .map((entry) => ({
+      key: entry.key.trim(),
+      source: entry.source,
+      value: entry.value.trim(),
+      ...(entry.hasStoredValue ? { hasStoredValue: true } : {}),
+    }))
+    .filter((entry) => entry.key.length > 0);
+}
+
+function migrateLegacyStoredSecrets(
+  server: StoredMcpServerRecord,
+  currentSecrets: Record<string, string>,
+): LegacySecretMigrationResult {
+  const nextEnv: Record<string, string> = {};
+  const nextSecrets: Record<string, string> = {
+    ...currentSecrets,
+  };
+  let changed = false;
+
+  for (const [key, value] of Object.entries(server.env)) {
+    if (shouldMigrateLiteralSecret(key, value)) {
+      if (nextSecrets[key] !== value) {
+        nextSecrets[key] = value;
+      }
+      changed = true;
+      continue;
+    }
+    nextEnv[key] = value;
+  }
+
+  return {
+    record: changed
+      ? {
+        ...server,
+        env: nextEnv,
+      }
+      : server,
+    secretEnv: nextSecrets,
+    changed,
+  };
+}
+
+function isEnvReference(value: string): boolean {
+  return value.startsWith('${') && value.endsWith('}');
+}
+
+function shouldMigrateLiteralSecret(key: string, value: string): boolean {
+  const normalizedValue = value.trim();
+  if (normalizedValue.length === 0 || isEnvReference(normalizedValue)) {
+    return false;
+  }
+  return /(?:^|_)(?:API_KEY|ACCESS_KEY|SECRET|TOKEN|PASSWORD|PRIVATE_KEY)(?:_|$)/i.test(key);
 }
 
 function readReportedMcpConfigPath(configRootPath: string): string {

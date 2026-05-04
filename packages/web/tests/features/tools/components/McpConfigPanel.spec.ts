@@ -159,6 +159,13 @@ describe('McpConfigPanel', () => {
           env: {
             TAVILY_API_KEY: '${TAVILY_API_KEY}',
           },
+          envEntries: [
+            {
+              key: 'TAVILY_API_KEY',
+              source: 'env-ref',
+              value: '${TAVILY_API_KEY}',
+            },
+          ],
           eventLog: {
             maxFileSizeMb: 1,
           },
@@ -344,6 +351,62 @@ describe('McpConfigPanel', () => {
     expect((wrapper.get('[data-test="mcp-env-value-0"]').element as HTMLInputElement).value).toBe('persisted-secret')
     vi.useRealTimers()
   })
+
+  it('does not expose stored secret values and preserves the stored secret when editing another field', async () => {
+    vi.useFakeTimers()
+    hoisted.state = createManagementState()
+    hoisted.state.snapshot.value = {
+      configPath: 'mcp/servers',
+      servers: [
+        {
+          name: 'tavily',
+          command: 'npx',
+          args: ['-y', 'tavily-mcp@latest'],
+          env: {
+            TAVILY_API_KEY: '',
+          },
+          envEntries: [
+            {
+              key: 'TAVILY_API_KEY',
+              source: 'stored-secret',
+              value: '',
+              hasStoredValue: true,
+            },
+          ],
+          eventLog: {
+            maxFileSizeMb: 1,
+          },
+        },
+      ],
+    }
+    hoisted.state.selectedServerName.value = 'tavily'
+
+    const wrapper = mount(McpConfigPanel, {
+      props: {
+        preferredServerName: 'tavily',
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已保存本地 secret')
+    expect((wrapper.get('[data-test="mcp-env-value-0"]').element as HTMLInputElement).value).toBe('')
+
+    await wrapper.get('[data-test="mcp-args-input"]').setValue('-y\ntavily-mcp@latest\n--verbose')
+    await vi.runAllTimersAsync()
+
+    expect(hoisted.state?.updateServer).toHaveBeenCalledWith('tavily', expect.objectContaining({
+      args: ['-y', 'tavily-mcp@latest', '--verbose'],
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'stored-secret',
+          value: '',
+          hasStoredValue: true,
+        },
+      ],
+    }))
+    vi.useRealTimers()
+  })
 })
 
 function createManagementState() {
@@ -354,6 +417,12 @@ function createManagementState() {
       command: string
       args: string[]
       env: Record<string, string>
+      envEntries?: Array<{
+        key: string
+        source: 'env-ref' | 'literal' | 'stored-secret'
+        value: string
+        hasStoredValue?: boolean
+      }>
       eventLog: {
         maxFileSizeMb: number
       }

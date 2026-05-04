@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { McpSecretStoreService } from '../mcp/mcp-secret-store.service';
 import { McpServerStoreService } from '../mcp/mcp-server-store.service';
 import { PersonaStoreService } from '../../persona/persona-store.service';
 import { RUNTIME_FILESYSTEM_POST_WRITE_PROVIDERS } from '../runtime/runtime-filesystem-post-write.service';
@@ -19,6 +20,7 @@ import { ProjectWorktreeRootService } from './project-worktree-root.service';
       useFactory: (projectWorktreePostWriteService: ProjectWorktreePostWriteService) => [projectWorktreePostWriteService],
       inject: [ProjectWorktreePostWriteService],
     },
+    McpSecretStoreService,
     McpServerStoreService,
     PersonaStoreService,
     ProjectWorktreeRootService,
@@ -29,6 +31,7 @@ import { ProjectWorktreeRootService } from './project-worktree-root.service';
   ],
   exports: [
     RUNTIME_FILESYSTEM_POST_WRITE_PROVIDERS,
+    McpSecretStoreService,
     McpServerStoreService,
     PersonaStoreService,
     ProjectWorktreeRootService,
