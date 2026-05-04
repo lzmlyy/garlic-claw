@@ -4163,9 +4163,9 @@ function assertAutoCompactionSse(events) {
   const finishCount = events.filter((entry) => entry.type === 'finish').length;
   const doneIndex = events.findIndex((entry) => entry.type === 'done');
   const turns = readCompletedSseAssistantTurns(events);
-  ensure(messageStartCount >= 2, `Expected auto compaction SSE to include continuation message-start, events=${serializedEvents}`);
-  ensure(finishCount >= 2, `Expected auto compaction SSE to include continuation finish, events=${serializedEvents}`);
-  ensure(turns.length >= 2, `Expected auto compaction SSE to include two completed assistant turns, events=${serializedEvents}`);
+  ensure(messageStartCount === 2, `Expected auto compaction SSE to include exactly two assistant starts, events=${serializedEvents}`);
+  ensure(finishCount === 2, `Expected auto compaction SSE to include exactly two assistant finishes, events=${serializedEvents}`);
+  ensure(turns.length === 2, `Expected auto compaction SSE to include exactly two completed assistant turns, events=${serializedEvents}`);
   ensure(doneIndex > turns[1].finishIndex, `Expected SSE [DONE] after continuation finish, events=${serializedEvents}`);
   ensure(turns[0].text === AUTO_COMPACTION_MAIN_TEXT, `Expected first auto compaction assistant text to equal main summary, events=${serializedEvents}`);
   ensure(turns[1].text === AUTO_COMPACTION_CONTINUATION_TEXT, `Expected continuation assistant text to equal auto-continue reply, events=${serializedEvents}`);
