@@ -3,11 +3,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { McpServerConfig } from '@garlic-claw/shared';
-import { McpSecretStoreService } from '../../../src/execution/mcp/mcp-secret-store.service';
-import { McpServerStoreService } from '../../../src/execution/mcp/mcp-server-store.service';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { McpService } from '../../../src/execution/mcp/mcp.service';
-import { ToolManagementSettingsService } from '../../../src/execution/tool/tool-management-settings.service';
+import { McpSecretStoreService } from '../../../src/modules/execution/mcp/mcp-secret-store.service';
+import { McpServerStoreService } from '../../../src/modules/execution/mcp/mcp-server-store.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { McpService } from '../../../src/modules/execution/mcp/mcp.service';
+import { ToolManagementSettingsService } from '../../../src/modules/execution/tool/tool-management-settings.service';
 import { RuntimeEventLogService } from '../../../src/core/logging/runtime-event-log.service';
 import { createServerTestArtifactPath } from '../../../src/core/runtime/server-workspace-paths';
 

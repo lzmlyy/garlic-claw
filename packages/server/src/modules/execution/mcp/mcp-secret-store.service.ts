@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Injectable } from '@nestjs/common';
-import { resolveServerStatePath } from '../../core/runtime/server-workspace-paths';
+import { resolveServerStatePath } from '../../../core/runtime/server-workspace-paths';
 import { ProjectWorktreeRootService } from '../project/project-worktree-root.service';
 
 interface StoredMcpSecretsFile {

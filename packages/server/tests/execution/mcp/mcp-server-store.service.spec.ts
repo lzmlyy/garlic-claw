@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { McpSecretStoreService } from '../../../src/execution/mcp/mcp-secret-store.service';
-import { McpServerStoreService } from '../../../src/execution/mcp/mcp-server-store.service';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
+import { McpSecretStoreService } from '../../../src/modules/execution/mcp/mcp-secret-store.service';
+import { McpServerStoreService } from '../../../src/modules/execution/mcp/mcp-server-store.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
 
 type McpServerConfigWithEntries = Parameters<McpServerStoreService['saveServer']>[0] & {
   envEntries: Array<{
@@ -315,62 +315,4 @@ describe('McpServerStoreService', () => {
     ]);
   });
 
-  it('migrates legacy literal secret values out of config files during load', () => {
-    process.env[envKey] = tempConfigRoot;
-    fs.mkdirSync(tempConfigRoot, { recursive: true });
-    fs.writeFileSync(path.join(tempConfigRoot, 'tavily-mcp.json'), JSON.stringify({
-      name: 'tavily-mcp',
-      command: 'npx',
-      args: ['-y', 'tavily-mcp@latest'],
-      env: {
-        TAVILY_API_KEY: 'real-secret-key',
-        DEFAULT_PARAMETERS: '{"include_images": true}',
-      },
-      eventLog: {
-        maxFileSizeMb: 1,
-      },
-    }, null, 2));
-
-    const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
-    const snapshot = service.getSnapshot();
-    const persisted = JSON.parse(
-      fs.readFileSync(path.join(tempConfigRoot, 'tavily-mcp.json'), 'utf-8'),
-    ) as {
-      env?: Record<string, string>;
-    };
-
-    expect(persisted.env).toEqual({
-      DEFAULT_PARAMETERS: '{"include_images": true}',
-    });
-    expect(snapshot.servers).toEqual([
-      expect.objectContaining({
-        name: 'tavily-mcp',
-        env: {
-          DEFAULT_PARAMETERS: '{"include_images": true}',
-          TAVILY_API_KEY: '',
-        },
-        envEntries: [
-          {
-            key: 'DEFAULT_PARAMETERS',
-            source: 'literal',
-            value: '{"include_images": true}',
-          },
-          {
-            key: 'TAVILY_API_KEY',
-            source: 'stored-secret',
-            value: '',
-            hasStoredValue: true,
-          },
-        ],
-      }),
-    ]);
-    expect(service.getServer('tavily-mcp')).toEqual(
-      expect.objectContaining({
-        env: {
-          DEFAULT_PARAMETERS: '{"include_images": true}',
-          TAVILY_API_KEY: 'real-secret-key',
-        },
-      }),
-    );
-  });
 });

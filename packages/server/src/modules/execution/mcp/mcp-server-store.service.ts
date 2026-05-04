@@ -23,12 +23,6 @@ interface StoredMcpServerRecord {
   eventLog: McpServerConfig['eventLog'];
 }
 
-interface LegacySecretMigrationResult {
-  record: StoredMcpServerRecord;
-  secretEnv: Record<string, string>;
-  changed: boolean;
-}
-
 @Injectable()
 export class McpServerStoreService {
   private readonly configRootPath: string;
@@ -101,28 +95,12 @@ export class McpServerStoreService {
       fs.mkdirSync(this.configRootPath, { recursive: true });
       return fs.readdirSync(this.configRootPath, { withFileTypes: true })
         .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
-        .map((entry) => this.readAndMigrateServerFile(path.join(this.configRootPath, entry.name)))
+        .map((entry) => readServerFile(path.join(this.configRootPath, entry.name)))
         .filter((server): server is StoredMcpServerRecord => server !== null)
         .sort((left, right) => left.name.localeCompare(right.name));
     } catch {
       return [];
     }
-  }
-
-  private readAndMigrateServerFile(filePath: string): StoredMcpServerRecord | null {
-    const server = readServerFile(filePath);
-    if (!server) {
-      return null;
-    }
-    const migration = migrateLegacyStoredSecrets(
-      server,
-      this.mcpSecretStoreService.readServerSecrets(server.name),
-    );
-    if (migration.changed) {
-      fs.writeFileSync(filePath, JSON.stringify(serializeStoredServer(migration.record), null, 2), 'utf-8');
-      this.mcpSecretStoreService.saveServerSecrets(server.name, migration.secretEnv);
-    }
-    return migration.record;
   }
 
   private upsertServer(server: StoredMcpServerRecord, previousName?: string): StoredMcpServerRecord[] {
@@ -329,49 +307,8 @@ function normalizeIncomingEnvEntries(server: McpServerConfig): McpServerEnvEntry
     .filter((entry) => entry.key.length > 0);
 }
 
-function migrateLegacyStoredSecrets(
-  server: StoredMcpServerRecord,
-  currentSecrets: Record<string, string>,
-): LegacySecretMigrationResult {
-  const nextEnv: Record<string, string> = {};
-  const nextSecrets: Record<string, string> = {
-    ...currentSecrets,
-  };
-  let changed = false;
-
-  for (const [key, value] of Object.entries(server.env)) {
-    if (shouldMigrateLiteralSecret(key, value)) {
-      if (nextSecrets[key] !== value) {
-        nextSecrets[key] = value;
-      }
-      changed = true;
-      continue;
-    }
-    nextEnv[key] = value;
-  }
-
-  return {
-    record: changed
-      ? {
-        ...server,
-        env: nextEnv,
-      }
-      : server,
-    secretEnv: nextSecrets,
-    changed,
-  };
-}
-
 function isEnvReference(value: string): boolean {
   return value.startsWith('${') && value.endsWith('}');
-}
-
-function shouldMigrateLiteralSecret(key: string, value: string): boolean {
-  const normalizedValue = value.trim();
-  if (normalizedValue.length === 0 || isEnvReference(normalizedValue)) {
-    return false;
-  }
-  return /(?:^|_)(?:API_KEY|ACCESS_KEY|SECRET|TOKEN|PASSWORD|PRIVATE_KEY)(?:_|$)/i.test(key);
 }
 
 function readReportedMcpConfigPath(configRootPath: string): string {

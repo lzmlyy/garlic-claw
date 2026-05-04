@@ -1,4 +1,4 @@
-import { McpController } from '../../../src/execution/mcp/mcp.controller';
+import { McpController } from '../../../src/modules/execution/mcp/mcp.controller';
 
 describe('McpController', () => {
   const mcpService = {

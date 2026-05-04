@@ -334,8 +334,12 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: strin
 function resolveMcpStdioLauncherPath(): string {
   const directPath = path.join(__dirname, 'mcp-stdio-launcher.js');
   if (fs.existsSync(directPath)) {return directPath;}
-  const distPath = path.resolve(__dirname, '../../../dist/src/execution/mcp/mcp-stdio-launcher.js');
-  return fs.existsSync(distPath) ? distPath : directPath;
+  const distCandidates = [
+    path.resolve(__dirname, '../../../../dist/src/modules/execution/mcp/mcp-stdio-launcher.js'),
+    path.resolve(__dirname, '../../../../dist/src/execution/mcp/mcp-stdio-launcher.js'),
+  ];
+  const distPath = distCandidates.find((candidate) => fs.existsSync(candidate));
+  return distPath ?? directPath;
 }
 
 function readTransportEnvEntries(config: McpServerConfig): Array<[string, string]> {
