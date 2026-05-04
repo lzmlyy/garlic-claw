@@ -738,6 +738,39 @@ describe('dispatchSendMessage', () => {
     await attachTask
   })
 
+  it('reloads conversation detail once after an attached stream ends during an idle continuation gap', async () => {
+    let resolveStream: (() => void) | null = null
+    vi.mocked(chatConversationData.streamConversationEvents).mockImplementation(
+      async (_conversationId, onEvent) => new Promise<void>((resolve) => {
+        onEvent({
+          type: 'finish',
+          messageId: 'assistant-1',
+          status: 'completed',
+        })
+        resolveStream = resolve
+      }),
+    )
+    const state = createState([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '首轮完成',
+        status: 'streaming',
+      },
+    ])
+    state.currentStreamingMessageId.value = 'assistant-1'
+    state.streaming.value = true
+    const loadConversationDetail = vi.fn().mockResolvedValue(undefined)
+
+    const attachTask = attachConversationStream(state, 'conversation-1', {
+      loadConversationDetail,
+    })
+    resolveStream?.()
+    await attachTask
+
+    expect(loadConversationDetail).toHaveBeenCalledWith('conversation-1')
+  })
+
   it('swallows summary refresh failures during streaming and still completes final refresh', async () => {
     vi.mocked(chatConversationData.retryConversationMessage).mockImplementation(
       async (_conversationId, _messageId, _payload, onEvent) => {

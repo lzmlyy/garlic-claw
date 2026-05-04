@@ -15,6 +15,7 @@ import {
   loadAutomations as loadAutomationList,
   runAutomationRequest,
   toggleAutomationEnabled,
+  updateAutomationRecord,
 } from './automations.data'
 
 type AutomationTriggerType = 'cron' | 'manual' | 'event'
@@ -127,25 +128,9 @@ export function useAutomations() {
   }
 
   async function handleCreate() {
-    const trigger: TriggerConfig = {
-      type: form.value.triggerType,
-      cron:
-        form.value.triggerType === 'cron'
-          ? form.value.cronInterval
-          : undefined,
-      event:
-        form.value.triggerType === 'event'
-          ? form.value.eventName
-          : undefined,
-    }
-
     requestState.clearError()
     try {
-      await createAutomationRecord({
-        name: form.value.name,
-        trigger,
-        actions: [buildAction(form.value)],
-      })
+      await createAutomationRecord(buildAutomationPayload(form.value))
       showCreate.value = false
       form.value = createAutomationFormState()
       if (conversations.value[0]) {
@@ -154,6 +139,17 @@ export function useAutomations() {
       await loadAutomations()
     } catch (caughtError) {
       requestState.setError(caughtError, '创建自动化失败')
+    }
+  }
+
+  async function handleUpdate(id: string) {
+    requestState.clearError()
+    try {
+      await updateAutomationRecord(id, buildAutomationPayload(form.value))
+      showCreate.value = false
+      await loadAutomations()
+    } catch (caughtError) {
+      requestState.setError(caughtError, '更新自动化失败')
     }
   }
 
@@ -232,6 +228,7 @@ export function useAutomations() {
     form,
     canCreate,
     handleCreate,
+    handleUpdate,
     handleToggle,
     handleRun,
     handleDelete,
@@ -321,6 +318,28 @@ function buildAction(form: AutomationFormState): ActionConfig {
           }
         : {}),
     },
+  }
+}
+
+function buildAutomationPayload(form: AutomationFormState): {
+  name: string
+  trigger: TriggerConfig
+  actions: ActionConfig[]
+} {
+  return {
+    name: form.name,
+    trigger: {
+      type: form.triggerType,
+      cron:
+        form.triggerType === 'cron'
+          ? form.cronInterval
+          : undefined,
+      event:
+        form.triggerType === 'event'
+          ? form.eventName
+          : undefined,
+    },
+    actions: [buildAction(form)],
   }
 }
 

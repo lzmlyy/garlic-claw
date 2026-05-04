@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { HostModule } from '../runtime/host/host.module';
 import { RuntimeKernelModule } from '../runtime/kernel/runtime-kernel.module';
@@ -13,7 +13,7 @@ import { ConversationMessagePlanningService } from './conversation-message-plann
 import { ConversationTaskService } from './conversation-task.service';
 
 @Module({
-  imports: [AuthModule, HostModule, RuntimeKernelModule],
+  imports: [AuthModule, forwardRef(() => HostModule), RuntimeKernelModule],
   controllers: [CommandCatalogController, ConversationController],
   providers: [
     ContextCommandCatalogService,

@@ -29,7 +29,7 @@ export interface RuntimeAutomationRecord extends PersistedAutomationRecord {
 }
 interface AutomationPersistenceFile { automations: Record<string, RuntimeAutomationRecord[]>; sequence: number; }
 interface AutomationStateSnapshot { automations: Map<string, RuntimeAutomationRecord[]>; migrated: boolean; sequence: number; }
-export type AutomationRunContext = { automationId: string; source: 'automation'; userId: string };
+export type AutomationRunContext = { automationId: string; conversationId?: string; source: 'automation'; userId: string };
 type AutomationRunSource = 'cron' | 'event' | 'manual';
 interface CronChildConversationTarget {
   maxHistoryConversations: number;
@@ -67,6 +67,17 @@ export class AutomationService implements OnModuleDestroy, OnModuleInit {
     this.automations.set(userId, [...readUserAutomations(this.automations, userId), record]);
     this.syncCronJob(record.id, record.trigger, true); this.persist();
     return serializeAutomationRecord(record);
+  }
+
+  update(userId: string, automationId: string, params: JsonObject): JsonValue {
+    const automation = this.requireAutomation(userId, automationId);
+    automation.actions = readAutomationActions(params);
+    automation.name = readRequiredString(params, 'name');
+    automation.trigger = readAutomationTrigger(params);
+    automation.updatedAt = new Date().toISOString();
+    this.syncCronJob(automation.id, automation.trigger, automation.enabled);
+    this.persist();
+    return serializeAutomationRecord(automation);
   }
 
   async emitEvent(userId: string, event: string): Promise<AutomationEventDispatchInfo> {

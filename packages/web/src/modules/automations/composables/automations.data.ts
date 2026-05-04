@@ -10,11 +10,13 @@ import {
   listAutomations,
   runAutomation,
   toggleAutomation,
+  updateAutomation,
 } from '@/modules/automations/api/automations'
 import { listConversations } from '@/modules/chat/api/chat'
 import { getErrorMessage } from '@/shared/utils/error'
 
 export type CreateAutomationInput = Parameters<typeof createAutomation>[0]
+export type UpdateAutomationInput = Parameters<typeof updateAutomation>[1]
 
 /**
  * 读取自动化列表。
@@ -47,6 +49,15 @@ export function loadAutomationConversations(): Promise<Conversation[]> {
  */
 export function createAutomationRecord(input: CreateAutomationInput) {
   return createAutomation(input)
+}
+
+/**
+ * 更新自动化配置。
+ * @param automationId 自动化 ID
+ * @param input 自动化更新请求
+ */
+export function updateAutomationRecord(automationId: string, input: UpdateAutomationInput) {
+  return updateAutomation(automationId, input)
 }
 
 /**

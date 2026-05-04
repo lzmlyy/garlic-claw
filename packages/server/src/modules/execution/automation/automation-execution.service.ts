@@ -2,7 +2,7 @@ import type { ActionConfig, AutomationBeforeRunHookResult, AutomationInfo, JsonV
 import { Inject, Injectable } from '@nestjs/common';
 import { ToolRegistryService } from '../tool/tool-registry.service';
 import { asJsonValue, cloneJsonValue } from '../../runtime/host/host-input.codec';
-import { ConversationMessageService } from '../../runtime/host/conversation-message.service';
+import { ConversationMessageLifecycleService } from '../../conversation/conversation-message-lifecycle.service';
 import { PluginDispatchService } from '../../runtime/host/plugin-dispatch.service';
 import { applyMutatingDispatchableHooks, runDispatchableHookChain } from '../../runtime/kernel/runtime-plugin-hook-governance';
 import type { AutomationRunContext, RuntimeAutomationRecord } from './automation.service';
@@ -19,7 +19,7 @@ interface ShortCircuitedAutomationRun extends AutomationExecutionOutcome { actio
 export class AutomationExecutionService {
   constructor(
     @Inject(PluginDispatchService) private readonly pluginDispatch: PluginDispatchService,
-    @Inject(ConversationMessageService) private readonly conversationMessageService: ConversationMessageService,
+    private readonly conversationMessageLifecycleService: ConversationMessageLifecycleService,
     private readonly toolRegistryService: ToolRegistryService,
   ) {}
 
@@ -29,7 +29,7 @@ export class AutomationExecutionService {
     if ('action' in prepared) {
       return asJsonValue({ results: prepared.results, status: prepared.status });
     }
-    const execution = await executeAutomationActions(prepared, this.conversationMessageService, this.toolRegistryService);
+    const execution = await executeAutomationActions(prepared, this.conversationMessageLifecycleService, this.toolRegistryService);
     return asJsonValue(await settleAutomationRun(prepared, execution, this.pluginDispatch));
   }
 }
@@ -79,14 +79,14 @@ async function prepareAutomationRun(
 
 async function executeAutomationActions(
   plan: AutomationRunPlan,
-  conversationMessageService: ConversationMessageService,
+  conversationMessageLifecycleService: ConversationMessageLifecycleService,
   toolRegistryService: ToolRegistryService,
 ): Promise<AutomationExecutionOutcome> {
   const results: JsonValue[] = [];
   let status = 'success';
   for (const action of plan.actions) {
     try {
-      results.push(await executeAutomationAction(action, plan.context, conversationMessageService, toolRegistryService));
+      results.push(await executeAutomationAction(action, plan.context, conversationMessageLifecycleService, toolRegistryService));
     } catch (error) {
       status = 'error';
       results.push({ action: action.type, error: error instanceof Error ? error.message : String(error) });
@@ -98,7 +98,7 @@ async function executeAutomationActions(
 async function executeAutomationAction(
   action: ActionConfig,
   context: AutomationRunContext,
-  conversationMessageService: ConversationMessageService,
+  conversationMessageLifecycleService: ConversationMessageLifecycleService,
   toolRegistryService: ToolRegistryService,
 ): Promise<JsonValue> {
   const toolSourceId = action.sourceId ?? action.plugin;
@@ -126,17 +126,16 @@ async function executeAutomationAction(
   if (!message) {
     throw new Error('ai_message 动作缺少 message');
   }
-  const fallbackTarget = action.target;
-  if (!fallbackTarget) {
+  const conversationId = action.target?.id ?? context.conversationId;
+  if (!conversationId) {
     throw new Error('ai_message 动作缺少 target');
   }
-  const result = await conversationMessageService.sendMessage(context, {
-    content: message,
-    target: {
-      id: fallbackTarget.id,
-      type: fallbackTarget.type,
-    },
-  });
+  const fallbackTarget = action.target ?? { id: conversationId, type: 'conversation' as const };
+  const result = await conversationMessageLifecycleService.startMessageGeneration(
+    conversationId,
+    { content: message },
+    context.userId,
+  );
   return {
     action: action.type,
     target: readAutomationMessageTarget(result, fallbackTarget),
@@ -171,7 +170,17 @@ function readAutomationMessageTarget(
   result: JsonValue,
   fallbackTarget: { id: string; type: 'conversation' },
 ): { id: string; label?: string; type: 'conversation' } {
-  const target = (result as { target?: { id?: unknown; label?: unknown; type?: unknown } }).target;
+  const target = (
+    result as {
+      target?: { id?: unknown; label?: unknown; type?: unknown };
+      userMessage?: { target?: { id?: unknown; label?: unknown; type?: unknown } };
+    }
+  ).target
+    ?? (
+      result as {
+        userMessage?: { target?: { id?: unknown; label?: unknown; type?: unknown } };
+      }
+    ).userMessage?.target;
   if (target && typeof target.id === 'string' && target.type === 'conversation') {
     return { id: target.id, ...(typeof target.label === 'string' ? { label: target.label } : {}), type: 'conversation' };
   }

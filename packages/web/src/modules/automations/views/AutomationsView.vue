@@ -194,14 +194,25 @@
             >
               <div class="card-header">
                 <h3 class="card-title">{{ auto.name }}</h3>
-                <ElButton
-                  size="small"
-                  plain
-                  @click.stop="handleRun(auto.id)"
-                  :disabled="!auto.enabled"
-                >
-                  手动运行
-                </ElButton>
+                <div class="card-actions">
+                  <ElButton
+                    size="small"
+                    plain
+                    @click.stop="handleRun(auto.id)"
+                    :disabled="!auto.enabled"
+                  >
+                    手动运行
+                  </ElButton>
+                  <ElButton
+                    size="small"
+                    plain
+                    type="danger"
+                    data-test="automation-delete-button"
+                    @click.stop="confirmDeleteAutomation(auto.id, auto.name)"
+                  >
+                    删除
+                  </ElButton>
+                </div>
               </div>
 
               <div v-if="auto.actions.length > 0" class="card-detail">
@@ -292,6 +303,7 @@ const {
   logsLoading,
   logEntries,
   handleCreate,
+  handleUpdate,
   handleToggle,
   handleRun,
   handleDelete,
@@ -352,8 +364,22 @@ function closeDialog() {
 }
 
 async function handleSave() {
-  await handleCreate()
+  if (editingAutomation.value) {
+    await handleUpdate(editingAutomation.value.id)
+  } else {
+    await handleCreate()
+  }
   dialogVisible.value = false
+}
+
+function confirmDeleteAutomation(id: string, name: string) {
+  ElMessageBox.confirm(
+    `确定要删除「${name || '未命名自动化'}」吗？删除后无法恢复。`,
+    '删除确认',
+    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+  )
+    .then(() => handleDelete(id))
+    .catch(() => {})
 }
 
 const swipeState = reactive<Record<string, {
@@ -445,14 +471,7 @@ function onTouchEnd(id: string) {
   }
 
   if (state.offset < -SWIPE_THRESHOLD) {
-    const name = auto.name || '未命名自动化'
-    ElMessageBox.confirm(
-      `确定要删除「${name}」吗？删除后无法恢复。`,
-      '删除确认',
-      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
-    )
-      .then(() => handleDelete(id))
-      .catch(() => {})
+    confirmDeleteAutomation(id, auto.name || '未命名自动化')
     state.offset = 0
     return
   }

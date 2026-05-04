@@ -1,11 +1,11 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { SINGLE_USER_ID } from '../../src/auth/single-user-auth';
-import { AutomationExecutionService } from '../../src/execution/automation/automation-execution.service';
-import { AutomationService } from '../../src/execution/automation/automation.service';
-import { ConversationMessageService } from '../../src/runtime/host/conversation-message.service';
-import { ConversationStoreService } from '../../src/runtime/host/conversation-store.service';
+import { SINGLE_USER_ID } from '../../src/modules/auth/single-user-auth';
+import { AutomationExecutionService } from '../../src/modules/execution/automation/automation-execution.service';
+import { AutomationService } from '../../src/modules/execution/automation/automation.service';
+import { ConversationMessageService } from '../../src/modules/runtime/host/conversation-message.service';
+import { ConversationStoreService } from '../../src/modules/runtime/host/conversation-store.service';
 
 describe('AutomationService', () => {
   const envKey = 'GARLIC_CLAW_AUTOMATIONS_PATH';
@@ -396,29 +396,35 @@ describe('AutomationService', () => {
     );
   });
 
-  it('routes ai_message actions through the unified message.send chain', async () => {
+  it('routes ai_message actions through the unified message lifecycle chain', async () => {
     const pluginDispatch = {
       executeTool: jest.fn(),
       invokeHook: jest.fn().mockResolvedValue({ action: 'pass' }),
       listPlugins: jest.fn().mockReturnValue([]),
     };
-    const conversationMessages = {
-      sendMessage: jest.fn().mockResolvedValue({
-        id: 'message-1',
-        target: {
-          type: 'conversation',
-          id: 'conversation-1',
-          label: 'Coffee Chat',
+    const conversationMessageLifecycleService = {
+      startMessageGeneration: jest.fn().mockResolvedValue({
+        userMessage: {
+          id: 'message-user-1',
+          role: 'user',
+          content: '咖啡已经煮好了',
+          parts: [{ type: 'text', text: '咖啡已经煮好了' }],
+          status: 'completed',
+          createdAt: '2026-03-29T15:00:00.000Z',
+          updatedAt: '2026-03-29T15:00:00.000Z',
         },
-        role: 'assistant',
-        content: '咖啡已经煮好了',
-        parts: [{ type: 'text', text: '咖啡已经煮好了' }],
-        status: 'completed',
-        createdAt: '2026-03-29T15:00:00.000Z',
-        updatedAt: '2026-03-29T15:00:00.000Z',
+        assistantMessage: {
+          id: 'message-assistant-1',
+          role: 'assistant',
+          content: '',
+          parts: [],
+          status: 'pending',
+          createdAt: '2026-03-29T15:00:00.000Z',
+          updatedAt: '2026-03-29T15:00:00.000Z',
+        },
       }),
     };
-    service = createService({ pluginDispatch, conversationMessageService: conversationMessages });
+    service = createService({ pluginDispatch, conversationMessageLifecycleService });
 
     service.create('user-1', {
       actions: [{ type: 'ai_message', message: '咖啡已经煮好了', target: { type: 'conversation', id: 'conversation-1' } }],
@@ -431,23 +437,26 @@ describe('AutomationService', () => {
       results: [
         {
           action: 'ai_message',
-          target: { type: 'conversation', id: 'conversation-1', label: 'Coffee Chat' },
+          target: { type: 'conversation', id: 'conversation-1' },
           result: {
-            id: 'message-1',
-            target: { type: 'conversation', id: 'conversation-1', label: 'Coffee Chat' },
-            role: 'assistant',
-            content: '咖啡已经煮好了',
-            parts: [{ type: 'text', text: '咖啡已经煮好了' }],
-            status: 'completed',
-            createdAt: '2026-03-29T15:00:00.000Z',
-            updatedAt: '2026-03-29T15:00:00.000Z',
+            userMessage: expect.objectContaining({
+              id: 'message-user-1',
+              role: 'user',
+              content: '咖啡已经煮好了',
+            }),
+            assistantMessage: expect.objectContaining({
+              id: 'message-assistant-1',
+              role: 'assistant',
+              status: 'pending',
+            }),
           },
         },
       ],
     });
-    expect(conversationMessages.sendMessage).toHaveBeenCalledWith(
-      { source: 'automation', userId: 'user-1', automationId: 'automation-1', conversationId: 'conversation-1' },
-      { content: '咖啡已经煮好了', target: { type: 'conversation', id: 'conversation-1' } },
+    expect(conversationMessageLifecycleService.startMessageGeneration).toHaveBeenCalledWith(
+      'conversation-1',
+      { content: '咖啡已经煮好了' },
+      'user-1',
     );
   });
 
@@ -460,24 +469,31 @@ describe('AutomationService', () => {
     const toolRegistryService = {
       executeRegisteredTool: jest.fn().mockResolvedValue({ conversationId: 'subagent-conversation-1' }),
     };
-    const conversationMessages = {
-      sendMessage: jest.fn().mockResolvedValue({
-        id: 'message-1',
-        target: {
-          type: 'conversation',
-          id: 'conversation-1',
+    const conversationMessageLifecycleService = {
+      startMessageGeneration: jest.fn().mockResolvedValue({
+        userMessage: {
+          id: 'message-user-1',
+          role: 'user',
+          content: '自动化主会话',
+          parts: [{ type: 'text', text: '自动化主会话' }],
+          status: 'completed',
+          createdAt: '2026-03-29T15:00:00.000Z',
+          updatedAt: '2026-03-29T15:00:00.000Z',
         },
-        role: 'assistant',
-        content: '自动化主会话',
-        parts: [{ type: 'text', text: '自动化主会话' }],
-        status: 'completed',
-        createdAt: '2026-03-29T15:00:00.000Z',
-        updatedAt: '2026-03-29T15:00:00.000Z',
+        assistantMessage: {
+          id: 'message-assistant-1',
+          role: 'assistant',
+          content: '',
+          parts: [],
+          status: 'pending',
+          createdAt: '2026-03-29T15:00:00.000Z',
+          updatedAt: '2026-03-29T15:00:00.000Z',
+        },
       }),
     };
     service = createService({
       pluginDispatch,
-      conversationMessageService: conversationMessages,
+      conversationMessageLifecycleService,
       toolRegistryService,
     });
 
@@ -507,14 +523,16 @@ describe('AutomationService', () => {
           action: 'ai_message',
           target: { type: 'conversation', id: 'conversation-1' },
           result: {
-            id: 'message-1',
-            target: { type: 'conversation', id: 'conversation-1' },
-            role: 'assistant',
-            content: '自动化主会话',
-            parts: [{ type: 'text', text: '自动化主会话' }],
-            status: 'completed',
-            createdAt: '2026-03-29T15:00:00.000Z',
-            updatedAt: '2026-03-29T15:00:00.000Z',
+            userMessage: expect.objectContaining({
+              id: 'message-user-1',
+              role: 'user',
+              content: '自动化主会话',
+            }),
+            assistantMessage: expect.objectContaining({
+              id: 'message-assistant-1',
+              role: 'assistant',
+              status: 'pending',
+            }),
           },
         },
         {
@@ -589,13 +607,13 @@ describe('AutomationService', () => {
   });
 
   it('creates dedicated cron child conversations for ai_message automations and trims old history', async () => {
-    const { conversationMessageService, conversationRecordService } = createConversationServices();
+    const { conversationMessageLifecycleService, conversationRecordService } = createConversationServices();
     const parentConversation = conversationRecordService.createConversation({
       title: '自动化父会话',
       userId: 'user-1',
     }) as { id: string };
     service = createService({
-      conversationMessageService,
+      conversationMessageLifecycleService,
       conversationRecordService,
     });
 
@@ -629,8 +647,9 @@ describe('AutomationService', () => {
 
     for (const childConversationId of newestIds) {
       const childDetail = conversationRecordService.getConversation(childConversationId, 'user-1') as { messages: Array<{ content: string | null }> };
-      expect(childDetail.messages).toHaveLength(1);
+      expect(childDetail.messages).toHaveLength(2);
       expect(childDetail.messages[0]?.content).toBe('定时整理日报');
+      expect(childDetail.messages[1]?.content).toBe('');
     }
 
     const automation = service.getById('user-1', 'automation-1') as { cronRunConversationIds?: string[]; logs?: unknown[] };
@@ -639,13 +658,13 @@ describe('AutomationService', () => {
   });
 
   it('records failed cron child preparation when the parent conversation is missing', async () => {
-    const { conversationMessageService, conversationRecordService } = createConversationServices();
+    const { conversationMessageLifecycleService, conversationRecordService } = createConversationServices();
     const parentConversation = conversationRecordService.createConversation({
       title: '待删除父会话',
       userId: 'user-1',
     }) as { id: string };
     service = createService({
-      conversationMessageService,
+      conversationMessageLifecycleService,
       conversationRecordService,
     });
 
@@ -704,6 +723,39 @@ describe('AutomationService', () => {
       name: '自动化三',
       trigger: { type: 'manual' },
     })).toMatchObject({ id: 'automation-3' });
+  });
+
+  it('updates an existing automation in place instead of creating a new record', () => {
+    service.create('user-1', {
+      actions: [{ type: 'ai_message', message: '旧消息', target: { type: 'conversation', id: 'conversation-1' } }],
+      name: '旧自动化',
+      trigger: { type: 'manual' },
+    });
+
+    expect((service as unknown as {
+      update: (userId: string, automationId: string, params: Record<string, unknown>) => unknown;
+    }).update('user-1', 'automation-1', {
+      actions: [{ type: 'ai_message', message: '新消息', target: { type: 'conversation', id: 'conversation-2' } }],
+      name: '新自动化',
+      trigger: { type: 'event', event: 'coffee.ready' },
+    })).toEqual(expect.objectContaining({
+      id: 'automation-1',
+      name: '新自动化',
+      trigger: { type: 'event', event: 'coffee.ready' },
+    }));
+
+    expect(service.listByUser('user-1')).toEqual([
+      expect.objectContaining({
+        id: 'automation-1',
+        name: '新自动化',
+        actions: [
+          expect.objectContaining({
+            message: '新消息',
+            target: { type: 'conversation', id: 'conversation-2' },
+          }),
+        ],
+      }),
+    ]);
   });
 
   it('restores cron automations on module init after restart', async () => {
@@ -771,7 +823,9 @@ describe('AutomationService', () => {
 });
 
 function createService(input?: {
-  conversationMessageService?: Pick<ConversationMessageService, 'sendMessage'>;
+  conversationMessageLifecycleService?: {
+    startMessageGeneration: (conversationId: string, payload: { content: string }, userId?: string) => Promise<unknown>;
+  };
   conversationRecordService?: ConversationStoreService;
   pluginDispatch?: {
     executeTool: (...args: unknown[]) => Promise<unknown>;
@@ -789,9 +843,9 @@ function createService(input?: {
   };
   const automationExecutionService = new AutomationExecutionService(
     pluginDispatch as never,
-    (input?.conversationMessageService ?? {
-      sendMessage: async () => {
-        throw new Error('ConversationMessageService is not available');
+    (input?.conversationMessageLifecycleService ?? {
+      startMessageGeneration: async () => {
+        throw new Error('ConversationMessageLifecycleService is not available');
       },
     }) as never,
     (input?.toolRegistryService ?? {
@@ -805,14 +859,31 @@ function createService(input?: {
 }
 
 function createConversationServices(): {
-  conversationMessageService: ConversationMessageService;
+  conversationMessageLifecycleService: {
+    startMessageGeneration: (conversationId: string, payload: { content: string }, userId?: string) => Promise<unknown>;
+  };
   conversationRecordService: ConversationStoreService;
 } {
   const conversationRecordService = new ConversationStoreService();
   const conversationMessageService = new ConversationMessageService(conversationRecordService);
   return {
-    conversationMessageService,
+    conversationMessageLifecycleService: {
+      startMessageGeneration: async (conversationId: string, payload: { content: string }) => {
+        const userMessage = await conversationMessageService.createMessageWithHooks(conversationId, {
+          content: payload.content,
+          parts: payload.content ? [{ text: payload.content, type: 'text' as const }] : [],
+          role: 'user',
+          status: 'completed',
+        });
+        const assistantMessage = conversationMessageService.createMessage(conversationId, {
+          content: '',
+          parts: [],
+          role: 'assistant',
+          status: 'pending',
+        });
+        return { assistantMessage, userMessage };
+      },
+    },
     conversationRecordService,
   };
 }
-

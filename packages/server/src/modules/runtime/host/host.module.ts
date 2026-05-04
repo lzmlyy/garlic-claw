@@ -1,4 +1,4 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { AiModelExecutionService } from '../../ai/ai-model-execution.service';
 import { AiManagementService } from '../../ai-management/ai-management.service';
 import { AiProviderSettingsService } from '../../ai-management/ai-provider-settings.service';
@@ -58,9 +58,10 @@ import { PluginHostService } from './plugin-host.service';
 import { SubagentRunnerService } from './subagent-runner.service';
 import { UserContextService } from './user-context.service';
 import { SettingsStore } from '../../../core/config/settings.store';
+import { ConversationModule } from '../../conversation/conversation.module';
 
 @Module({
-  imports: [CoreLoggingModule, PluginModule, RuntimeGatewayModule, RuntimeKernelModule, ProjectWorktreeOverlayModule],
+  imports: [CoreLoggingModule, PluginModule, RuntimeGatewayModule, RuntimeKernelModule, ProjectWorktreeOverlayModule, forwardRef(() => ConversationModule)],
   providers: [
     AiModelExecutionService,
     AiManagementService,

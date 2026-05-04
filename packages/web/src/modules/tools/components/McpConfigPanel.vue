@@ -620,18 +620,7 @@ function serializeServerDraft(server: McpServerConfig) {
   return JSON.stringify({
     args: [...server.args],
     command: server.command,
-    env: Object.fromEntries(
-      Object.entries(server.env)
-        .sort(([left], [right]) => left.localeCompare(right)),
-    ),
-    envEntries: [...(server.envEntries ?? [])]
-      .map((entry) => ({
-        key: entry.key,
-        source: entry.source,
-        value: entry.value,
-        ...(entry.hasStoredValue ? { hasStoredValue: true } : {}),
-      }))
-      .sort((left, right) => left.key.localeCompare(right.key)),
+    envEntries: normalizeServerEnvEntries(server),
     eventLog: server.eventLog,
     name: server.name,
   })
@@ -696,6 +685,39 @@ async function persistDraft(allowFailedRetry = false) {
       pendingDraftSignature.value = null
     }
   }
+}
+
+function normalizeServerEnvEntries(server: McpServerConfig) {
+  const entries = new Map<string, {
+    hasStoredValue?: true
+    key: string
+    source: 'env-ref' | 'literal' | 'stored-secret'
+    value: string
+  }>()
+
+  for (const [key, value] of Object.entries(server.env)) {
+    entries.set(key, {
+      key,
+      source: isEnvReferenceValue(value) ? 'env-ref' : 'literal',
+      value,
+    })
+  }
+
+  for (const entry of server.envEntries ?? []) {
+    entries.set(entry.key, {
+      key: entry.key,
+      source: entry.source,
+      value: entry.value,
+      ...(entry.hasStoredValue ? { hasStoredValue: true as const } : {}),
+    })
+  }
+
+  return [...entries.values()]
+    .sort((left, right) => left.key.localeCompare(right.key))
+}
+
+function isEnvReferenceValue(value: string) {
+  return /^\$\{[A-Z0-9_]+\}$/.test(value.trim())
 }
 
 function handleRefresh() {

@@ -251,6 +251,27 @@ export function scheduleChatRecoveryWithState(
   });
 }
 
+function recoverAttachedConversationImmediately(
+  state: ChatStreamState,
+  conversationId: string,
+  loadConversationDetail: (conversationId: string) => Promise<void>,
+) {
+  if (state.currentConversationId.value !== conversationId) {
+    return;
+  }
+
+  void loadConversationDetail(conversationId)
+    .catch(() => undefined)
+    .finally(() => {
+      if (
+        state.currentConversationId.value === conversationId
+        && !state.streamController.value
+      ) {
+        scheduleChatRecoveryWithState(state, loadConversationDetail);
+      }
+    });
+}
+
 function recoverStreamingConversationImmediately(
   state: ChatStreamState,
   conversationId: string,
@@ -602,7 +623,7 @@ export async function attachConversationStream(
       summaryRefreshed: didRefreshConversationStateDuringStream,
     }).catch(() => undefined);
     if (state.currentConversationId.value === conversationId) {
-      recoverStreamingConversationImmediately(
+      recoverAttachedConversationImmediately(
         state,
         conversationId,
         params?.loadConversationDetail ?? (async () => undefined),

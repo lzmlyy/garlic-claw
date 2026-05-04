@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard } from '../../auth/http-auth';
 import { AutomationService } from './automation.service';
 
@@ -28,6 +28,15 @@ export class AutomationController {
   @Get(':id')
   async get(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.automationService.getById(userId, id);
+  }
+
+  @Put(':id')
+  async update(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.automationService.update(userId, id, body as never);
   }
 
   @Patch(':id/toggle')

@@ -12,6 +12,7 @@ vi.mock('@/modules/automations/composables/automations.data', () => ({
   loadAutomations: vi.fn(),
   runAutomationRequest: vi.fn(),
   toggleAutomationEnabled: vi.fn(),
+  updateAutomationRecord: vi.fn(),
   toErrorMessage: vi.fn((error: Error | undefined, fallback: string) => error?.message ?? fallback),
 }))
 
@@ -242,5 +243,73 @@ describe('useAutomations', () => {
       { id: 'conversation-22222222', label: '新的对话 · 22222222' },
     ])
     expect(state.describeAction(state.automations.value[0].actions[0]!)).toContain('新的对话 · 22222222')
+  })
+
+  it('updates an existing ai_message automation in place', async () => {
+    vi.mocked(automationData.loadAutomations).mockResolvedValue([
+      {
+        ...createAutomationInfo(),
+        actions: [
+          {
+            type: 'ai_message',
+            message: '旧提醒',
+            target: {
+              type: 'conversation',
+              id: 'conversation-1',
+            },
+          },
+        ],
+      },
+    ])
+    const updateAutomationRecord = (
+      automationData as unknown as { updateAutomationRecord: ReturnType<typeof vi.fn> }
+    ).updateAutomationRecord
+    updateAutomationRecord.mockResolvedValue({
+      ...createAutomationInfo(),
+      name: '更新后的提醒',
+      actions: [
+        {
+          type: 'ai_message',
+          message: '新提醒',
+          target: {
+            type: 'conversation',
+            id: 'conversation-1',
+          },
+        },
+      ],
+    })
+
+    const state = await mountAutomationsHarness()
+    state.form.value.name = '更新后的提醒'
+    state.form.value.triggerType = 'manual'
+    state.form.value.actionType = 'ai_message'
+    state.form.value.message = '新提醒'
+    state.form.value.targetConversationId = 'conversation-1'
+
+    const handleUpdate = (state as unknown as {
+      handleUpdate: (automationId: string) => Promise<void>
+    }).handleUpdate
+
+    await handleUpdate('automation-1')
+
+    expect(updateAutomationRecord).toHaveBeenCalledWith('automation-1', {
+      name: '更新后的提醒',
+      trigger: {
+        type: 'manual',
+        cron: undefined,
+        event: undefined,
+      },
+      actions: [
+        {
+          type: 'ai_message',
+          message: '新提醒',
+          target: {
+            type: 'conversation',
+            id: 'conversation-1',
+          },
+        },
+      ],
+    })
+    expect(automationData.createAutomationRecord).not.toHaveBeenCalled()
   })
 })

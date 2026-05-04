@@ -1,5 +1,5 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { AutomationController } from '../../../src/execution/automation/automation.controller';
+import { AutomationController } from '../../../src/modules/execution/automation/automation.controller';
 
 describe('AutomationController', () => {
   const automationService = {
@@ -10,6 +10,7 @@ describe('AutomationController', () => {
     listByUser: jest.fn(),
     run: jest.fn(),
     toggle: jest.fn(),
+    update: jest.fn(),
   };
 
   let controller: AutomationController;
@@ -24,8 +25,9 @@ describe('AutomationController', () => {
     expect(guards?.map((guard) => guard?.name)).toContain('JwtAuthGuard');
   });
 
-  it('creates, lists, reads, toggles, runs and deletes automations for current user', async () => {
+  it('creates, updates, lists, reads, toggles, runs and deletes automations for current user', async () => {
     automationService.create.mockReturnValue({ id: 'automation-1' });
+    automationService.update.mockReturnValue({ id: 'automation-1', name: '已更新自动化' });
     automationService.listByUser.mockReturnValue([{ id: 'automation-1' }]);
     automationService.getById.mockReturnValue({ id: 'automation-1' });
     automationService.toggle.mockReturnValue({ enabled: false, id: 'automation-1' });
@@ -38,6 +40,13 @@ describe('AutomationController', () => {
       name: '自动化',
       trigger: { type: 'manual' },
     } as never)).resolves.toEqual({ id: 'automation-1' });
+    await expect((controller as unknown as {
+      update: (id: string, userId: string, body: unknown) => Promise<unknown>;
+    }).update('automation-1', 'user-1', {
+      actions: [],
+      name: '已更新自动化',
+      trigger: { type: 'manual' },
+    })).resolves.toEqual({ id: 'automation-1', name: '已更新自动化' });
     await expect(controller.list('user-1')).resolves.toEqual([{ id: 'automation-1' }]);
     await expect(controller.get('automation-1', 'user-1')).resolves.toEqual({ id: 'automation-1' });
     await expect(controller.toggle('automation-1', 'user-1')).resolves.toEqual({ enabled: false, id: 'automation-1' });

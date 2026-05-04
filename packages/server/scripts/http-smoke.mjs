@@ -3101,6 +3101,48 @@ async function runHttpFlow(apiBase, state, input) {
     ensure(automation.id === state.automationId, 'Expected automation detail');
   });
 
+  await runStep('automations.update', async () => {
+    const automation = await putJson(apiBase, `/automations/${state.automationId}`, {
+      body: {
+        actions: [
+          {
+            message: '自动化烟测消息（已更新）',
+            target: {
+              id: state.conversationId,
+              type: 'conversation',
+            },
+            type: 'ai_message',
+          },
+          {
+            capability: 'spawn_subagent',
+            params: {
+              description: '自动化烟测任务（已更新）',
+              prompt: '请输出 smoke automation task after update',
+            },
+            sourceId: 'subagent',
+            sourceKind: 'internal',
+            type: 'device_command',
+          },
+        ],
+        name: 'Smoke Automation Updated',
+        trigger: {
+          type: 'manual',
+        },
+      },
+      headers: userHeaders(),
+    });
+    ensure(automation.id === state.automationId, 'Expected automation update to keep the same id');
+    ensure(automation.name === 'Smoke Automation Updated', 'Expected automation update to replace name');
+    ensure(automation.actions[0]?.message === '自动化烟测消息（已更新）', 'Expected automation update to replace ai_message content');
+  });
+
+  await runStep('automations.list.after-update', async () => {
+    const automations = await getJson(apiBase, '/automations', { headers: userHeaders() });
+    const automation = automations.find((entry) => entry.id === state.automationId);
+    ensure(automations.filter((entry) => entry.id === state.automationId).length === 1, 'Expected automation update not to create a duplicate record');
+    ensure(automation?.name === 'Smoke Automation Updated', 'Expected automation list to reflect updated automation');
+  });
+
   await runStep('automations.toggle.false', async () => {
     const toggle = await patchJson(apiBase, `/automations/${state.automationId}/toggle`, {
       headers: userHeaders(),
@@ -3147,8 +3189,8 @@ async function runHttpFlow(apiBase, state, input) {
     const overview = await getJson(apiBase, '/subagents/overview');
     const subagent = overview.subagents.find((entry) => entry.conversationId === state.automationSubagentSessionId);
     ensure(subagent, 'Expected subagent overview to include automation-created conversation projection');
-    ensure(subagent.description === '自动化烟测任务', 'Expected subagent overview to expose persisted subagent description');
-    ensure(subagent.requestPreview === '请输出 smoke automation task', 'Expected subagent overview to keep prompt preview separate from description');
+    ensure(subagent.description === '自动化烟测任务（已更新）', 'Expected subagent overview to expose persisted subagent description');
+    ensure(subagent.requestPreview === '请输出 smoke automation task after update', 'Expected subagent overview to keep prompt preview separate from description');
     ensure(typeof subagent.conversationId === 'string' && subagent.conversationId.length > 0, 'Expected subagent overview to expose conversation id');
     ensure(typeof subagent.messageCount === 'number' && subagent.messageCount >= 1, 'Expected subagent overview to expose message count');
   });
@@ -3156,9 +3198,9 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('plugins.subagent-detail.success', async () => {
     const subagent = await waitForSubagentTaskCompletion(apiBase, state.automationSubagentSessionId);
     ensure(subagent.conversationId === state.automationSubagentSessionId, 'Expected subagent conversation detail to load');
-    ensure(subagent.description === '自动化烟测任务', 'Expected subagent detail to expose persisted description');
+    ensure(subagent.description === '自动化烟测任务（已更新）', 'Expected subagent detail to expose persisted description');
     ensure(subagent.pluginId === 'subagent', 'Expected subagent detail source id');
-    ensure(subagent.requestPreview === '请输出 smoke automation task', 'Expected subagent detail to keep prompt preview separate from description');
+    ensure(subagent.requestPreview === '请输出 smoke automation task after update', 'Expected subagent detail to keep prompt preview separate from description');
     ensure(typeof subagent.conversationId === 'string' && subagent.conversationId.length > 0, 'Expected subagent detail to expose conversation id');
     ensure(typeof subagent.messageCount === 'number' && subagent.messageCount >= 2, 'Expected subagent detail to expose updated message count');
     ensure(subagent.status === 'completed', 'Expected subagent detail status to be completed');

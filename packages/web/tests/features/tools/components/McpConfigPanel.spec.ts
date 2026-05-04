@@ -213,6 +213,47 @@ describe('McpConfigPanel', () => {
     vi.useRealTimers()
   })
 
+  it('does not auto-save again when the selected server snapshot mixes env and stored-secret for the same key', async () => {
+    vi.useFakeTimers()
+    hoisted.state = createManagementState()
+    hoisted.state.snapshot.value = {
+      configPath: 'mcp/servers',
+      servers: [
+        {
+          name: 'tavily',
+          command: 'npx',
+          args: ['-y', 'tavily-mcp@latest'],
+          env: {
+            TAVILY_API_KEY: '${TAVILY_API_KEY}',
+          },
+          envEntries: [
+            {
+              key: 'TAVILY_API_KEY',
+              source: 'stored-secret',
+              value: '',
+              hasStoredValue: true,
+            },
+          ],
+          eventLog: {
+            maxFileSizeMb: 1,
+          },
+        },
+      ],
+    }
+    hoisted.state.selectedServerName.value = 'tavily'
+
+    mount(McpConfigPanel, {
+      props: {
+        preferredServerName: 'tavily',
+      },
+    })
+    await flushPromises()
+    await vi.runAllTimersAsync()
+
+    expect(hoisted.state.updateServer).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
   it('retries auto-save for the same failed draft without requiring the user to edit again', async () => {
     vi.useFakeTimers()
     hoisted.state = createManagementState()

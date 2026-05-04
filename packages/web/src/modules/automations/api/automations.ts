@@ -1,4 +1,4 @@
-import { delete as del, get, patch, post } from '@/shared/api/http'
+import { delete as del, get, patch, post, put } from '@/shared/api/http'
 import type { ActionConfig, AutomationInfo, AutomationLogInfo, JsonValue, TriggerConfig } from '@garlic-claw/shared'
 
 export function listAutomations() {
@@ -11,6 +11,14 @@ export function createAutomation(data: {
   actions: ActionConfig[]
 }) {
   return post<AutomationInfo>('/automations', data)
+}
+
+export function updateAutomation(id: string, data: {
+  name: string
+  trigger: TriggerConfig
+  actions: ActionConfig[]
+}) {
+  return put<AutomationInfo>(`/automations/${id}`, data)
 }
 
 export function toggleAutomation(id: string) {
