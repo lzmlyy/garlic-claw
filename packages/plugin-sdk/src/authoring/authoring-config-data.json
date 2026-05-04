@@ -1,7 +1,5 @@
 {
   "defaults": {
-    "memoryContextLimit": 5,
-    "memoryContextPromptPrefix": "与此用户相关的记忆",
     "kbContextLimit": 3,
     "kbContextPromptPrefix": "与当前问题相关的系统知识",
     "conversationTitleDefaultTitle": "新的对话",
@@ -15,21 +13,6 @@
     "contextCompactionSlidingWindowUsagePercent": 50,
     "contextCompactionSummaryPrompt": "请把下面这段历史对话整理成可供后续继续回答的上下文摘要。\n要求：\n- 保留事实、约束、用户偏好、未完成事项与关键决定\n- 如果有 TODO、待确认项、失败尝试，也要保留\n- 单独整理“最近用户目标 / 限制 / 待办 / 下一步事项”，尤其是最近几条用户明确提出的目标、禁止项、待完成项与后续关注点\n- 如果最近出现 slash 命令、工具操作、验证要求或其他待执行事项，要提炼成简短行动清单\n- 使用简洁 Markdown\n- 不要编造未出现的信息",
     "contextCompactionShowCoveredMarker": true
-  },
-  "memoryContextConfigSchema": {
-    "type": "object",
-    "items": {
-      "limit": {
-        "type": "int",
-        "description": "每次检索长期记忆的最大条数",
-        "defaultValue": 5
-      },
-      "promptPrefix": {
-        "type": "string",
-        "description": "记忆摘要写入系统提示词时的前缀",
-        "defaultValue": "与此用户相关的记忆"
-      }
-    }
   },
   "kbContextConfigSchema": {
     "type": "object",

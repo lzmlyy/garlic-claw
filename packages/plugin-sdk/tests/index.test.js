@@ -32,15 +32,11 @@ const {
   KB_CONTEXT_CONFIG_SCHEMA,
   KB_CONTEXT_DEFAULT_LIMIT,
   KB_CONTEXT_DEFAULT_PROMPT_PREFIX,
-  MEMORY_CONTEXT_CONFIG_SCHEMA,
-  MEMORY_CONTEXT_DEFAULT_LIMIT,
-  MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
   buildMessageLifecycleSummary,
   buildMessageReceivedSummary,
   buildResponseSendSummary,
   buildToolAuditSummary,
   buildWaitingModelSummary,
-  clipContextText,
   createChatBeforeModelLineBlockResult,
   asChatBeforeModelPayload,
   createSubagentRunSummary,
@@ -69,7 +65,6 @@ const {
   readMemorySearchResults,
   readMemorySaveResultId,
   readOptionalObjectParam,
-  readPromptBlockConfig,
   readProviderRouterConfig,
   readContextCompactionConfig,
   resolveContextCompactionRuntimeConfig,
@@ -84,10 +79,8 @@ const {
   readOptionalStringParam,
   readPluginHookPayload,
   readJsonObjectValue,
-  readLatestUserTextFromMessages,
   readRequiredStringParam,
   readRequiredTextValue,
-  resolvePromptBlockConfig,
   resolveProviderRouterShortCircuitReply,
   sameToolNames,
   readTextGenerationResult,
@@ -568,6 +561,18 @@ test('plugin-sdk exposes generic hook payload readers and chat:before-model resu
   );
 });
 
+test('plugin-sdk no longer exposes legacy memory auto-injection prompt config or helper exports', () => {
+  const sdk = require('../dist/authoring/index.js');
+
+  assert.equal(Object.prototype.hasOwnProperty.call(sdk, 'MEMORY_CONTEXT_CONFIG_SCHEMA'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(sdk, 'MEMORY_CONTEXT_DEFAULT_LIMIT'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(sdk, 'MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(sdk, 'clipContextText'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(sdk, 'readLatestUserTextFromMessages'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(sdk, 'readPromptBlockConfig'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(sdk, 'resolvePromptBlockConfig'), false);
+});
+
 test('createPluginAuthorTransportExecutor runs author definitions with shared route normalization and governance actions', async () => {
   const seen = [];
   const executor = createPluginAuthorTransportExecutor({
@@ -718,53 +723,8 @@ test('createPluginAuthorTransportExecutor runs author definitions with shared ro
 });
 
 test('plugin-sdk exposes shared author-side text helpers for authoring flows', () => {
-  assert.equal(
-    readLatestUserTextFromMessages([
-      {
-        role: 'system',
-        content: 'system',
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: '第一句',
-          },
-          {
-            type: 'image',
-            imageUrl: 'https://example.com/a.png',
-          },
-          {
-            type: 'text',
-            text: '第二句',
-          },
-        ],
-      },
-    ]),
-    '第一句\n第二句',
-  );
-  assert.equal(
-    readLatestUserTextFromMessages([
-      {
-        role: 'assistant',
-        content: 'assistant',
-      },
-    ]),
-    '',
-  );
   assert.equal(sanitizeOptionalText('  hello  '), 'hello');
   assert.equal(sanitizeOptionalText(undefined), '');
-  assert.deepEqual(
-    readPromptBlockConfig({
-      limit: 4,
-      promptPrefix: '相关知识',
-    }),
-    {
-      limit: 4,
-      promptPrefix: '相关知识',
-    },
-  );
   assert.deepEqual(
     filterAllowedToolNames(['beta', 'gamma'], ['alpha', 'beta', 'gamma']),
     ['beta', 'gamma'],
@@ -772,20 +732,11 @@ test('plugin-sdk exposes shared author-side text helpers for authoring flows', (
   assert.equal(filterAllowedToolNames(undefined, ['alpha']), null);
   assert.equal(sameToolNames(['alpha', 'beta'], ['alpha', 'beta']), true);
   assert.equal(sameToolNames(['alpha'], ['beta']), false);
-  assert.equal(clipContextText('  short text  '), 'short text');
-  assert.equal(clipContextText('a'.repeat(250)).length, 240);
+  assert.equal(KB_CONTEXT_DEFAULT_LIMIT, 3);
+  assert.equal(KB_CONTEXT_DEFAULT_PROMPT_PREFIX, '与当前问题相关的系统知识');
+  assert.equal(KB_CONTEXT_CONFIG_SCHEMA.type, 'object');
   assert.equal(textIncludesKeyword('请直接回复 #fast', '#fast'), true);
   assert.equal(textIncludesKeyword('普通消息', ' #fast '), false);
-  assert.deepEqual(
-    resolvePromptBlockConfig({}, {
-      limit: MEMORY_CONTEXT_DEFAULT_LIMIT,
-      promptPrefix: MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
-    }),
-    {
-      limit: MEMORY_CONTEXT_DEFAULT_LIMIT,
-      promptPrefix: MEMORY_CONTEXT_DEFAULT_PROMPT_PREFIX,
-    },
-  );
   assert.equal(
     resolveProviderRouterShortCircuitReply('   '),
     PROVIDER_ROUTER_DEFAULT_SHORT_CIRCUIT_REPLY,

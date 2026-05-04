@@ -375,7 +375,7 @@ async function startBrowserSmokeWebApp() {
 
 async function createProviderThroughUi(page, accessToken, fakeOpenAiUrl) {
   await page.goto('/', { waitUntil: 'load' });
-  await page.locator('a[href="/ai"]').click();
+  await page.locator('nav[aria-label="后台导航"]').getByRole('link', { exact: true, name: 'AI 设置' }).click();
   await page.waitForURL(/\/ai$/, { timeout: REQUEST_TIMEOUT_MS });
   await page.getByRole('heading', { name: 'AI 设置' }).waitFor({ timeout: REQUEST_TIMEOUT_MS });
   let saveError = null;
@@ -652,7 +652,8 @@ async function verifyMcpPage(page) {
 async function verifyPersonasPage(page) {
   await page.goto('/personas', { waitUntil: 'load' });
   await expectText(page, '人设管理');
-  await expectText(page, '可用人设');
+  await expectText(page, '人设仓库');
+  await page.locator('nav[aria-label="人设管理面板切换"]').waitFor({ timeout: REQUEST_TIMEOUT_MS });
   await page.getByRole('button', { name: '新建人设' }).click();
   await page.locator('input[placeholder*="persona.writer"]').waitFor({ timeout: REQUEST_TIMEOUT_MS });
   await page.locator('input[placeholder="Writer"]').waitFor({ timeout: REQUEST_TIMEOUT_MS });
@@ -703,10 +704,10 @@ async function verifyRuntimeToolsSettingsPage(page) {
   await page.getByRole('button', { exact: true, name: '执行工具' }).click();
   await page.getByRole('heading', { name: '执行工具' }).waitFor({ timeout: REQUEST_TIMEOUT_MS });
   await expectText(page, 'bash 执行后端');
+  await expectText(page, '执行工具审批模式');
   assert.equal(await page.locator('button.collapsed-toggle').count(), 0, '执行工具设置不应再出现高级配置折叠按钮');
-  await expectText(page, 'bash 输出');
-  await expectText(page, '工具启用状态');
-  await page.getByRole('link', { name: '打开工具管理' }).waitFor({ timeout: REQUEST_TIMEOUT_MS });
+  await expectText(page, 'bash 输出治理');
+  await expectText(page, '长工具输出落盘');
 }
 
 async function verifyToolsPage(page, accessToken) {
