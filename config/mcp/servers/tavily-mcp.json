@@ -6,7 +6,9 @@
     "tavily-mcp@latest"
   ],
   "env": {
-    "TAVILY_API_KEY": "${TAVILY_API_KEY}",
     "DEFAULT_PARAMETERS": "{\"include_images\": true, \"max_results\": 15, \"search_depth\": \"advanced\"}"
+  },
+  "eventLog": {
+    "maxFileSizeMb": 1
   }
 }
