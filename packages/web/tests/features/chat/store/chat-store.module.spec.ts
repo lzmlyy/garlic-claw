@@ -13,6 +13,7 @@ vi.mock('@/modules/chat/modules/chat-conversation.data', () => ({
   loadConversationList: vi.fn(),
   loadConversationMessages: vi.fn(),
   loadConversationTodoRecord: vi.fn(),
+  readLoadedConversationKind: vi.fn(),
   readLoadedConversationRunningState: vi.fn(),
   replyRuntimePermissionRecord: vi.fn(),
   stopConversationMessageRecord: vi.fn(),
@@ -64,6 +65,7 @@ describe('createChatStoreModule', () => {
     vi.mocked(chatConversationData.loadConversationList).mockReset().mockResolvedValue([])
     vi.mocked(chatConversationData.loadConversationMessages).mockReset().mockResolvedValue([])
     vi.mocked(chatConversationData.loadConversationTodoRecord).mockReset().mockResolvedValue([])
+    vi.mocked(chatConversationData.readLoadedConversationKind).mockReset().mockReturnValue('main')
     vi.mocked(chatConversationData.readLoadedConversationRunningState).mockReset().mockReturnValue(false)
     vi.mocked(chatConversationData.replyRuntimePermissionRecord).mockReset().mockResolvedValue({
       requestId: 'permission-1',
@@ -299,6 +301,152 @@ describe('createChatStoreModule', () => {
 
     await store.selectConversation('conversation-1')
 
+    expect(chatStreamModule.attachConversationStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentConversationId: expect.objectContaining({ value: 'conversation-1' }),
+      }),
+      'conversation-1',
+      expect.objectContaining({
+        loadConversationDetail: expect.any(Function),
+        refreshConversationState: expect.any(Function),
+      }),
+    )
+  })
+
+  it('attaches a live stream after selecting an idle main conversation so future external starts reuse the same SSE chain', async () => {
+    vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '先保持空闲',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: null,
+        model: null,
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '当前没有运行中的回复',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
+    ])
+
+    const store = createChatStoreModule()
+
+    await store.selectConversation('conversation-1')
+
+    expect(chatStreamModule.attachConversationStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentConversationId: expect.objectContaining({ value: 'conversation-1' }),
+      }),
+      'conversation-1',
+      expect.objectContaining({
+        loadConversationDetail: expect.any(Function),
+        refreshConversationState: expect.any(Function),
+      }),
+    )
+  })
+
+  it('does not attach an idle SSE loop for a completed subagent conversation', async () => {
+    vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '子代理已完成',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: null,
+        model: null,
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '子代理回复已完成',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
+    ])
+
+    vi.mocked(chatConversationData.readLoadedConversationKind).mockReturnValue('subagent')
+
+    const store = createChatStoreModule()
+
+    await store.selectConversation('conversation-1')
+
+    expect(chatStreamModule.attachConversationStream).not.toHaveBeenCalled()
+  })
+
+  it('still avoids idle subagent attach when the conversation list has not yet synced that child into store.conversations', async () => {
+    vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '子代理回复已完成',
+        status: 'completed',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
+    ])
+    vi.mocked(chatConversationData.readLoadedConversationKind).mockReturnValue('subagent')
+
+    const store = createChatStoreModule()
+    store.conversations.value = []
+
+    await store.selectConversation('conversation-1')
+
+    expect(chatStreamModule.attachConversationStream).not.toHaveBeenCalled()
+  })
+
+  it('reloads the current conversation when an automation run starts it externally', async () => {
+    vi.mocked(chatConversationData.loadConversationMessages).mockResolvedValue([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        status: 'pending',
+        parts: [],
+        toolCalls: [],
+        toolResults: [],
+        error: null,
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
+    ])
+    vi.mocked(chatConversationData.readLoadedConversationRunningState).mockReturnValue(true)
+
+    const store = createChatStoreModule()
+    store.currentConversationId.value = 'conversation-1'
+
+    window.dispatchEvent(new CustomEvent('garlic-claw:automation-run', {
+      detail: {
+        conversationId: 'conversation-1',
+      },
+    }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(chatConversationData.loadConversationMessages).toHaveBeenCalledWith('conversation-1')
     expect(chatStreamModule.attachConversationStream).toHaveBeenCalledWith(
       expect.objectContaining({
         currentConversationId: expect.objectContaining({ value: 'conversation-1' }),

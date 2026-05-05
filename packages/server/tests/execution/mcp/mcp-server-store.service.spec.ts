@@ -315,4 +315,52 @@ describe('McpServerStoreService', () => {
     ]);
   });
 
+  it('preserves declared env entries when updating only the local stored secret view', () => {
+    process.env[envKey] = tempConfigRoot;
+    fs.mkdirSync(tempConfigRoot, { recursive: true });
+    fs.writeFileSync(path.join(tempConfigRoot, 'tavily-mcp.json'), JSON.stringify({
+      name: 'tavily-mcp',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {
+        DEFAULT_PARAMETERS: '{"include_images":true}',
+        TAVILY_API_KEY: '${TAVILY_API_KEY}',
+      },
+    }, null, 2));
+
+    const service = new McpServerStoreService(projectWorktreeRootService, mcpSecretStoreService);
+
+    service.saveServer({
+      name: 'tavily-mcp',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {},
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'stored-secret',
+          value: 'real-secret-key',
+        },
+      ],
+      eventLog: {
+        maxFileSizeMb: 1,
+      },
+    }, 'tavily-mcp');
+
+    expect(JSON.parse(
+      fs.readFileSync(path.join(tempConfigRoot, 'tavily-mcp.json'), 'utf-8'),
+    )).toEqual({
+      name: 'tavily-mcp',
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {
+        DEFAULT_PARAMETERS: '{"include_images":true}',
+        TAVILY_API_KEY: '${TAVILY_API_KEY}',
+      },
+      eventLog: {
+        maxFileSizeMb: 1,
+      },
+    });
+  });
+
 });

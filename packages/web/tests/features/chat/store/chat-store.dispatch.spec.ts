@@ -8,6 +8,7 @@ import {
   discardPendingMessageUpdates,
   dispatchSendMessage,
   dispatchRetryMessage,
+  scheduleChatRecoveryWithState,
   syncChatStreamingState,
 } from '@/modules/chat/modules/chat-stream.module'
 import * as chatConversationData from '@/modules/chat/modules/chat-conversation.data'
@@ -1248,6 +1249,25 @@ describe('dispatchSendMessage', () => {
 
     expect(refreshConversationState).toHaveBeenCalledTimes(1)
     expect(state.streaming.value).toBe(true)
+    expect(loadConversationDetail).toHaveBeenCalledTimes(1)
+    expect(loadConversationDetail).toHaveBeenCalledWith('conversation-1')
+  })
+
+  it('keeps polling the selected idle conversation so external automation or cron runs can be detected', async () => {
+    vi.useFakeTimers()
+    const state = createState([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '已完成',
+        status: 'completed',
+      },
+    ])
+    const loadConversationDetail = vi.fn().mockResolvedValue(undefined)
+
+    scheduleChatRecoveryWithState(state, loadConversationDetail)
+    await vi.advanceTimersByTimeAsync(1000)
+
     expect(loadConversationDetail).toHaveBeenCalledTimes(1)
     expect(loadConversationDetail).toHaveBeenCalledWith('conversation-1')
   })

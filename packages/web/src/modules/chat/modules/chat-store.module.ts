@@ -27,6 +27,7 @@ import {
   loadConversationList,
   loadConversationMessages,
   loadConversationTodoRecord,
+  readLoadedConversationKind,
   readLoadedConversationRunningState,
   replyRuntimePermissionRecord,
   stopConversationMessageRecord,
@@ -49,6 +50,7 @@ import {
   subscribeInternalConfigChanged,
   type InternalConfigChangedDetail,
 } from "@/modules/ai-settings/internal-config-change";
+import { subscribeInternalAutomationRun } from "@/modules/automations/internal-automation-run";
 import type {
   ChatMessage,
   ChatPendingRuntimePermission,
@@ -57,6 +59,7 @@ import type {
 import { isValidConversationRouteId } from "@/shared/utils/uuid";
 
 let removeGlobalInternalConfigChangedListener: (() => void) | null = null;
+let removeGlobalInternalAutomationRunListener: (() => void) | null = null;
 
 interface QueuedChatSendRequest {
   id: string;
@@ -243,6 +246,13 @@ export function createChatStoreModule() {
     scheduleConfigRefresh(currentConversationId.value, detail.scope);
   }
 
+  function handleInternalAutomationRun(conversationId: string) {
+    if (!currentConversationId.value || currentConversationId.value !== conversationId) {
+      return;
+    }
+    void loadConversationWindowSnapshot(conversationId);
+  }
+
   if (typeof window !== "undefined") {
     removeGlobalInternalConfigChangedListener?.();
     const removeListener = subscribeInternalConfigChanged(handleInternalConfigChanged);
@@ -256,6 +266,24 @@ export function createChatStoreModule() {
       onScopeDispose(() => {
         clearPendingConfigRefreshTimer();
         removeGlobalInternalConfigChangedListener?.();
+      });
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    removeGlobalInternalAutomationRunListener?.();
+    const removeListener = subscribeInternalAutomationRun(({ conversationId }) => {
+      handleInternalAutomationRun(conversationId);
+    });
+    removeGlobalInternalAutomationRunListener = () => {
+      removeListener();
+      if (removeGlobalInternalAutomationRunListener) {
+        removeGlobalInternalAutomationRunListener = null;
+      }
+    };
+    if (getCurrentScope()) {
+      onScopeDispose(() => {
+        removeGlobalInternalAutomationRunListener?.();
       });
     }
   }
@@ -776,11 +804,13 @@ export function createChatStoreModule() {
 
     replaceMessages(nextMessages);
     syncChatStreamingState(streamState);
+    const loadedConversationKind = readLoadedConversationKind(conversationId);
     const conversationStillRunning = readLoadedConversationRunningState(conversationId);
+    const shouldAttachIdleFutureStart = loadedConversationKind === 'main';
     if (
       currentConversationId.value === conversationId
       && !streamController.value
-      && (streaming.value || conversationStillRunning)
+      && (streaming.value || conversationStillRunning || shouldAttachIdleFutureStart)
     ) {
       void attachConversationStream(streamState, conversationId, {
         loadConversationDetail: loadConversationRecoverySnapshot,

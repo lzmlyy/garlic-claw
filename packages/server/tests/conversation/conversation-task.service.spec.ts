@@ -1,12 +1,12 @@
-import { createConversationHistorySignatureFromHistoryMessages } from '../../src/conversation/conversation-history-signature';
-import { ConversationMessageService } from '../../src/runtime/host/conversation-message.service';
+import { createConversationHistorySignatureFromHistoryMessages } from '../../src/modules/conversation/conversation-history-signature';
+import { ConversationMessageService } from '../../src/modules/runtime/host/conversation-message.service';
 import {
   ConversationStoreService,
   serializeConversationMessage,
-} from '../../src/runtime/host/conversation-store.service';
-import { ConversationTodoService } from '../../src/runtime/host/conversation-todo.service';
-import { ConversationTaskService, type ConversationTaskEvent } from '../../src/conversation/conversation-task.service';
-import { RuntimeToolPermissionService } from '../../src/execution/runtime/runtime-tool-permission.service';
+} from '../../src/modules/runtime/host/conversation-store.service';
+import { ConversationTodoService } from '../../src/modules/runtime/host/conversation-todo.service';
+import { ConversationTaskService, type ConversationTaskEvent } from '../../src/modules/conversation/conversation-task.service';
+import { RuntimeToolPermissionService } from '../../src/modules/execution/runtime/runtime-tool-permission.service';
 import { APICallError } from '@ai-sdk/provider';
 
 describe('ConversationTaskService', () => {
@@ -285,6 +285,59 @@ describe('ConversationTaskService', () => {
       { messageId: String(assistantMessage.id), status: 'stopped', type: 'status' },
       { messageId: String(assistantMessage.id), status: 'stopped', type: 'finish' },
     ]));
+  });
+
+  it('forces a stuck task into stopped state when the stream ignores abort', async () => {
+    const assistantMessage = createAssistantMessage(conversationMessages, conversationStore);
+    let returnCalled = false;
+    let yieldedFirstChunk = false;
+    const stuckIterator: AsyncIterableIterator<unknown> = {
+      async next() {
+        if (!yieldedFirstChunk) {
+          yieldedFirstChunk = true;
+          return { done: false, value: delta('卡住前的片段') };
+        }
+        return await new Promise<IteratorResult<unknown>>(() => undefined);
+      },
+      async return() {
+        returnCalled = true;
+        return { done: true, value: undefined };
+      },
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+
+    service.startTask({
+      assistantMessageId: String(assistantMessage.id),
+      conversationId,
+      createStream: async () => ({
+        modelId: 'gpt-5.4',
+        providerId: 'openai',
+        stream: {
+          fullStream: stuckIterator,
+        },
+      }),
+      modelId: 'gpt-5.4',
+      providerId: 'openai',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await expect(Promise.race([
+      service.stopTask(String(assistantMessage.id)),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 50)),
+    ])).resolves.toBe(true);
+
+    expect(conversationStore.requireConversation(conversationId).messages[0]).toMatchObject({
+      content: '卡住前的片段',
+      role: 'assistant',
+      status: 'stopped',
+    });
+    expect(returnCalled).toBe(true);
+    expect(service.hasTask(String(assistantMessage.id))).toBe(false);
+    expect(readRuntimePermissionListenerCount(runtimeToolPermissionService, conversationId)).toBe(0);
+    expect(readConversationTodoListenerCount(conversationTodos, conversationId)).toBe(0);
   });
 
   it('normalizes tool-error parts into persisted tool results', async () => {
@@ -710,4 +763,26 @@ function toolCall() {
 
 function wrappedToolResult() {
   return { ...toolResultRecord(), type: 'tool-result' as const };
+}
+
+function readRuntimePermissionListenerCount(
+  runtimeToolPermissionService: RuntimeToolPermissionService,
+  conversationId: string,
+) {
+  return (
+    (runtimeToolPermissionService as unknown as {
+      listeners?: Map<string, Set<unknown>>;
+    }).listeners?.get(conversationId)?.size ?? 0
+  );
+}
+
+function readConversationTodoListenerCount(
+  conversationTodos: ConversationTodoService,
+  conversationId: string,
+) {
+  return (
+    (conversationTodos as unknown as {
+      listeners?: Map<string, Set<unknown>>;
+    }).listeners?.get(conversationId)?.size ?? 0
+  );
 }

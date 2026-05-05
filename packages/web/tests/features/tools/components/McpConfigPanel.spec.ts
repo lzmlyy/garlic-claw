@@ -71,6 +71,13 @@ describe('McpConfigPanel', () => {
       env: {
         TAVILY_API_KEY: '${TAVILY_API_KEY}',
       },
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'env-ref',
+          value: '${TAVILY_API_KEY}',
+        },
+      ],
       eventLog: {
         maxFileSizeMb: 1,
       },
@@ -213,6 +220,51 @@ describe('McpConfigPanel', () => {
     vi.useRealTimers()
   })
 
+  it('explains which env edits stay local and which ones update the project config', async () => {
+    hoisted.state = createManagementState()
+    hoisted.state.snapshot.value = {
+      configPath: 'mcp/servers',
+      servers: [
+        {
+          name: 'tavily',
+          command: 'npx',
+          args: ['-y', 'tavily-mcp@latest'],
+          env: {
+            DEFAULT_PARAMETERS: '{"include_images":true}',
+            TAVILY_API_KEY: '',
+          },
+          envEntries: [
+            {
+              key: 'DEFAULT_PARAMETERS',
+              source: 'literal',
+              value: '{"include_images":true}',
+            },
+            {
+              key: 'TAVILY_API_KEY',
+              source: 'stored-secret',
+              value: '',
+              hasStoredValue: true,
+            },
+          ],
+          eventLog: {
+            maxFileSizeMb: 1,
+          },
+        },
+      ],
+    }
+    hoisted.state.selectedServerName.value = 'tavily'
+
+    const wrapper = mount(McpConfigPanel, {
+      props: {
+        preferredServerName: 'tavily',
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('项目配置会写入仓库中的 MCP 声明文件')
+    expect(wrapper.text()).toContain('本地值只保存在当前机器')
+  })
+
   it('does not auto-save again when the selected server snapshot mixes env and stored-secret for the same key', async () => {
     vi.useFakeTimers()
     hoisted.state = createManagementState()
@@ -251,6 +303,59 @@ describe('McpConfigPanel', () => {
     await vi.runAllTimersAsync()
 
     expect(hoisted.state.updateServer).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('does not reinterpret the project placeholder as a local secret when toggling the row mode', async () => {
+    vi.useFakeTimers()
+    hoisted.state = createManagementState()
+    hoisted.state.snapshot.value = {
+      configPath: 'mcp/servers',
+      servers: [
+        {
+          name: 'tavily',
+          command: 'npx',
+          args: ['-y', 'tavily-mcp@latest'],
+          env: {
+            TAVILY_API_KEY: '${TAVILY_API_KEY}',
+          },
+          envEntries: [
+            {
+              key: 'TAVILY_API_KEY',
+              source: 'env-ref',
+              value: '${TAVILY_API_KEY}',
+            },
+          ],
+          eventLog: {
+            maxFileSizeMb: 1,
+          },
+        },
+      ],
+    }
+    hoisted.state.selectedServerName.value = 'tavily'
+
+    const wrapper = mount(McpConfigPanel, {
+      props: {
+        preferredServerName: 'tavily',
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-test="mcp-env-secret-toggle-0"]').trigger('click')
+    expect((wrapper.get('[data-test="mcp-env-value-0"]').element as HTMLInputElement).value).toBe('')
+
+    await vi.runAllTimersAsync()
+
+    expect(hoisted.state.updateServer).toHaveBeenCalledWith('tavily', expect.objectContaining({
+      env: {},
+      envEntries: [
+        {
+          key: 'TAVILY_API_KEY',
+          source: 'stored-secret',
+          value: '',
+        },
+      ],
+    }))
     vi.useRealTimers()
   })
 

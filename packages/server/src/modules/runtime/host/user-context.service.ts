@@ -75,11 +75,14 @@ export class UserContextService {
   }
 
   searchMemoriesByUser(userId: string, query: string, limit = 10): JsonValue {
-    const normalizedQuery = query.toLowerCase();
-    return this.listMemories(userId, limit, (record) =>
-      record.content.toLowerCase().includes(normalizedQuery)
-        || record.category.toLowerCase().includes(normalizedQuery)
-        || record.keywords.some((keyword) => keyword.toLowerCase().includes(normalizedQuery)));
+    const normalizedTerms = normalizeMemorySearchTerms(query);
+    return this.memories
+      .filter((record) => record.userId === userId)
+      .map((record) => ({ record, score: countMemorySearchMatches(record, normalizedTerms) }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score || Date.parse(right.record.createdAt) - Date.parse(left.record.createdAt))
+      .slice(0, limit)
+      .map((entry) => asJsonValue(entry.record));
   }
 
   private listMemories(userId: string, limit: number, predicate?: (record: RuntimeMemoryRecord) => boolean): JsonValue {
@@ -143,4 +146,29 @@ function isRuntimeMemoryRecord(value: unknown): value is RuntimeMemoryRecord {
     && Array.isArray((value as RuntimeMemoryRecord).keywords)
     && (value as RuntimeMemoryRecord).keywords.every((keyword) => typeof keyword === 'string')
     && typeof (value as RuntimeMemoryRecord).userId === 'string';
+}
+
+function normalizeMemorySearchTerms(query: string): string[] {
+  const terms = query
+    .toLowerCase()
+    .split(/[\s,，。；;、|/]+/u)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return [...new Set(terms.length > 0 ? terms : [query.toLowerCase().trim()].filter(Boolean))];
+}
+
+function countMemorySearchMatches(record: RuntimeMemoryRecord, terms: string[]): number {
+  if (terms.length === 0) {
+    return 0;
+  }
+  const normalizedContent = record.content.toLowerCase();
+  const normalizedCategory = record.category.toLowerCase();
+  const normalizedKeywords = record.keywords.map((keyword) => keyword.toLowerCase());
+  return terms.reduce((count, term) => (
+    normalizedContent.includes(term)
+      || normalizedCategory.includes(term)
+      || normalizedKeywords.some((keyword) => keyword.includes(term))
+      ? count + 1
+      : count
+  ), 0);
 }

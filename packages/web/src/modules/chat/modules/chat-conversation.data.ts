@@ -28,6 +28,7 @@ import { dbMessageToChat } from '@/modules/chat/store/chat-store.helpers'
 import type { ChatMessage } from '@/modules/chat/store/chat-store.types'
 
 const loadedConversationRunningState = new Map<string, boolean>()
+const loadedConversationKinds = new Map<string, Conversation['kind']>()
 
 export function loadConversationList(): Promise<Conversation[]> {
   return listConversations()
@@ -39,11 +40,13 @@ export function createConversationRecord(title?: string): Promise<Conversation> 
 
 export function deleteConversationRecord(conversationId: string) {
   loadedConversationRunningState.delete(conversationId)
+  loadedConversationKinds.delete(conversationId)
   return deleteConversation(conversationId)
 }
 
 export async function loadConversationMessages(conversationId: string): Promise<ChatMessage[]> {
   const detail = await getConversation(conversationId)
+  loadedConversationKinds.set(conversationId, detail.kind)
   loadedConversationRunningState.set(
     conversationId,
     Boolean(
@@ -57,6 +60,10 @@ export async function loadConversationMessages(conversationId: string): Promise<
 
 export function readLoadedConversationRunningState(conversationId: string): boolean {
   return loadedConversationRunningState.get(conversationId) ?? false
+}
+
+export function readLoadedConversationKind(conversationId: string): Conversation['kind'] {
+  return loadedConversationKinds.get(conversationId)
 }
 
 export function loadConversationTodoRecord(

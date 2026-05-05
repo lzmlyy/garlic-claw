@@ -85,6 +85,16 @@ export class ConversationController {
         this.conversationStore.requireConversation(id, userId),
         (messageId) => this.conversationTaskService.hasTask(messageId),
       ),
+      (signal, previousAssistantMessageId) => waitForAttachedConversationTaskStart(
+        this.conversationTaskService,
+        id,
+        () => readCurrentConversationTaskStart(
+          this.conversationStore.requireConversation(id, userId),
+          (messageId) => this.conversationTaskService.hasTask(messageId),
+        ),
+        signal,
+        previousAssistantMessageId,
+      ),
       async (assistantMessageId) => readConversationTaskContinuationStart(
         this.conversationStore.requireConversation(id, userId),
         assistantMessageId,
@@ -306,6 +316,42 @@ export class ConversationController {
   }
 }
 
+async function waitForAttachedConversationTaskStart(
+  conversationTaskService: Pick<ConversationTaskService, 'subscribeConversationStart'>,
+  conversationId: string,
+  readCurrentTaskStart: () => { assistantMessageId: string; startPayload: object | null } | null,
+  signal: AbortSignal,
+  previousAssistantMessageId: string | null,
+): Promise<{ assistantMessageId: string; startPayload: object | null } | null> {
+  if (signal.aborted) {
+    return null;
+  }
+  return await new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: { assistantMessageId: string; startPayload: object | null } | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      unsubscribe();
+      signal.removeEventListener('abort', onAbort);
+      resolve(value);
+    };
+    const onAbort = () => finish(null);
+    const unsubscribe = conversationTaskService.subscribeConversationStart(conversationId, () => {
+      const startedTask = readCurrentTaskStart();
+      if (startedTask && startedTask.assistantMessageId !== previousAssistantMessageId) {
+        finish(startedTask);
+      }
+    });
+    signal.addEventListener('abort', onAbort, { once: true });
+    const currentTask = readCurrentTaskStart();
+    if (currentTask && currentTask.assistantMessageId !== previousAssistantMessageId) {
+      finish(currentTask);
+    }
+  });
+}
+
 async function streamTaskEvents(
   res: Response,
   conversationTaskService: ConversationTaskService,
@@ -366,20 +412,35 @@ async function streamSubagentEvents(
 
 async function streamAttachedConversationTaskEvents(
   res: Response,
-  conversationTaskService: Pick<ConversationTaskService, 'subscribe' | 'waitForTask'>,
+  conversationTaskService: Pick<ConversationTaskService, 'subscribe' | 'subscribeConversationStart' | 'waitForTask'>,
   readCurrentTaskStart: () => { assistantMessageId: string; startPayload: object | null } | null,
+  waitForFutureTaskStart: (signal: AbortSignal, previousAssistantMessageId: string | null) => Promise<{ assistantMessageId: string; startPayload: object | null } | null>,
   readNextTaskStart?: (assistantMessageId: string) => Promise<{ assistantMessageId: string; startPayload: object } | null> | { assistantMessageId: string; startPayload: object } | null,
 ) {
   const stopHeartbeat = startSseHeartbeat(res);
+  const closeController = new AbortController();
   initSse(res);
   let unsubscribe: () => void = () => undefined;
+  let previousAssistantMessageId: string | null = null;
   res.on('close', () => {
+    closeController.abort();
     unsubscribe();
     stopHeartbeat();
   });
   try {
     let nextTask = readCurrentTaskStart();
-    while (nextTask) {
+    let allowFutureTaskStartWait = nextTask === null;
+    while (!closeController.signal.aborted) {
+      if (!nextTask) {
+        if (!allowFutureTaskStartWait) {
+          break;
+        }
+        nextTask = await waitForFutureTaskStart(closeController.signal, previousAssistantMessageId);
+        if (!nextTask) {
+          break;
+        }
+        allowFutureTaskStartWait = false;
+      }
       const gate = createBufferedEventGate();
       unsubscribe = conversationTaskService.subscribe(nextTask.assistantMessageId, (event) => {
         if (gate.shouldBuffer()) {
@@ -422,6 +483,7 @@ async function streamAttachedConversationTaskEvents(
       }
       activateBufferedEventGateLive(res, gate);
       await conversationTaskService.waitForTask(nextTask.assistantMessageId);
+      previousAssistantMessageId = nextTask.assistantMessageId;
       unsubscribe();
       unsubscribe = () => undefined;
       nextTask = readNextTaskStart ? await readNextTaskStart(nextTask.assistantMessageId) : null;
@@ -430,7 +492,9 @@ async function streamAttachedConversationTaskEvents(
     writeSse(res, { error: error instanceof Error ? error.message : '未知错误', type: 'error' });
   }
   stopHeartbeat();
-  writeSse(res, '[DONE]', true);
+  if (!closeController.signal.aborted) {
+    writeSse(res, '[DONE]', true);
+  }
 }
 
 async function streamAttachedSubagentEvents(

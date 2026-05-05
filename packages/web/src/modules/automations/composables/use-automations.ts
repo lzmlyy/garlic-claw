@@ -17,6 +17,7 @@ import {
   toggleAutomationEnabled,
   updateAutomationRecord,
 } from './automations.data'
+import { emitInternalAutomationRun } from '@/modules/automations/internal-automation-run'
 
 type AutomationTriggerType = 'cron' | 'manual' | 'event'
 type AutomationActionType = ActionConfig['type']
@@ -166,7 +167,11 @@ export function useAutomations() {
   async function handleRun(id: string) {
     requestState.clearError()
     try {
-      await runAutomationRequest(id)
+      const result = await runAutomationRequest(id)
+      const conversationId = readAutomationRunConversationId(result)
+      if (conversationId) {
+        emitInternalAutomationRun({ conversationId })
+      }
       await loadAutomations()
       if (currentView.value === 'logs') {
         await loadAutomationLogs()
@@ -435,4 +440,25 @@ function readConversationDisplayTitle(conversation: Conversation): string {
 
 function readConversationShortId(id: string): string {
   return id.length <= 8 ? id : id.slice(-8)
+}
+
+function readAutomationRunConversationId(result: unknown): string | null {
+  if (!isRecord(result) || !Array.isArray(result.results)) {
+    return null
+  }
+  for (const entry of result.results) {
+    if (!isRecord(entry) || entry.action !== 'ai_message') {
+      continue
+    }
+    const target = isRecord(entry.target) ? entry.target : null
+    if (target?.type !== 'conversation' || typeof target.id !== 'string' || !target.id.trim()) {
+      continue
+    }
+    return target.id
+  }
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }

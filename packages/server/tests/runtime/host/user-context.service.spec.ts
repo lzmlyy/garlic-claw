@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { UserContextService } from '../../../src/runtime/host/user-context.service';
+import { UserContextService } from '../../../src/modules/runtime/host/user-context.service';
 
 describe('UserContextService', () => {
   const originalMemoriesPath = process.env.GARLIC_CLAW_MEMORIES_PATH;
@@ -66,6 +66,31 @@ describe('UserContextService', () => {
         content: '用户喜欢手冲咖啡',
         keywords: ['咖啡', '手冲'],
         userId: 'user-1',
+      }),
+    ]);
+  });
+
+  it('matches multi-keyword memory queries against individual keywords instead of the whole raw query string', () => {
+    process.env.GARLIC_CLAW_MEMORIES_PATH = storagePath;
+    process.env.JEST_WORKER_ID = '1';
+
+    const service = new UserContextService();
+    service.saveMemory(
+      {
+        source: 'plugin',
+        userId: 'user-1',
+      },
+      {
+        category: '小说设定',
+        content: '主角是猫娘小铃，当前进度写到雨后散步。',
+        keywords: ['小说', '小铃', '进度'],
+      },
+    );
+
+    expect(service.searchMemoriesByUser('user-1', '小铃 猫娘 小说 设定', 10)).toEqual([
+      expect.objectContaining({
+        category: '小说设定',
+        keywords: ['小说', '小铃', '进度'],
       }),
     ]);
   });

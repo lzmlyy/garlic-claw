@@ -8,6 +8,7 @@ export interface ChatRecoveryPollingParams {
   streamController: Ref<AbortController | null>
   currentConversationId: Ref<string | null>
   isStreaming: () => boolean
+  shouldPollWhenIdle?: () => boolean
   loadConversationDetail: (conversationId: string) => Promise<void>
 }
 
@@ -16,11 +17,12 @@ export interface ChatRecoveryPollingParams {
  * @param params 轮询运行时依赖
  */
 export function startChatRecoveryPolling(params: ChatRecoveryPollingParams) {
+  const shouldPollWhenIdle = params.shouldPollWhenIdle?.() ?? false
   if (
     params.recoveryTimer.value !== null ||
     params.streamController.value ||
     !params.currentConversationId.value ||
-    !params.isStreaming()
+    (!params.isStreaming() && !shouldPollWhenIdle)
   ) {
     return
   }
@@ -33,7 +35,7 @@ export function startChatRecoveryPolling(params: ChatRecoveryPollingParams) {
 
     try {
       await params.loadConversationDetail(params.currentConversationId.value)
-      if (!params.isStreaming()) {
+      if (!params.isStreaming() && !(params.shouldPollWhenIdle?.() ?? false)) {
         stopChatRecoveryPolling(params.recoveryTimer)
       }
     } catch {

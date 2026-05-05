@@ -56,7 +56,8 @@ export class McpServerStoreService {
 
   saveServer(server: McpServerConfig, previousName?: string): McpServerConfig {
     const currentSecrets = this.mcpSecretStoreService.readServerSecrets(previousName ?? server.name);
-    const normalizedServer = normalizeIncomingServer(server, currentSecrets);
+    const currentServer = this.servers.find((entry) => entry.name === (previousName ?? server.name));
+    const normalizedServer = normalizeIncomingServer(server, currentSecrets, currentServer);
     fs.mkdirSync(this.configRootPath, { recursive: true });
     fs.writeFileSync(
       resolveServerFilePath(this.configRootPath, normalizedServer.record.name),
@@ -228,14 +229,17 @@ function mergeEnvEntries(
 function normalizeIncomingServer(
   server: McpServerConfig,
   currentSecrets: Record<string, string>,
+  currentServer?: StoredMcpServerRecord,
 ): { record: StoredMcpServerRecord; secretEnv: Record<string, string> } {
-  const visibleEnv = readVisibleEnv(server);
+  const visibleEnv = readVisibleEnv(server, currentServer?.env ?? {});
   const secretEnv = readNextSecretEnv(server, currentSecrets);
   const storedEnv = {
     ...visibleEnv,
   };
   for (const secretKey of Object.keys(secretEnv)) {
-    delete storedEnv[secretKey];
+    if (!isEnvReference(storedEnv[secretKey] ?? '')) {
+      delete storedEnv[secretKey];
+    }
   }
   return {
     record: {
@@ -257,12 +261,22 @@ function normalizeEnvMap(env: Record<string, string>): Record<string, string> {
   );
 }
 
-function readVisibleEnv(server: McpServerConfig): Record<string, string> {
-  const visibleEntries = normalizeIncomingEnvEntries(server)
+function readVisibleEnv(server: McpServerConfig, fallbackEnv: Record<string, string>): Record<string, string> {
+  const envFromField = normalizeEnvMap(server.env);
+  const normalizedEntries = normalizeIncomingEnvEntries(server);
+  const visibleEntries = normalizedEntries
     .filter((entry) => entry.source !== 'stored-secret')
     .map((entry) => [entry.key, entry.value] as const);
+  if (
+    Array.isArray(server.envEntries)
+    && server.envEntries.length > 0
+    && visibleEntries.length === 0
+    && Object.keys(envFromField).length === 0
+  ) {
+    return { ...fallbackEnv };
+  }
   return {
-    ...normalizeEnvMap(server.env),
+    ...envFromField,
     ...Object.fromEntries(visibleEntries),
   };
 }

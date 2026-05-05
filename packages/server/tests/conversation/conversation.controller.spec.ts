@@ -13,7 +13,13 @@ describe('ConversationController', () => {
   const assistantMessageId = '22222222-2222-4222-8222-222222222222';
   const conversationMessagePlanningService = { getContextWindowPreview: jest.fn() };
   const conversationMessageLifecycleService = { retryMessageGeneration: jest.fn(), startMessageGeneration: jest.fn(), stopMessageGeneration: jest.fn() };
-  const conversationTaskService = { hasTask: jest.fn(), stopTask: jest.fn(), subscribe: jest.fn(), waitForTask: jest.fn() };
+  const conversationTaskService = {
+    hasTask: jest.fn(),
+    stopTask: jest.fn(),
+    subscribe: jest.fn(),
+    subscribeConversationStart: jest.fn(),
+    waitForTask: jest.fn(),
+  };
   const runtimeToolPermissionService = { listPendingRequests: jest.fn(), reply: jest.fn() };
   const conversationMessages = { deleteMessage: jest.fn(), updateMessage: jest.fn() };
   const conversationTodos = { deleteSessionTodo: jest.fn(), readSessionTodo: jest.fn(), replaceSessionTodo: jest.fn() };
@@ -32,6 +38,7 @@ describe('ConversationController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     subagentRunner.subscribe.mockReturnValue(() => undefined);
+    conversationTaskService.subscribeConversationStart.mockReturnValue(() => undefined);
     conversationTaskService.hasTask.mockReturnValue(false);
     conversationStore.requireConversation.mockReturnValue({
       createdAt: '2026-04-11T00:00:00.000Z',
@@ -431,6 +438,64 @@ describe('ConversationController', () => {
     expect(conversationTaskService.subscribe).toHaveBeenNthCalledWith(2, continuationAssistantId, expect.any(Function));
     expect(response.write).toHaveBeenCalledWith(expect.stringContaining(`"id":"${continuationAssistantId}"`));
     expect(response.write).toHaveBeenCalledWith(expect.stringContaining('tool-call-1'));
+    expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
+  });
+
+  it('keeps an idle main conversation attach alive until a future task starts', async () => {
+    const response = createResponseStub();
+    const futureAssistantMessageId = '44444444-4444-4444-8444-444444444444';
+    let notifyFutureStart: (() => void) | null = null;
+    let currentConversation = {
+      createdAt: '2026-04-11T00:00:00.000Z',
+      id: conversationId,
+      kind: 'main',
+      messages: [
+        { id: 'user-1', role: 'user', status: 'completed', content: '等待外部触发' },
+        { id: assistantMessageId, role: 'assistant', status: 'completed', content: '当前空闲' },
+      ],
+      title: 'Main Chat',
+      updatedAt: '2026-04-11T00:00:00.000Z',
+    };
+    conversationStore.requireConversation.mockImplementation(() => currentConversation);
+    conversationTaskService.subscribeConversationStart.mockImplementation((_conversationId: string, listener: () => void) => {
+      notifyFutureStart = () => {
+        currentConversation = {
+          ...currentConversation,
+          messages: [
+            currentConversation.messages[0],
+            currentConversation.messages[1],
+            {
+              id: futureAssistantMessageId,
+              role: 'assistant',
+              status: 'streaming',
+              content: '',
+            },
+          ],
+          updatedAt: '2026-04-11T00:00:01.000Z',
+        };
+        listener();
+      };
+      return jest.fn();
+    });
+    conversationTaskService.subscribe.mockImplementation((messageId: string, listener: (event: { type: string }) => void) => {
+      if (messageId === futureAssistantMessageId) {
+        listener({ messageId, text: '外部任务已接入', type: 'text-delta' } as never);
+      }
+      return jest.fn();
+    });
+    conversationTaskService.waitForTask.mockResolvedValue(undefined);
+
+    const attachTask = controller.streamConversationEvents('user-1', conversationId, response as never);
+    await Promise.resolve();
+
+    expect(conversationTaskService.subscribeConversationStart).toHaveBeenCalledWith(conversationId, expect.any(Function));
+    expect(response.write).not.toHaveBeenCalledWith('data: [DONE]\n\n');
+
+    notifyFutureStart?.();
+    await attachTask;
+
+    expect(conversationTaskService.subscribe).toHaveBeenCalledWith(futureAssistantMessageId, expect.any(Function));
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining(`"id":"${futureAssistantMessageId}"`));
     expect(response.write).toHaveBeenLastCalledWith('data: [DONE]\n\n');
   });
 

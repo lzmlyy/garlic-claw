@@ -106,7 +106,8 @@
             <div class="mcp-env-header">
               <div>
                 <span>环境变量</span>
-                <p>支持直接值或 `${VAR_NAME}` 占位符。</p>
+                <p>项目配置会写入仓库中的 MCP 声明文件，本地值只保存在当前机器。</p>
+                <p>项目配置支持直接值或 `${VAR_NAME}` 占位符；切到本地 secret 时不会改写仓库里的声明式值。</p>
               </div>
               <ElButton class="action-icon-button" title="新增变量" @click="addEnvRow">
                 <Icon :icon="addCircleBold" class="action-icon" aria-hidden="true" />
@@ -130,7 +131,8 @@
                   />
                   <ElInput
                     :data-test="`mcp-env-value-${index}`"
-                    v-model="entry.value"
+                    :model-value="readEnvInputValue(entry)"
+                    @update:model-value="updateEnvInputValue(entry, $event)"
                     :placeholder="entry.usesStoredSecret ? '输入新的 secret' : '${TAVILY_API_KEY}'"
                   />
                   <ElButton
@@ -139,7 +141,7 @@
                     :type="entry.usesStoredSecret ? 'primary' : 'default'"
                     @click="toggleStoredSecret(index)"
                   >
-                    {{ entry.usesStoredSecret ? '本地 secret' : '普通值 / 引用' }}
+                    {{ entry.usesStoredSecret ? '本地 secret' : '项目配置' }}
                   </ElButton>
                   <ElButton
                     data-test="mcp-env-delete-button"
@@ -152,7 +154,7 @@
                   </ElButton>
                 </div>
                 <p
-                  v-if="entry.usesStoredSecret && entry.hasStoredValue && !entry.value.trim()"
+                  v-if="entry.usesStoredSecret && entry.hasStoredValue && !entry.storedSecretValue.trim()"
                   class="sidebar-inline-hint"
                 >
                   已保存本地 secret。留空则保留，输入新值则覆盖。
@@ -233,7 +235,8 @@ const emit = defineEmits<{
 interface EnvRow {
   id: number
   key: string
-  value: string
+  projectValue: string
+  storedSecretValue: string
   usesStoredSecret: boolean
   hasStoredValue: boolean
 }
@@ -454,19 +457,22 @@ function buildPayload(): McpServerConfig {
   const envEntries = envRows.value
     .map((entry) => ({
       key: entry.key.trim(),
-      value: entry.value.trim(),
+      projectValue: entry.projectValue.trim(),
+      storedSecretValue: entry.storedSecretValue.trim(),
       usesStoredSecret: entry.usesStoredSecret,
       hasStoredValue: entry.hasStoredValue,
     }))
     .filter((entry) => entry.key.length > 0)
-  const storedSecretEntries = envEntries
-    .filter((entry) => entry.usesStoredSecret && (entry.value.length > 0 || entry.hasStoredValue))
-    .map((entry) => ({
-      key: entry.key,
-      value: entry.value,
-      source: 'stored-secret' as const,
-      ...(entry.hasStoredValue ? { hasStoredValue: true } : {}),
-    }))
+  const normalizedEnvEntries = envEntries.map((entry) => ({
+    key: entry.key,
+    value: entry.usesStoredSecret ? entry.storedSecretValue : entry.projectValue,
+    source: entry.usesStoredSecret
+      ? 'stored-secret' as const
+      : isEnvReferenceValue(entry.projectValue)
+        ? 'env-ref' as const
+        : 'literal' as const,
+    ...(entry.usesStoredSecret && entry.hasStoredValue ? { hasStoredValue: true } : {}),
+  }))
 
   return {
     name,
@@ -477,10 +483,10 @@ function buildPayload(): McpServerConfig {
       .filter(Boolean),
     env: Object.fromEntries(
       envEntries
-        .filter((entry) => !entry.usesStoredSecret && entry.value.length > 0)
-        .map((entry) => [entry.key, entry.value] as const),
+        .filter((entry) => !entry.usesStoredSecret && entry.projectValue.length > 0)
+        .map((entry) => [entry.key, entry.projectValue] as const),
     ),
-    ...(storedSecretEntries.length > 0 ? { envEntries: storedSecretEntries } : {}),
+    ...(normalizedEnvEntries.length > 0 ? { envEntries: normalizedEnvEntries } : {}),
     eventLog: selectedServer.value?.eventLog ?? {
       maxFileSizeMb: 1,
     },
@@ -523,13 +529,14 @@ function applyServerToDraft(server: McpServerConfig) {
   draftCommand.value = server.command
   draftArgsText.value = server.args.join('\n')
   envRows.value = (server.envEntries && server.envEntries.length > 0
-    ? server.envEntries.map((entry) => createEnvRow(
-      entry.key,
-      entry.source === 'stored-secret' ? '' : entry.value,
-      entry.source === 'stored-secret',
-      entry.hasStoredValue === true,
-    ))
-    : Object.entries(server.env).map(([key, value]) => createEnvRow(key, value)))
+    ? server.envEntries.map((entry) => createEnvRow({
+      hasStoredValue: entry.hasStoredValue === true,
+      key: entry.key,
+      projectValue: entry.source === 'stored-secret' ? server.env[entry.key] ?? '' : entry.value,
+      storedSecretValue: entry.source === 'stored-secret' ? '' : '',
+      usesStoredSecret: entry.source === 'stored-secret',
+    }))
+    : Object.entries(server.env).map(([key, value]) => createEnvRow({ key, projectValue: value })))
   if (envRows.value.length === 0) {
     envRows.value = [createEnvRow()]
   }
@@ -543,19 +550,29 @@ function resetDraft() {
 }
 
 function createEnvRow(
-  key = '',
-  value = '',
-  usesStoredSecret = false,
-  hasStoredValue = false,
+  input: Partial<Omit<EnvRow, 'id'>> = {},
 ): EnvRow {
   envRowId += 1
   return {
     id: envRowId,
-    key,
-    value,
-    usesStoredSecret,
-    hasStoredValue,
+    key: input.key ?? '',
+    projectValue: input.projectValue ?? '',
+    storedSecretValue: input.storedSecretValue ?? '',
+    usesStoredSecret: input.usesStoredSecret ?? false,
+    hasStoredValue: input.hasStoredValue ?? false,
   }
+}
+
+function readEnvInputValue(entry: EnvRow) {
+  return entry.usesStoredSecret ? entry.storedSecretValue : entry.projectValue
+}
+
+function updateEnvInputValue(entry: EnvRow, nextValue: string) {
+  if (entry.usesStoredSecret) {
+    entry.storedSecretValue = nextValue
+    return
+  }
+  entry.projectValue = nextValue
 }
 
 function scheduleAutoSave(delayMs = MCP_AUTO_SAVE_DEBOUNCE_MS) {

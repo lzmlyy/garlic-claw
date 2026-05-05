@@ -71,6 +71,36 @@ describe('useAutomations', () => {
     vi.mocked(automationData.loadAutomationConversations).mockResolvedValue([createConversation()])
   })
 
+  it('broadcasts the current conversation when a manual run starts an ai_message automation', async () => {
+    vi.mocked(automationData.runAutomationRequest).mockResolvedValue({
+      status: 'success',
+      results: [
+        {
+          action: 'ai_message',
+          target: {
+            id: 'conversation-1',
+            type: 'conversation',
+          },
+        },
+      ],
+    })
+    const listener = vi.fn()
+    window.addEventListener('garlic-claw:automation-run', listener as EventListener)
+
+    try {
+      const state = await mountAutomationsHarness()
+
+      await state.handleRun('automation-1')
+
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect((listener.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+        conversationId: 'conversation-1',
+      })
+    } finally {
+      window.removeEventListener('garlic-claw:automation-run', listener as EventListener)
+    }
+  })
+
   it('creates event-triggered automations with the configured event name', async () => {
     vi.mocked(automationData.createAutomationRecord).mockResolvedValue(createAutomationInfo())
 

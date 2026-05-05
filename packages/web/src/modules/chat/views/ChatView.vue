@@ -233,6 +233,20 @@ const {
   applyCommandSuggestion,
 } = useChatView(chat)
 
+const subagentTabRefreshSignature = computed(() =>
+  displayedMessages.value
+    .map((message) => `${message.id}:${message.status}:${message.toolCalls?.length ?? 0}:${message.toolResults?.length ?? 0}`)
+    .join('|'),
+)
+
+watch(subagentTabRefreshSignature, () => {
+  const conversationId = workspaceConversationId.value
+  if (!conversationId || activeTab.value !== 'main') {
+    return
+  }
+  void refreshSubagentTabs(conversationId)
+})
+
 const contextUsageSummary = computed(() => {
   const preview = contextWindowPreview.value
   if (!preview || preview.contextLength <= 0) {
