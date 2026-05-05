@@ -8,12 +8,13 @@ import { RuntimeFileFreshnessService } from '../runtime/runtime-file-freshness.s
 import type { RuntimeToolAccessRequest } from '../runtime/runtime-tool-access';
 import { RuntimeSessionEnvironmentService } from '../runtime/runtime-session-environment.service';
 import { RuntimeFilesystemBackendService } from '../runtime/runtime-filesystem-backend.service';
-import type { RuntimeFilesystemPostWriteResult } from '../runtime/runtime-filesystem-backend.types';
+import type { RuntimeFilesystemPostWriteResult, RuntimeFilesystemWriteMode, RuntimeFilesystemWriteStatus } from '../runtime/runtime-filesystem-backend.types';
 
 export interface WriteToolInput {
   backendKind: RuntimeBackendKind;
   content: string;
   filePath: string;
+  mode: RuntimeFilesystemWriteMode;
   sessionId: string;
 }
 
@@ -26,11 +27,13 @@ export interface WriteToolResult {
   postWrite: RuntimeFilesystemPostWriteResult;
   postWriteSummary: PluginRuntimePostWriteSummary;
   size: number;
+  status: RuntimeFilesystemWriteStatus;
 }
 
 export const WRITE_TOOL_PARAMETERS: Record<string, PluginParamSchema> = {
   filePath: { description: '要写入的文件路径。相对路径会基于当前 backend 的可见根解析。', required: true, type: 'string' },
   content: { description: '要写入文件的完整内容。', required: true, type: 'string' },
+  mode: { description: '写入模式。默认 overwrite；若传 append，则把 content 追加到已有文件末尾。', required: false, type: 'string' },
 };
 
 @Injectable()
@@ -53,6 +56,7 @@ export class WriteToolService {
       '需要写新文件时直接调用 write；不需要先描述将要创建哪些文件，也不需要先创建目录。',
       '父目录不存在时工具会自动创建。',
       '如果文件已存在，写入前必须先拿到该文件的当前内容；可先用 read 工具读取，或沿用同一 session 中最新一次成功 write/edit 后记录的当前版本。',
+      '如需在已有文件末尾直接追加文本，可传 mode=append；该模式会基于当前文件尾部追加，不会覆盖已有内容。',
       '如果文件自上次读取或修改后又发生变化，需要重新 read 再写入。',
       '该工具不执行命令，只负责文件系统写入。',
     ].join('\n');
@@ -73,10 +77,12 @@ export class WriteToolService {
     if (typeof args.content !== 'string') {
       throw new BadRequestException('write.content 必须是字符串');
     }
+    const mode = readWriteMode(args.mode);
     return {
       backendKind: backendKind ?? this.runtimeFilesystemBackendService.getDefaultBackendKind(),
       content: args.content,
       filePath,
+      mode,
       sessionId,
     };
   }
@@ -85,8 +91,9 @@ export class WriteToolService {
     const result = await this.runtimeFileFreshnessService.withWriteFreshnessGuard(
       input.sessionId,
       input.filePath,
-      () => this.runtimeFilesystemBackendService.writeTextFile(input.sessionId, input.filePath, input.content, input.backendKind),
+      () => this.runtimeFilesystemBackendService.writeTextFile(input.sessionId, input.filePath, input.content, input.backendKind, { mode: input.mode }),
       input.backendKind,
+      input.mode === 'append' ? { requireReadBeforeWrite: false } : undefined,
     );
     const postWriteSummary = readRuntimeFilesystemPostWriteSummary(result.postWrite, { targetPath: result.path });
     return {
@@ -96,7 +103,7 @@ export class WriteToolService {
       output: [
         '<write_result>',
         `Path: ${result.path}`,
-        `Status: ${result.created ? 'created' : 'overwritten'}`,
+        `Status: ${result.status}`,
         `Lines: ${result.lineCount}`,
         `Size: ${formatWriteSize(result.size)}`,
         ...(result.diff ? [`Diff: +${result.diff.additions} / -${result.diff.deletions}`, `Line delta: ${result.diff.beforeLineCount} -> ${result.diff.afterLineCount}`] : []),
@@ -108,6 +115,7 @@ export class WriteToolService {
       postWrite: result.postWrite,
       postWriteSummary,
       size: result.size,
+      status: result.status,
     };
   }
 
@@ -130,4 +138,14 @@ function formatWriteSize(bytes: number): string {
     : bytes < 1024 * 1024
       ? `${(bytes / 1024).toFixed(1)} KB`
       : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readWriteMode(value: unknown): RuntimeFilesystemWriteMode {
+  if (value === undefined) {
+    return 'overwrite';
+  }
+  if (value === 'overwrite' || value === 'append') {
+    return value;
+  }
+  throw new BadRequestException('write.mode 只能是 overwrite 或 append');
 }

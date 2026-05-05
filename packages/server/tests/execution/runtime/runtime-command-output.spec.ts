@@ -1,4 +1,4 @@
-import { renderRuntimeCommandTextOutput } from '../../../src/execution/runtime/runtime-command-output';
+import { renderRuntimeCommandTextOutput } from '../../../src/modules/execution/runtime/runtime-command-output';
 
 describe('renderRuntimeCommandTextOutput', () => {
   it('renders empty stdout and stderr with a compact bash result structure', () => {
@@ -236,5 +236,6 @@ describe('renderRuntimeCommandTextOutput', () => {
     });
 
     expect(output).toContain('Full output saved to: /.garlic-claw/runtime-command-output/command-test.txt');
+    expect(output).toContain('Use grep to search the full output or read the saved file with offset/limit to inspect a narrower window.');
   });
 });

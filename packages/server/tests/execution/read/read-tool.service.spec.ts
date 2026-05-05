@@ -1,4 +1,4 @@
-import { ReadToolService } from '../../../src/execution/read/read-tool.service';
+import { ReadToolService } from '../../../src/modules/execution/read/read-tool.service';
 
 describe('ReadToolService', () => {
   it('formats directory windows with continuation hints', async () => {
@@ -93,7 +93,59 @@ describe('ReadToolService', () => {
         '<content>',
         '4: alpha',
         '5: beta',
-        '(output capped at 50 KB. Showing lines 4-5. Use offset=6 to continue reading this file.)',
+        '(output capped at 50 KB. Showing lines 4-5. Use offset=6 to continue reading this file. If this file is large or has long lines, use grep to find anchors before reading another window.)',
+        '</content>',
+        '</read_result>',
+      ].join('\n'),
+      path: '/docs/readme.txt',
+      truncated: true,
+      type: 'file',
+    });
+  });
+
+  it('formats line-window truncation with grep guidance', async () => {
+    const service = new ReadToolService(
+      {
+        deleteSessionEnvironmentIfEmpty: jest.fn().mockResolvedValue(undefined),
+        getDescriptor: () => ({ visibleRoot: '/' }),
+      } as never,
+      {
+        readPathRange: jest.fn().mockResolvedValue({
+          byteLimited: false,
+          limit: 2,
+          lines: ['alpha', 'beta'],
+          mimeType: 'text/plain',
+          offset: 4,
+          path: '/docs/readme.txt',
+          totalBytes: 160,
+          totalLines: 9,
+          truncated: true,
+          type: 'file',
+        }),
+      } as never,
+      {
+        buildReadSystemReminder: jest.fn().mockReturnValue([]),
+        rememberRead: jest.fn().mockResolvedValue(undefined),
+      } as never,
+    );
+
+    await expect(service.execute({
+      backendKind: 'host-filesystem',
+      filePath: 'docs/readme.txt',
+      limit: 2,
+      offset: 4,
+      sessionId: 'session-1',
+    })).resolves.toEqual({
+      loaded: [],
+      output: [
+        '<read_result>',
+        'Path: /docs/readme.txt',
+        'Type: file',
+        'Mime: text/plain',
+        '<content>',
+        '4: alpha',
+        '5: beta',
+        '(showing lines 4-5 of 9. Use offset=6 to continue reading this file. If this file is large or has long lines, use grep to find anchors before reading another window.)',
         '</content>',
         '</read_result>',
       ].join('\n'),

@@ -172,6 +172,7 @@ function readRuntimeCommandTruncationPrefix(
   return [
     ...(truncationLine ? [truncationLine] : []),
     ...(outputPath ? [`Full output saved to: ${outputPath}`] : []),
+    ...((truncationLine || outputPath) ? ['Use grep to search the full output or read the saved file with offset/limit to inspect a narrower window.'] : []),
   ];
 }
 

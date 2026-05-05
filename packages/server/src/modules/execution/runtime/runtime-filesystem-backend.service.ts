@@ -2,7 +2,7 @@ import type { RuntimeBackendKind } from '@garlic-claw/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import type { RuntimeBackendDescriptor } from './runtime-command.types';
 import { RUNTIME_FILESYSTEM_BACKENDS_TOKEN, type RuntimeFilesystemBackendList } from './runtime-filesystem-backend.tokens';
-import type { RuntimeFilesystemBackend, RuntimeFilesystemDeleteResult, RuntimeFilesystemDirectoryResult, RuntimeFilesystemEditResult, RuntimeFilesystemFileEntry, RuntimeFilesystemGlobResult, RuntimeFilesystemGrepResult, RuntimeFilesystemPathStat, RuntimeFilesystemReadResult, RuntimeFilesystemResolvedPath, RuntimeFilesystemSymlinkResult, RuntimeFilesystemTransferResult, RuntimeFilesystemWriteResult } from './runtime-filesystem-backend.types';
+import type { RuntimeFilesystemBackend, RuntimeFilesystemDeleteResult, RuntimeFilesystemDirectoryResult, RuntimeFilesystemEditResult, RuntimeFilesystemFileEntry, RuntimeFilesystemGlobResult, RuntimeFilesystemGrepResult, RuntimeFilesystemPathStat, RuntimeFilesystemReadResult, RuntimeFilesystemResolvedPath, RuntimeFilesystemSymlinkResult, RuntimeFilesystemTransferResult, RuntimeFilesystemWriteOptions, RuntimeFilesystemWriteResult } from './runtime-filesystem-backend.types';
 
 @Injectable()
 export class RuntimeFilesystemBackendService {
@@ -38,7 +38,7 @@ export class RuntimeFilesystemBackendService {
   async resolvePath(sessionId: string, inputPath?: string, backendKind?: RuntimeBackendKind): Promise<RuntimeFilesystemResolvedPath> { return this.requireBackend(backendKind).resolvePath(sessionId, inputPath); }
   async statPath(sessionId: string, inputPath?: string, backendKind?: RuntimeBackendKind): Promise<RuntimeFilesystemPathStat> { return this.requireBackend(backendKind).statPath(sessionId, inputPath); }
   async readTextFile(sessionId: string, inputPath?: string, backendKind?: RuntimeBackendKind): Promise<{ content: string; path: string }> { return this.requireBackend(backendKind).readTextFile(sessionId, inputPath); }
-  async writeTextFile(sessionId: string, inputPath: string, content: string, backendKind?: RuntimeBackendKind): Promise<RuntimeFilesystemWriteResult> { return this.requireBackend(backendKind).writeTextFile(sessionId, inputPath, content); }
+  async writeTextFile(sessionId: string, inputPath: string, content: string, backendKind?: RuntimeBackendKind, options?: RuntimeFilesystemWriteOptions): Promise<RuntimeFilesystemWriteResult> { return this.requireBackend(backendKind).writeTextFile(sessionId, inputPath, content, options); }
 
   private requireBackend(backendKind?: RuntimeBackendKind): RuntimeFilesystemBackend {
     const resolvedBackendKind = backendKind ?? this.defaultBackendKind;

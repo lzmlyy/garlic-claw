@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HostFilesystemBackendService } from '../../../src/execution/file/host-filesystem-backend.service';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
+import { HostFilesystemBackendService } from '../../../src/modules/execution/file/host-filesystem-backend.service';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
 
 describe('HostFilesystemBackendService', () => {
   const originalWorkspaceRoot = process.env.GARLIC_CLAW_RUNTIME_WORKSPACES_PATH;
@@ -612,6 +612,7 @@ describe('HostFilesystemBackendService', () => {
         diagnostics: [],
         formatting: null,
       },
+      status: 'created',
       size: 23,
     });
 
@@ -861,6 +862,7 @@ describe('HostFilesystemBackendService', () => {
           label: 'json-pretty',
         },
       },
+      status: 'created',
       size: Buffer.byteLength('{\n  "value": 1\n}\n', 'utf8'),
     });
     expect(fs.readFileSync(path.join(sessionEnvironment.sessionRoot, 'docs', 'config.json'), 'utf8')).toBe(
@@ -897,6 +899,49 @@ describe('HostFilesystemBackendService', () => {
       },
       strategy: 'exact',
     });
+  });
+
+  it('appends to an existing file without overwriting prior content', async () => {
+    const runtimeWorkspaceRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gc-host-write-append-'),
+    );
+    runtimeWorkspaceRoots.push(runtimeWorkspaceRoot);
+    process.env.GARLIC_CLAW_RUNTIME_WORKSPACES_PATH = runtimeWorkspaceRoot;
+
+    const runtimeSessionEnvironmentService = new RuntimeSessionEnvironmentService();
+    const service = new HostFilesystemBackendService(runtimeSessionEnvironmentService);
+    const sessionEnvironment = await runtimeSessionEnvironmentService.getSessionEnvironment('session-append');
+
+    fs.mkdirSync(path.join(sessionEnvironment.sessionRoot, 'docs'), { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionEnvironment.sessionRoot, 'docs', 'append.txt'),
+      'alpha\nbeta\n',
+      'utf8',
+    );
+
+    await expect(service.writeTextFile('session-append', 'docs/append.txt', 'gamma\n', {
+      mode: 'append',
+    })).resolves.toEqual({
+      created: false,
+      diff: {
+        additions: 1,
+        afterLineCount: 3,
+        beforeLineCount: 2,
+        deletions: 0,
+        patch: expect.stringContaining('@@'),
+      },
+      lineCount: 3,
+      path: '/docs/append.txt',
+      postWrite: {
+        diagnostics: [],
+        formatting: null,
+      },
+      status: 'appended',
+      size: Buffer.byteLength('alpha\nbeta\ngamma\n', 'utf8'),
+    });
+    expect(fs.readFileSync(path.join(sessionEnvironment.sessionRoot, 'docs', 'append.txt'), 'utf8')).toBe(
+      'alpha\nbeta\ngamma\n',
+    );
   });
 
   it('surfaces ambiguous trimmed-boundary matches instead of editing the first inline hit', async () => {

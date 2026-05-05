@@ -135,6 +135,7 @@ export interface PluginRuntimeGrepResult {
 export interface PluginRuntimeWriteParams {
   content: string;
   filePath: string;
+  mode?: 'append' | 'overwrite';
 }
 
 export interface PluginRuntimeFileDiffSummary {
@@ -193,6 +194,7 @@ export interface PluginRuntimeWriteResult {
   path: string;
   postWrite: PluginRuntimePostWriteResult;
   size: number;
+  status: 'appended' | 'created' | 'overwritten';
 }
 
 export interface PluginRuntimeEditParams {

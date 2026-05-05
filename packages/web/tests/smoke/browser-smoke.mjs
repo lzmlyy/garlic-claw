@@ -41,6 +41,10 @@ const MODEL_ID = `${PREFIX}-model`;
 const SHADOW_MODEL_ID = `${PREFIX}-shadow-model`;
 const AUTOMATION_NAME = `${PREFIX}-automation`;
 const AUTOMATION_MESSAGE = `${PREFIX} automation message`;
+const LIVE_AUTOMATION_NAME = `${PREFIX}-automation-live`;
+const LIVE_AUTOMATION_USER_MARKER = `${PREFIX} automation live weather`;
+const LIVE_AUTOMATION_RESULT_TEXT = '北京当前晴朗，气温约为22摄氏度（72华氏度）。';
+const LIVE_AUTOMATION_WEATHER_RESPONSE = 'beijing: ☀️  +72°F';
 const REMOTE_PLUGIN_ID = `${PREFIX}-remote-iot-light`;
 const SUBAGENT_NAME = '浏览器烟测分身';
 const SUBAGENT_TRIGGER = '请使用 subagent 工具委派一个探索任务，并把子代理命名为 浏览器烟测分身。';
@@ -141,6 +145,7 @@ async function main() {
     await createProviderThroughUi(page, accessToken, fakeOpenAi.url);
     const chatFlow = await runChatFlow(page, accessToken, createdConversationIds);
     createdConversationId = chatFlow.conversationId;
+    await runAutomationLiveRefreshFlow(page, accessToken, createdConversationId, fakeOpenAi.url);
     await verifyMcpPage(page);
     await verifyPersonasPage(page);
     await verifySkillsPage(page);
@@ -797,6 +802,86 @@ async function runAutomationFlow(page, accessToken, conversationId) {
     const automations = await listAutomations(accessToken);
     return !automations.some((item) => item.name === AUTOMATION_NAME);
   }, '等待自动化删除');
+}
+
+async function runAutomationLiveRefreshFlow(page, accessToken, conversationId, fakeOpenAiUrl) {
+  await page.goto('/', { waitUntil: 'load' });
+  await expectConversationSelected(page, conversationId);
+
+  const weatherUrl = fakeOpenAiUrl.replace(/\/v1$/, '/mock-weather/beijing');
+  const automation = await requestJson('/automations', {
+    body: {
+      actions: [{
+        message: [
+          LIVE_AUTOMATION_USER_MARKER,
+          '请完成浏览器 smoke 外部自动化天气任务。',
+          '必须调用 powershell 工具。',
+          `请访问 ${weatherUrl} 并读取返回文本。`,
+          '拿到结果后，用中文给出一句简短结论。',
+        ].join('\n'),
+        target: {
+          id: conversationId,
+          type: 'conversation',
+        },
+        type: 'ai_message',
+      }],
+      name: LIVE_AUTOMATION_NAME,
+      trigger: {
+        cron: '5s',
+        type: 'cron',
+      },
+    },
+    headers: createAuthHeaders(accessToken),
+    method: 'POST',
+  });
+
+  try {
+    await waitFor(async () => {
+      const detail = await requestJson(`/automations/${automation.id}`, {
+        headers: createAuthHeaders(accessToken),
+      }).catch(() => null);
+      const logs = await requestJson(`/automations/${automation.id}/logs`, {
+        headers: createAuthHeaders(accessToken),
+      }).catch(() => []);
+      return detail?.lastRunAt || logs.length > 0 ? true : null;
+    }, '等待实时自动化首次触发');
+
+    await requestJson(`/automations/${automation.id}`, {
+      headers: createAuthHeaders(accessToken),
+      method: 'DELETE',
+    }).catch(() => null);
+
+    await waitFor(async () => {
+      const count = await page.getByText(LIVE_AUTOMATION_USER_MARKER, { exact: false }).count();
+      return count > 0 ? true : null;
+    }, '等待聊天页显示外部 cron 触发消息');
+
+    await waitFor(async () => {
+      const entries = page.locator('.message.assistant .tool-entry-summary');
+      const texts = await entries.allTextContents();
+      return texts.some((text) => text.includes('powershell')) ? true : null;
+    }, '等待聊天页显示外部 cron 的工具调用');
+
+    await waitFor(async () => {
+      const entries = page.locator('.message.assistant details.tool-entry.result');
+      const texts = await entries.allTextContents();
+      return texts.some((text) => text.includes('powershell')) ? true : null;
+    }, '等待聊天页显示外部 cron 的工具结果');
+
+    await waitFor(async () => {
+      const assistantMessages = page.locator('.message.assistant .message-content');
+      if (await assistantMessages.count() === 0) {
+        return null;
+      }
+      const latestText = (await assistantMessages.last().textContent())?.trim() ?? '';
+      return latestText.includes(LIVE_AUTOMATION_RESULT_TEXT) ? latestText : null;
+    }, '等待聊天页显示外部 cron 的最终完成回复');
+  } finally {
+    await requestJson(`/automations/${automation.id}`, {
+      headers: createAuthHeaders(accessToken),
+      method: 'DELETE',
+    }).catch(() => null);
+  }
 }
 
 async function selectElementPlusOptionByIndex(page, container, index, optionIndex) {
@@ -1522,6 +1607,14 @@ async function startFakeOpenAiServer() {
         return;
       }
 
+      if (request.method === 'GET' && request.url === '/mock-weather/beijing') {
+        response.writeHead(200, {
+          'content-type': 'text/plain; charset=utf-8',
+        });
+        response.end(LIVE_AUTOMATION_WEATHER_RESPONSE);
+        return;
+      }
+
       if (request.method === 'POST' && request.url === '/v1/chat/completions') {
         const body = await readJsonBody(request);
         if (body.stream === true) {
@@ -1711,6 +1804,17 @@ function readAssistantText(body) {
 }
 
 function planBrowserSmokeChatResponse(body) {
+  if (shouldTriggerLiveAutomationWeatherTool(body)) {
+    return {
+      arguments: {
+        command: readLiveAutomationWeatherCommand(body),
+        description: '查询浏览器 smoke 本地天气',
+      },
+      kind: 'tool-call',
+      toolCallId: 'call_browser_smoke_live_weather_0',
+      toolName: 'powershell',
+    };
+  }
   if (shouldTriggerSpawnSubagentTool(body)) {
     return {
       arguments: {
@@ -1744,6 +1848,9 @@ function planBrowserSmokeChatResponse(body) {
 
 function readPlannedAssistantText(body) {
   const latestUserText = readLatestUserText(body);
+  if (requestContainsToolResult(body, 'powershell') && latestUserText.includes(LIVE_AUTOMATION_USER_MARKER)) {
+    return LIVE_AUTOMATION_RESULT_TEXT;
+  }
   if (latestUserText.includes('请总结 smoke-http-flow 技能的用途')) {
     return SUBAGENT_RESULT_TEXT;
   }
@@ -1757,6 +1864,12 @@ function shouldTriggerSpawnSubagentTool(body) {
   return requestIncludesToolName(body, 'spawn_subagent')
     && !requestContainsToolResult(body, 'spawn_subagent')
     && readLatestUserText(body).includes(SUBAGENT_TRIGGER);
+}
+
+function shouldTriggerLiveAutomationWeatherTool(body) {
+  return requestIncludesToolName(body, 'powershell')
+    && !requestContainsToolResult(body, 'powershell')
+    && readLatestUserText(body).includes(LIVE_AUTOMATION_USER_MARKER);
 }
 
 function shouldTriggerWaitSubagentTool(body) {
@@ -1783,8 +1896,22 @@ function requestContainsToolResult(body, toolName) {
         ? message.toolCallId
         : '';
     return (toolName === 'spawn_subagent' && toolCallId === 'call_browser_smoke_subagent_0')
-      || (toolName === 'wait_subagent' && toolCallId === 'call_browser_smoke_subagent_wait_0');
+      || (toolName === 'wait_subagent' && toolCallId === 'call_browser_smoke_subagent_wait_0')
+      || (toolName === 'powershell' && toolCallId === 'call_browser_smoke_live_weather_0');
   });
+}
+
+function readLiveAutomationWeatherCommand(body) {
+  const latestUserText = readLatestUserText(body);
+  const weatherUrlMatch = latestUserText.match(/https?:\/\/\S+/u);
+  const weatherUrl = weatherUrlMatch?.[0] ?? 'http://127.0.0.1/mock-weather/beijing';
+  return [
+    `try {`,
+    `  (Invoke-WebRequest -Uri "${weatherUrl}" -UseBasicParsing -TimeoutSec 10).Content.Trim()`,
+    `} catch {`,
+    `  throw "Request failed: $($_.Exception.Message)"`,
+    `}`,
+  ].join('\n');
 }
 
 function readLatestUserText(body) {

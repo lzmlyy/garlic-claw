@@ -6,6 +6,7 @@ interface RuntimeReadStamp { continuationOffset?: number; loadedWindow?: string;
 interface RuntimeRecentReadEntry extends Pick<RuntimeReadStamp, 'continuationOffset' | 'loadedWindow' | 'readAt'> { path: string; }
 interface RuntimeRecentReadOptions { excludePath?: string; includeOnlyLoadedContext?: boolean; limit?: number; }
 interface RuntimeRememberReadOptions { lineCount?: number; offset?: number; totalLines?: number; truncated?: boolean; }
+export interface RuntimeWriteFreshnessOptions { requireReadBeforeWrite?: boolean; }
 
 @Injectable()
 export class RuntimeFileFreshnessService {
@@ -67,11 +68,22 @@ export class RuntimeFileFreshnessService {
     }
   }
 
-  async withWriteFreshnessGuard<T extends { path: string }>(sessionId: string, filePath: string, run: () => Promise<T>, backendKind?: RuntimeBackendKind): Promise<T> {
+  async withWriteFreshnessGuard<T extends { path: string }>(
+    sessionId: string,
+    filePath: string,
+    run: () => Promise<T>,
+    backendKind?: RuntimeBackendKind,
+    options?: RuntimeWriteFreshnessOptions,
+  ): Promise<T> {
     return this.withFileLock(sessionId, filePath, async () => {
-      await this.assertCanWrite(sessionId, filePath, backendKind);
+      const statBeforeWrite = await this.runtimeFilesystemBackendService.statPath(sessionId, filePath, backendKind);
+      if (options?.requireReadBeforeWrite !== false) {
+        await this.assertCanWrite(sessionId, filePath, backendKind);
+      }
       const result = await run();
-      await this.rememberRead(sessionId, result.path, backendKind);
+      if (options?.requireReadBeforeWrite !== false || !statBeforeWrite.exists || statBeforeWrite.type !== 'file') {
+        await this.rememberRead(sessionId, result.path, backendKind);
+      }
       return result;
     }, backendKind);
   }

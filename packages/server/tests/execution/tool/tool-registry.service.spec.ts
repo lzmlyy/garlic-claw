@@ -2,65 +2,65 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { AiModelExecutionService } from '../../../src/ai/ai-model-execution.service';
-import { AiManagementService } from '../../../src/ai-management/ai-management.service';
-import { AiProviderSettingsService } from '../../../src/ai-management/ai-provider-settings.service';
-import { AutomationExecutionService } from '../../../src/execution/automation/automation-execution.service';
-import { AutomationService } from '../../../src/execution/automation/automation.service';
-import { BashToolService } from '../../../src/execution/bash/bash-tool.service';
-import { EditToolService } from '../../../src/execution/edit/edit-tool.service';
-import { HostFilesystemBackendService } from '../../../src/execution/file/host-filesystem-backend.service';
-import { GlobToolService } from '../../../src/execution/glob/glob-tool.service';
-import { GrepToolService } from '../../../src/execution/grep/grep-tool.service';
-import { InvalidToolService } from '../../../src/execution/invalid/invalid-tool.service';
-import { ProjectWorktreeSearchOverlayService } from '../../../src/execution/project/project-worktree-search-overlay.service';
-import { ProjectSubagentTypeRegistryService } from '../../../src/execution/project/project-subagent-type-registry.service';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { ReadToolService } from '../../../src/execution/read/read-tool.service';
-import { RuntimeCommandService } from '../../../src/execution/runtime/runtime-command.service';
-import { RuntimeCommandCaptureService } from '../../../src/execution/runtime/runtime-command-capture.service';
-import { RuntimeJustBashService } from '../../../src/execution/runtime/runtime-just-bash.service';
-import { RuntimeNativeShellService } from '../../../src/execution/runtime/runtime-native-shell.service';
-import { RuntimeOneShotShellService } from '../../../src/execution/runtime/runtime-one-shot-shell.service';
-import { RuntimeBackendRoutingService } from '../../../src/execution/runtime/runtime-backend-routing.service';
-import type { RuntimeBackend } from '../../../src/execution/runtime/runtime-command.types';
-import { RuntimeFilesystemBackendService } from '../../../src/execution/runtime/runtime-filesystem-backend.service';
-import type { RuntimeFilesystemBackend } from '../../../src/execution/runtime/runtime-filesystem-backend.types';
-import { readRuntimeShellToolName } from '../../../src/execution/runtime/runtime-shell-tool-name';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
-import { RuntimeToolBackendService } from '../../../src/execution/runtime/runtime-tool-backend.service';
-import { RuntimeToolPermissionService } from '../../../src/execution/runtime/runtime-tool-permission.service';
-import { RuntimeToolsSettingsService } from '../../../src/execution/runtime/runtime-tools-settings.service';
-import { RuntimeWslShellService } from '../../../src/execution/runtime/runtime-wsl-shell.service';
-import { SkillRegistryService } from '../../../src/execution/skill/skill-registry.service';
-import { SkillToolService } from '../../../src/execution/skill/skill-tool.service';
-import { SubagentSettingsService } from '../../../src/execution/subagent/subagent-settings.service';
-import { ToolManagementSettingsService } from '../../../src/execution/tool/tool-management-settings.service';
-import { ToolOutputCaptureService } from '../../../src/execution/tool/tool-output-capture.service';
-import { SubagentToolService } from '../../../src/execution/subagent/subagent-tool.service';
-import { TodoToolService } from '../../../src/execution/todo/todo-tool.service';
-import { WebFetchToolService } from '../../../src/execution/webfetch/webfetch-tool.service';
-import { WriteToolService } from '../../../src/execution/write/write-tool.service';
-import { BuiltinPluginRegistryService } from '../../../src/plugin/builtin/builtin-plugin-registry.service';
-import { PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
-import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
-import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
-import { PersonaService } from '../../../src/persona/persona.service';
-import { PersonaStoreService } from '../../../src/persona/persona-store.service';
-import { RuntimeGatewayConnectionLifecycleService } from '../../../src/runtime/gateway/runtime-gateway-connection-lifecycle.service';
-import { RuntimeGatewayRemoteTransportService } from '../../../src/runtime/gateway/runtime-gateway-remote-transport.service';
-import { ConversationMessageService } from '../../../src/runtime/host/conversation-message.service';
-import { ConversationStoreService } from '../../../src/runtime/host/conversation-store.service';
-import { ConversationTodoService } from '../../../src/runtime/host/conversation-todo.service';
-import { KnowledgeReaderService } from '../../../src/runtime/host/knowledge-reader.service';
-import { PluginDispatchService } from '../../../src/runtime/host/plugin-dispatch.service';
-import { PluginRuntimeService } from '../../../src/runtime/host/plugin-runtime.service';
-import { ToolGatewayService } from '../../../src/runtime/host/tool-gateway.service';
-import { PluginHostService } from '../../../src/runtime/host/plugin-host.service';
-import { SubagentRunnerService } from '../../../src/runtime/host/subagent-runner.service';
-import { UserContextService } from '../../../src/runtime/host/user-context.service';
-import { RuntimePluginGovernanceService } from '../../../src/runtime/kernel/runtime-plugin-governance.service';
-import { ToolRegistryService } from '../../../src/execution/tool/tool-registry.service';
+import { AiModelExecutionService } from '../../../src/modules/ai/ai-model-execution.service';
+import { AiManagementService } from '../../../src/modules/ai-management/ai-management.service';
+import { AiProviderSettingsService } from '../../../src/modules/ai-management/ai-provider-settings.service';
+import { AutomationExecutionService } from '../../../src/modules/execution/automation/automation-execution.service';
+import { AutomationService } from '../../../src/modules/execution/automation/automation.service';
+import { BashToolService } from '../../../src/modules/execution/bash/bash-tool.service';
+import { EditToolService } from '../../../src/modules/execution/edit/edit-tool.service';
+import { HostFilesystemBackendService } from '../../../src/modules/execution/file/host-filesystem-backend.service';
+import { GlobToolService } from '../../../src/modules/execution/glob/glob-tool.service';
+import { GrepToolService } from '../../../src/modules/execution/grep/grep-tool.service';
+import { InvalidToolService } from '../../../src/modules/execution/invalid/invalid-tool.service';
+import { ProjectWorktreeSearchOverlayService } from '../../../src/modules/execution/project/project-worktree-search-overlay.service';
+import { ProjectSubagentTypeRegistryService } from '../../../src/modules/execution/project/project-subagent-type-registry.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { ReadToolService } from '../../../src/modules/execution/read/read-tool.service';
+import { RuntimeCommandService } from '../../../src/modules/execution/runtime/runtime-command.service';
+import { RuntimeCommandCaptureService } from '../../../src/modules/execution/runtime/runtime-command-capture.service';
+import { RuntimeJustBashService } from '../../../src/modules/execution/runtime/runtime-just-bash.service';
+import { RuntimeNativeShellService } from '../../../src/modules/execution/runtime/runtime-native-shell.service';
+import { RuntimeOneShotShellService } from '../../../src/modules/execution/runtime/runtime-one-shot-shell.service';
+import { RuntimeBackendRoutingService } from '../../../src/modules/execution/runtime/runtime-backend-routing.service';
+import type { RuntimeBackend } from '../../../src/modules/execution/runtime/runtime-command.types';
+import { RuntimeFilesystemBackendService } from '../../../src/modules/execution/runtime/runtime-filesystem-backend.service';
+import type { RuntimeFilesystemBackend } from '../../../src/modules/execution/runtime/runtime-filesystem-backend.types';
+import { readRuntimeShellToolName } from '../../../src/modules/execution/runtime/runtime-shell-tool-name';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
+import { RuntimeToolBackendService } from '../../../src/modules/execution/runtime/runtime-tool-backend.service';
+import { RuntimeToolPermissionService } from '../../../src/modules/execution/runtime/runtime-tool-permission.service';
+import { RuntimeToolsSettingsService } from '../../../src/modules/execution/runtime/runtime-tools-settings.service';
+import { RuntimeWslShellService } from '../../../src/modules/execution/runtime/runtime-wsl-shell.service';
+import { SkillRegistryService } from '../../../src/modules/execution/skill/skill-registry.service';
+import { SkillToolService } from '../../../src/modules/execution/skill/skill-tool.service';
+import { SubagentSettingsService } from '../../../src/modules/execution/subagent/subagent-settings.service';
+import { ToolManagementSettingsService } from '../../../src/modules/execution/tool/tool-management-settings.service';
+import { ToolOutputCaptureService } from '../../../src/modules/execution/tool/tool-output-capture.service';
+import { SubagentToolService } from '../../../src/modules/execution/subagent/subagent-tool.service';
+import { TodoToolService } from '../../../src/modules/execution/todo/todo-tool.service';
+import { WebFetchToolService } from '../../../src/modules/execution/webfetch/webfetch-tool.service';
+import { WriteToolService } from '../../../src/modules/execution/write/write-tool.service';
+import { BuiltinPluginRegistryService } from '../../../src/modules/plugin/builtin/builtin-plugin-registry.service';
+import { PluginBootstrapService } from '../../../src/modules/plugin/bootstrap/plugin-bootstrap.service';
+import { PluginGovernanceService } from '../../../src/modules/plugin/governance/plugin-governance.service';
+import { PluginPersistenceService } from '../../../src/modules/plugin/persistence/plugin-persistence.service';
+import { PersonaService } from '../../../src/modules/persona/persona.service';
+import { PersonaStoreService } from '../../../src/modules/persona/persona-store.service';
+import { RuntimeGatewayConnectionLifecycleService } from '../../../src/modules/runtime/gateway/runtime-gateway-connection-lifecycle.service';
+import { RuntimeGatewayRemoteTransportService } from '../../../src/modules/runtime/gateway/runtime-gateway-remote-transport.service';
+import { ConversationMessageService } from '../../../src/modules/runtime/host/conversation-message.service';
+import { ConversationStoreService } from '../../../src/modules/runtime/host/conversation-store.service';
+import { ConversationTodoService } from '../../../src/modules/runtime/host/conversation-todo.service';
+import { KnowledgeReaderService } from '../../../src/modules/runtime/host/knowledge-reader.service';
+import { PluginDispatchService } from '../../../src/modules/runtime/host/plugin-dispatch.service';
+import { PluginRuntimeService } from '../../../src/modules/runtime/host/plugin-runtime.service';
+import { ToolGatewayService } from '../../../src/modules/runtime/host/tool-gateway.service';
+import { PluginHostService } from '../../../src/modules/runtime/host/plugin-host.service';
+import { SubagentRunnerService } from '../../../src/modules/runtime/host/subagent-runner.service';
+import { UserContextService } from '../../../src/modules/runtime/host/user-context.service';
+import { RuntimePluginGovernanceService } from '../../../src/modules/runtime/kernel/runtime-plugin-governance.service';
+import { ToolRegistryService } from '../../../src/modules/execution/tool/tool-registry.service';
 
 const runtimeWorkspaceRoots: string[] = [];
 const runtimeOneShotShellServices: RuntimeOneShotShellService[] = [];
@@ -7352,6 +7352,9 @@ describe('ToolRegistryService', () => {
 
   it('dispatches native write tool execution through the runtime workspace owner', async () => {
     const { conversationId, service, runtimeWorkspaceRoot } = createFixture();
+    const workspaceRoot = path.join(runtimeWorkspaceRoot, conversationId);
+    fs.mkdirSync(path.join(workspaceRoot, 'generated'), { recursive: true });
+    fs.writeFileSync(path.join(workspaceRoot, 'generated', 'output.txt'), 'generated file\n', 'utf8');
 
     const toolSet = await service.buildToolSet({
       context: {
@@ -7365,30 +7368,33 @@ describe('ToolRegistryService', () => {
     expect(writeTool).toBeDefined();
     expect(typeof (writeTool as any).execute).toBe('function');
     const wrappedResult = await (writeTool as any).execute({
-      content: 'generated file\n',
+      content: 'appended line\n',
       filePath: 'generated/output.txt',
+      mode: 'append',
     });
 
     const modelOutput = await (writeTool as any).toModelOutput({
-      input: { content: 'generated file\n', filePath: 'generated/output.txt' },
+      input: { content: 'appended line\n', filePath: 'generated/output.txt', mode: 'append' },
       output: wrappedResult,
       toolCallId: 'call-write-1',
     });
 
     expect(readWrappedToolData(wrappedResult)).toEqual(expect.objectContaining({
-      created: true,
-      lineCount: 1,
+      created: false,
+      lineCount: 2,
       output: expect.stringContaining('/generated/output.txt'),
       path: '/generated/output.txt',
       postWriteSummary: expect.objectContaining({
         totalDiagnostics: 0,
       }),
+      status: 'appended',
     }));
     expect(modelOutput).toEqual(expect.objectContaining({
       type: 'text',
       value: expect.stringContaining('<write_result>'),
     }));
-    expect(fs.readFileSync(path.join(runtimeWorkspaceRoot, conversationId, 'generated', 'output.txt'), 'utf8')).toBe('generated file\n');
+    expect((modelOutput as { value: string }).value).toContain('Status: appended');
+    expect(fs.readFileSync(path.join(workspaceRoot, 'generated', 'output.txt'), 'utf8')).toBe('generated file\nappended line\n');
   });
 
   it('dispatches native edit tool execution through the runtime workspace owner', async () => {
@@ -7775,6 +7781,7 @@ describe('ToolRegistryService', () => {
         ],
         formatting: null,
       },
+      status: 'overwritten',
       size: 64,
     });
     const { conversationId, service } = createFixture({
@@ -7836,6 +7843,7 @@ describe('ToolRegistryService', () => {
           label: 'json-pretty',
         },
       },
+      status: 'overwritten',
       size: 64,
     });
     const { conversationId, service } = createFixture({
@@ -9180,6 +9188,7 @@ function createMockFilesystemBackend(kind: string): RuntimeFilesystemBackend {
           diagnostics: [],
           formatting: null,
         },
+        status: 'created',
         size: 33,
       };
     },
@@ -9248,5 +9257,3 @@ function buildMcpToolSources(snapshot: {
     };
   });
 }
-
-

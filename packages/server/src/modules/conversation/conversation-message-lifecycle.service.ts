@@ -1,5 +1,6 @@
 import type { ChatMessageMetadata, ChatMessagePart, JsonObject, RetryMessagePayload, SendMessagePayload } from '@garlic-claw/shared';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { AiManagementService } from '../ai-management/ai-management.service';
 import { ConversationMessageService } from '../runtime/host/conversation-message.service';
 import { ConversationStoreService, serializeConversationMessage } from '../runtime/host/conversation-store.service';
 import { DEFAULT_PROVIDER_ID, DEFAULT_PROVIDER_MODEL_ID } from '../runtime/host/host-input.codec';
@@ -13,7 +14,15 @@ import type { DeferredInternalCommandAction } from './context-governance.service
 @Injectable()
 // Keep lifecycle orchestration and hook mutation together to avoid recreating the removed single-consumer hook owner.
 export class ConversationMessageLifecycleService {
-  constructor(private readonly conversationMessages: ConversationMessageService, private readonly conversationStore: ConversationStoreService, private readonly conversationTaskService: ConversationTaskService, private readonly conversationMessagePlanningService: ConversationMessagePlanningService, private readonly personaService: PersonaService, @Inject(PluginDispatchService) private readonly pluginDispatch: PluginDispatchService) {}
+  constructor(
+    private readonly aiManagementService: AiManagementService,
+    private readonly conversationMessages: ConversationMessageService,
+    private readonly conversationStore: ConversationStoreService,
+    private readonly conversationTaskService: ConversationTaskService,
+    private readonly conversationMessagePlanningService: ConversationMessagePlanningService,
+    private readonly personaService: PersonaService,
+    @Inject(PluginDispatchService) private readonly pluginDispatch: PluginDispatchService,
+  ) {}
 
   async retryMessageGeneration(conversationId: string, messageId: string, dto: RetryMessagePayload, userId?: string) {
     const conversation = this.conversationStore.requireConversation(conversationId, userId);
@@ -55,14 +64,17 @@ export class ConversationMessageLifecycleService {
     if (conversation.messages.some(isActiveResponseMessage)) {
       throw new BadRequestException('当前仍有回复在生成中，请先停止或等待完成');
     }
+    const defaultGenerationTarget = !dto.model && !dto.provider
+      ? this.readDefaultGenerationTarget()
+      : null;
     const messageText = dto.content ?? dto.parts?.find((part) => part.type === 'text')?.text ?? '';
     const received = await this.conversationMessagePlanningService.applyMessageReceived({
       activePersonaId: conversation.activePersonaId,
       content: messageText,
       conversationId,
-      modelId: dto.model ?? DEFAULT_PROVIDER_MODEL_ID,
+      modelId: dto.model ?? defaultGenerationTarget?.modelId ?? DEFAULT_PROVIDER_MODEL_ID,
       parts: dto.parts ?? [],
-      providerId: dto.provider ?? DEFAULT_PROVIDER_ID,
+      providerId: dto.provider ?? defaultGenerationTarget?.providerId ?? DEFAULT_PROVIDER_ID,
       userId: conversation.userId,
     });
     const commandDisplayOnly = received.action !== 'continue'
@@ -121,6 +133,13 @@ export class ConversationMessageLifecycleService {
     const stopped = await this.conversationTaskService.stopTask(messageId);
     if (!stopped && isActiveResponseMessage(message)) {this.conversationMessages.writeMessage(conversationId, messageId, { status: 'stopped' });}
     return { message: 'Generation stopped' };
+  }
+
+  private readDefaultGenerationTarget(): { modelId: string; providerId: string } | null {
+    const selection = this.aiManagementService.getDefaultProviderSelection();
+    return selection.modelId && selection.providerId
+      ? { modelId: selection.modelId, providerId: selection.providerId }
+      : null;
   }
 
   private startConversationTask(input: { activePersonaId?: string; conversationId: string; deferredShortCircuit?: DeferredInternalCommandAction; messageId: string; modelId: string; providerId: string; shortCircuitContent?: string; shortCircuitParts?: ChatMessagePart[]; userId?: string; userMessageId?: string }): void {

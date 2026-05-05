@@ -18,7 +18,10 @@ export interface RuntimeFilesystemDiagnosticEntry { code?: string; column: numbe
 export interface RuntimeFilesystemFormattingResult { kind: string; label: string; }
 export interface RuntimeFilesystemPostWriteResult { diagnostics: RuntimeFilesystemDiagnosticEntry[]; formatting: RuntimeFilesystemFormattingResult | null; }
 export interface RuntimeFilesystemDirectoryResult { created: boolean; path: string; }
-export interface RuntimeFilesystemWriteResult { created: boolean; diff: RuntimeFilesystemDiffSummary | null; lineCount: number; postWrite: RuntimeFilesystemPostWriteResult; path: string; size: number; }
+export type RuntimeFilesystemWriteMode = 'append' | 'overwrite';
+export type RuntimeFilesystemWriteStatus = 'appended' | 'created' | 'overwritten';
+export interface RuntimeFilesystemWriteOptions { mode?: RuntimeFilesystemWriteMode; }
+export interface RuntimeFilesystemWriteResult { created: boolean; diff: RuntimeFilesystemDiffSummary | null; lineCount: number; postWrite: RuntimeFilesystemPostWriteResult; path: string; size: number; status: RuntimeFilesystemWriteStatus; }
 export interface RuntimeFilesystemEditResult { diff: RuntimeFilesystemDiffSummary; occurrences: number; postWrite: RuntimeFilesystemPostWriteResult; path: string; strategy: string; }
 export interface RuntimeFilesystemDeleteResult { deleted: boolean; path: string; }
 export interface RuntimeFilesystemTransferResult { fromPath: string; path: string; }
@@ -45,5 +48,5 @@ export interface RuntimeFilesystemBackend {
   resolvePath(sessionId: string, inputPath?: string): Promise<RuntimeFilesystemResolvedPath>;
   statPath(sessionId: string, inputPath?: string): Promise<RuntimeFilesystemPathStat>;
   readTextFile(sessionId: string, inputPath?: string): Promise<{ content: string; path: string }>;
-  writeTextFile(sessionId: string, inputPath: string, content: string): Promise<RuntimeFilesystemWriteResult>;
+  writeTextFile(sessionId: string, inputPath: string, content: string, options?: RuntimeFilesystemWriteOptions): Promise<RuntimeFilesystemWriteResult>;
 }

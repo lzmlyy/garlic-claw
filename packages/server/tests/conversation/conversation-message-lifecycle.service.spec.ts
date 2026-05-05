@@ -124,6 +124,7 @@ describe('ConversationMessageLifecycleService', () => {
       pluginDispatch as never,
     );
     service = new ConversationMessageLifecycleService(
+      aiManagementService as never,
       conversationMessages,
       conversationStore,
       conversationTaskService,
@@ -426,6 +427,31 @@ describe('ConversationMessageLifecycleService', () => {
       messages: [{ content: 'hook 改写后的入站消息', role: 'user' }],
       modelId: 'claude-3-7-sonnet',
       providerId: 'anthropic',
+    });
+  });
+
+  it('reuses the current default provider selection when generation starts without explicit provider or model', async () => {
+    aiManagementService.getDefaultProviderSelection.mockReturnValue({
+      modelId: 'smoke-ui-model',
+      providerId: 'smoke-ui-provider',
+      source: 'default',
+    });
+    aiModelExecutionService.streamText.mockReturnValue(streamed('smoke-ui-model', 'smoke-ui-provider', '模型回复'));
+
+    await startAndWait(service, conversationTaskService, { content: '自动化触发消息' });
+
+    expectStreamInput(aiModelExecutionService.streamText, {
+      allowFallbackChatModels: false,
+      messages: [{ content: '自动化触发消息', role: 'user' }],
+      modelId: 'smoke-ui-model',
+      providerId: 'smoke-ui-provider',
+    });
+    expect(readConversation(conversationStore).messages[1]).toMatchObject({
+      content: '模型回复',
+      model: 'smoke-ui-model',
+      provider: 'smoke-ui-provider',
+      role: 'assistant',
+      status: 'completed',
     });
   });
 

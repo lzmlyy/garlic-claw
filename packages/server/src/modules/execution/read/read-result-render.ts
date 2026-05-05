@@ -70,9 +70,9 @@ export function renderFileReadOutput(
       ? result.lines.map((line, index) => `${start + index}: ${line}`)
       : ['(empty)']),
     result.byteLimited
-      ? `(output capped at ${options.maxReadBytesLabel}. Showing lines ${start}-${end}. Use offset=${end + 1} to continue reading this file.)`
+      ? `(output capped at ${options.maxReadBytesLabel}. Showing lines ${start}-${end}. Use offset=${end + 1} to continue reading this file. If this file is large or has long lines, use grep to find anchors before reading another window.)`
       : result.truncated
-        ? `(showing lines ${start}-${end} of ${result.totalLines}. Use offset=${end + 1} to continue reading this file.)`
+        ? `(showing lines ${start}-${end} of ${result.totalLines}. Use offset=${end + 1} to continue reading this file. If this file is large or has long lines, use grep to find anchors before reading another window.)`
         : `(end of file, total lines: ${result.totalLines}, total bytes: ${formatReadSize(result.totalBytes)}. Re-run read with a different offset if you need another window.)`,
     '</content>',
     ...reminderLines,

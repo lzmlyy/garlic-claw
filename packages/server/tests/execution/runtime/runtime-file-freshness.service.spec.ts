@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HostFilesystemBackendService } from '../../../src/execution/file/host-filesystem-backend.service';
-import { RuntimeFileFreshnessService } from '../../../src/execution/runtime/runtime-file-freshness.service';
-import { RuntimeFilesystemBackendService } from '../../../src/execution/runtime/runtime-filesystem-backend.service';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
+import { HostFilesystemBackendService } from '../../../src/modules/execution/file/host-filesystem-backend.service';
+import { RuntimeFileFreshnessService } from '../../../src/modules/execution/runtime/runtime-file-freshness.service';
+import { RuntimeFilesystemBackendService } from '../../../src/modules/execution/runtime/runtime-filesystem-backend.service';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
 
 const runtimeWorkspaceRoots: string[] = [];
 
@@ -201,6 +201,52 @@ describe('RuntimeFileFreshnessService', () => {
     )).resolves.toEqual({ path: '/docs/new.txt' });
 
     expect(service.listRecentReads('session-1')).toEqual(['/docs/new.txt']);
+  });
+
+  it('withWriteFreshnessGuard allows append mode on an unread existing file', async () => {
+    const { service, sessionRoot } = await createFixture({
+      initialFiles: {
+        'docs/existing.txt': 'alpha\n',
+      },
+    });
+
+    await expect(service.withWriteFreshnessGuard(
+      'session-1',
+      'docs/existing.txt',
+      async () => {
+        fs.writeFileSync(path.join(sessionRoot, 'docs', 'existing.txt'), 'alpha\nbeta\n', 'utf8');
+        return { path: '/docs/existing.txt' };
+      },
+      undefined,
+      { requireReadBeforeWrite: false },
+    )).resolves.toEqual({ path: '/docs/existing.txt' });
+
+    expect(service.listRecentReads('session-1')).toEqual([]);
+  });
+
+  it('withWriteFreshnessGuard still requires a fresh read before overwrite after a blind append', async () => {
+    const { service, sessionRoot } = await createFixture({
+      initialFiles: {
+        'docs/existing.txt': 'alpha\n',
+      },
+    });
+
+    await expect(service.withWriteFreshnessGuard(
+      'session-1',
+      'docs/existing.txt',
+      async () => {
+        fs.writeFileSync(path.join(sessionRoot, 'docs', 'existing.txt'), 'alpha\nbeta\n', 'utf8');
+        return { path: '/docs/existing.txt' };
+      },
+      undefined,
+      { requireReadBeforeWrite: false },
+    )).resolves.toEqual({ path: '/docs/existing.txt' });
+
+    await expect(service.withWriteFreshnessGuard(
+      'session-1',
+      'docs/existing.txt',
+      async () => ({ path: '/docs/existing.txt' }),
+    )).rejects.toThrow('修改已有文件前必须先读取');
   });
 
   it('lists recent reads in reverse chronological order and supports exclude/limit', async () => {
@@ -431,4 +477,3 @@ async function createFixture(input?: {
     sessionRoot: sessionEnvironment.sessionRoot,
   };
 }
-

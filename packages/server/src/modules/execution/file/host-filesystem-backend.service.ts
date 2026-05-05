@@ -4,7 +4,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import type { RuntimeBackendDescriptor } from '../runtime/runtime-command.types';
-import type { RuntimeFilesystemBackend, RuntimeFilesystemDeleteResult, RuntimeFilesystemDirectoryResult, RuntimeFilesystemEditResult, RuntimeFilesystemFileEntry, RuntimeFilesystemGlobResult, RuntimeFilesystemGrepMatch, RuntimeFilesystemGrepResult, RuntimeFilesystemPathStat, RuntimeFilesystemReadResult, RuntimeFilesystemResolvedPath, RuntimeFilesystemSkippedEntry, RuntimeFilesystemSkippedReason, RuntimeFilesystemSymlinkResult, RuntimeFilesystemTransferResult, RuntimeFilesystemWriteResult } from '../runtime/runtime-filesystem-backend.types';
+import type { RuntimeFilesystemBackend, RuntimeFilesystemDeleteResult, RuntimeFilesystemDirectoryResult, RuntimeFilesystemEditResult, RuntimeFilesystemFileEntry, RuntimeFilesystemGlobResult, RuntimeFilesystemGrepMatch, RuntimeFilesystemGrepResult, RuntimeFilesystemPathStat, RuntimeFilesystemReadResult, RuntimeFilesystemResolvedPath, RuntimeFilesystemSkippedEntry, RuntimeFilesystemSkippedReason, RuntimeFilesystemSymlinkResult, RuntimeFilesystemTransferResult, RuntimeFilesystemWriteOptions, RuntimeFilesystemWriteResult, RuntimeFilesystemWriteStatus } from '../runtime/runtime-filesystem-backend.types';
 import { RuntimeFilesystemPostWriteService } from '../runtime/runtime-filesystem-post-write.service';
 import { RuntimeMountedWorkspaceFileSystem } from '../runtime/runtime-mounted-workspace-file-system';
 import type { RuntimeSessionEnvironment } from '../runtime/runtime-session-environment.types';
@@ -214,8 +214,8 @@ export class HostFilesystemBackendService implements RuntimeFilesystemBackend {
     return { basePath: target.virtualPath, files, partial, skippedEntries, skippedPaths };
   }
 
-  async writeTextFile(sessionId: string, inputPath: string, content: string): Promise<RuntimeFilesystemWriteResult> {
-    return this.writeResolvedTextFile(sessionId, await this.resolveValidatedPath(sessionId, inputPath, { mode: 'writable-file' }), content);
+  async writeTextFile(sessionId: string, inputPath: string, content: string, options?: RuntimeFilesystemWriteOptions): Promise<RuntimeFilesystemWriteResult> {
+    return this.writeResolvedTextFile(sessionId, await this.resolveValidatedPath(sessionId, inputPath, { mode: 'writable-file' }), content, undefined, options);
   }
 
   async editTextFile(sessionId: string, input: { filePath: string; newString: string; oldString: string; replaceAll?: boolean }): Promise<RuntimeFilesystemEditResult> {
@@ -229,12 +229,23 @@ export class HostFilesystemBackendService implements RuntimeFilesystemBackend {
     return { diff: writeResult.diff, occurrences: replaced.occurrences, postWrite: writeResult.postWrite, path: writeResult.path, strategy: replaced.strategy };
   }
 
-  private async writeResolvedTextFile(sessionId: string, target: HostFilesystemResolvedPath, content: string, previousContent?: string | null): Promise<RuntimeFilesystemWriteResult> {
+  private async writeResolvedTextFile(
+    sessionId: string,
+    target: HostFilesystemResolvedPath,
+    content: string,
+    previousContent?: string | null,
+    options?: RuntimeFilesystemWriteOptions,
+  ): Promise<RuntimeFilesystemWriteResult> {
     const sessionEnvironment = await this.runtimeSessionEnvironmentService.getSessionEnvironment(sessionId);
     const diffBase = previousContent ?? await readFileDiffBase(target);
-    const processed = this.runtimeFilesystemPostWriteService?.processTextFile({ content, hostPath: target.hostPath, path: target.virtualPath, sessionRoot: sessionEnvironment.sessionRoot, visibleRoot: sessionEnvironment.visibleRoot }) ?? { content, postWrite: { diagnostics: [], formatting: null } };
+    const mode = options?.mode ?? 'overwrite';
+    const nextContent = mode === 'append' && typeof diffBase === 'string'
+      ? `${diffBase}${content}`
+      : content;
+    const processed = this.runtimeFilesystemPostWriteService?.processTextFile({ content: nextContent, hostPath: target.hostPath, path: target.virtualPath, sessionRoot: sessionEnvironment.sessionRoot, visibleRoot: sessionEnvironment.visibleRoot }) ?? { content: nextContent, postWrite: { diagnostics: [], formatting: null } };
     await fsPromises.mkdir(path.dirname(target.hostPath), { recursive: true });
     await fsPromises.writeFile(target.hostPath, processed.content, 'utf8');
+    const status: RuntimeFilesystemWriteStatus = !target.exists ? 'created' : mode === 'append' ? 'appended' : 'overwritten';
     return {
       created: !target.exists,
       diff: diffBase === null ? null : buildRuntimeFilesystemDiff(target.virtualPath, diffBase, processed.content),
@@ -242,6 +253,7 @@ export class HostFilesystemBackendService implements RuntimeFilesystemBackend {
       path: target.virtualPath,
       postWrite: processed.postWrite,
       size: Buffer.byteLength(processed.content, 'utf8'),
+      status,
     };
   }
 

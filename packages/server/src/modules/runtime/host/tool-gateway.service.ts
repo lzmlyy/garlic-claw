@@ -190,6 +190,7 @@ export class ToolGatewayService {
       path: result.path,
       postWrite: result.postWrite,
       size: result.size,
+      status: result.status,
     };
   }
 
