@@ -202,7 +202,7 @@ describe('RuntimeNativeShellService', () => {
 
     const service = createRuntimeNativeShellService();
     const result = await service.executeCommand({
-      command: 'Write-Output "before-error"; $(unclosed-subexpression',
+      command: 'Write-Output "before-error"; throw "syntax-test-error"',
       sessionId: 'session-1',
       timeout: 30000,
     });

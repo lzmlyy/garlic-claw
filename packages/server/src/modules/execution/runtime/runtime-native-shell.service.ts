@@ -36,6 +36,7 @@ export class RuntimeNativeShellService implements RuntimeBackend {
   }
 
   async executeCommand(input: RuntimeCommandRequest): Promise<RuntimeCommandBackendResult> {
+    validateNativeShellCommand(input.command);
     const session = await this.runtimeSessionEnvironmentService.getSessionEnvironment(input.sessionId);
     const toolName = readRuntimeShellToolName('native-shell');
     const rawWorkdir = typeof input.workdir === 'string' ? input.workdir.trim() : '';
@@ -89,4 +90,29 @@ function isRuntimeShellSpawnMissing(error: unknown): error is NodeJS.ErrnoExcept
   return error instanceof Error
     && 'code' in error
     && error.code === 'ENOENT';
+}
+
+const FORBIDDEN_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  { pattern: /Invoke-Expression/i, label: 'Invoke-Expression' },
+  { pattern: /\biex\b/i, label: 'iex' },
+  { pattern: /Start-Process/i, label: 'Start-Process' },
+  { pattern: /\bcmd(\.exe)?[\s;|]/i, label: 'cmd' },
+  { pattern: /\bpwsh(\.exe)?\b/i, label: 'pwsh' },
+  { pattern: /\bpowershell(\.exe)?\b/i, label: 'powershell' },
+  { pattern: /\$\(/, label: '$()' },
+  { pattern: /&&/, label: '&&' },
+  { pattern: /\|\|/, label: '||' },
+  { pattern: /\bbash\b/i, label: 'bash' },
+  { pattern: /\bwsl\b/i, label: 'wsl' },
+];
+
+function validateNativeShellCommand(command: string): void {
+  if (process.platform !== 'win32') {
+    return;
+  }
+  for (const { pattern, label } of FORBIDDEN_PATTERNS) {
+    if (pattern.test(command)) {
+      throw new Error(`powershell 命令包含禁止的模式: ${label}`);
+    }
+  }
 }
