@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { PluginController } from '../../src/plugin/plugin.controller';
+import { PluginController } from '../../src/modules/plugin/plugin.controller';
 
 describe('PluginController runtime resources', () => {
   const pluginRemoteBootstrapService = {

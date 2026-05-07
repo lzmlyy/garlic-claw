@@ -1,6 +1,10 @@
-import { CanActivate, createParamDecorator, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, createParamDecorator, ExecutionContext, Injectable, SetMetadata } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { RequestAuthService } from './request-auth.service';
+
+export const IS_PUBLIC_ROUTE_KEY = 'garlic-claw:is-public-route';
+export const Public = () => SetMetadata(IS_PUBLIC_ROUTE_KEY, true);
 
 export type AuthenticatedUser = {
   authType: 'jwt';
@@ -16,9 +20,20 @@ export const CurrentUser = createParamDecorator((field: string | undefined, cont
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly requestAuthService: RequestAuthService) {}
+  constructor(
+    private readonly requestAuthService: RequestAuthService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublicRoute = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_ROUTE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublicRoute) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<Request & { user?: AuthenticatedUser }>();
     request.user = await this.requestAuthService.authenticateJwtRequest(request);
     return true;

@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { EditToolService } from '../../../src/execution/edit/edit-tool.service';
+import { EditToolService } from '../../../src/modules/execution/edit/edit-tool.service';
 
 describe('EditToolService', () => {
   it('allows empty oldString input for create-or-overwrite edit flows', () => {

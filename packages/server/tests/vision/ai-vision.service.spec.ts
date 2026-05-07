@@ -1,5 +1,5 @@
-import { AiProviderSettingsService } from '../../src/ai-management/ai-provider-settings.service';
-import { AiVisionService } from '../../src/vision/ai-vision.service';
+import { AiProviderSettingsService } from '../../src/modules/ai-management/ai-provider-settings.service';
+import { AiVisionService } from '../../src/modules/vision/ai-vision.service';
 
 describe('AiVisionService', () => {
   const aiModelExecutionService = {

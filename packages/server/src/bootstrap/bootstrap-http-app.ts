@@ -29,6 +29,8 @@ export async function bootstrapHttpApp(): Promise<void> {
   const pluginRuntime = app.get(PluginRuntimeService);
   const runtimePluginGovernanceService = app.get(RuntimePluginGovernanceService);
   const toolManagementSettingsService = app.get(ToolManagementSettingsService);
+  const bootstrapUserService = app.get(BootstrapUserService);
+  bootstrapUserService.validateStartupAuthConfig();
   pluginBootstrapService.bootstrapBuiltins();
   pluginBootstrapService.bootstrapProjectPlugins((pluginId) => {
     pluginRuntime.deletePluginRuntimeState(pluginId);
@@ -38,7 +40,7 @@ export async function bootstrapHttpApp(): Promise<void> {
   });
 
   await app.listen(port);
-  void app.get(BootstrapUserService).runStartupWarmup();
+  bootstrapUserService.runStartupWarmup();
 }
 
 export function readHttpServerConfig(env: NodeJS.ProcessEnv = process.env): {

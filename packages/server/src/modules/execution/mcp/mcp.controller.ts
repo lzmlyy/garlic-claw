@@ -5,34 +5,15 @@ import type {
   McpServerDeleteResult,
   McpServerEnvEntry,
 } from '@garlic-claw/shared';
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { McpService } from './mcp.service';
 import { normalizeEventLogSettings } from '../../../core/logging/runtime-event-log.service';
 import { readPluginEventQuery } from '../../../shared/http/http-request.codec';
-
-interface McpEventQueryInput {
-  limit?: string;
-  level?: string;
-  type?: string;
-  keyword?: string;
-  cursor?: string;
-}
-
-interface McpServerInput {
-  name: string;
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
-  envEntries?: Array<{
-    key: string;
-    value: string;
-    source?: McpServerEnvEntry['source'];
-    hasStoredValue?: boolean;
-  }>;
-  eventLog?: McpServerConfig['eventLog'];
-}
+import { JwtAuthGuard } from '../../auth/http-auth';
+import { McpEventQueryDto, McpServerDto } from './dto/mcp-server.dto';
 
 @Controller('mcp')
+@UseGuards(JwtAuthGuard)
 export class McpController {
   constructor(private readonly mcpService: McpService) {}
 
@@ -44,13 +25,13 @@ export class McpController {
   @Get('servers/:name/events')
   async listServerEvents(
     @Param('name') name: string,
-    @Query() query?: McpEventQueryInput,
+    @Query() query?: McpEventQueryDto,
   ): Promise<EventLogListResult> {
     return this.mcpService.listServerEvents(name, readPluginEventQuery(query ?? {}));
   }
 
   @Post('servers')
-  async createServer(@Body() dto: McpServerInput): Promise<McpServerConfig> {
+  async createServer(@Body() dto: McpServerDto): Promise<McpServerConfig> {
     const normalizedServer = toMcpServerConfig(dto);
     const server = await this.mcpService.saveServer({
       ...normalizedServer,
@@ -63,7 +44,7 @@ export class McpController {
   @Put('servers/:name')
   async updateServer(
     @Param('name') name: string,
-    @Body() dto: McpServerInput,
+    @Body() dto: McpServerDto,
   ): Promise<McpServerConfig> {
     const normalizedServer = toMcpServerConfig(dto);
     const server = await this.mcpService.saveServer({
@@ -82,10 +63,10 @@ export class McpController {
   }
 }
 
-function toMcpServerConfig(input: McpServerInput): McpServerConfig {
+function toMcpServerConfig(input: McpServerDto): McpServerConfig {
   const envEntries = normalizeEnvEntries(input.envEntries);
   const env = {
-    ...(input.env ?? {}),
+    ...normalizeEnvMap(input.env),
     ...Object.fromEntries(
       envEntries
         .filter((entry) => entry.source !== 'stored-secret')
@@ -93,17 +74,17 @@ function toMcpServerConfig(input: McpServerInput): McpServerConfig {
     ),
   };
   return {
-    name: input.name,
-    command: input.command,
+    name: input.name.trim(),
+    command: input.command.trim(),
     args: input.args,
     env,
     ...(envEntries.length > 0 ? { envEntries } : {}),
-    eventLog: normalizeEventLogSettings(input.eventLog),
+    eventLog: normalizeMcpEventLog(input.eventLog),
   };
 }
 
 function normalizeEnvEntries(
-  envEntries: McpServerInput['envEntries'],
+  envEntries: McpServerDto['envEntries'],
 ): McpServerEnvEntry[] {
   return (envEntries ?? [])
     .map((entry) => ({
@@ -113,6 +94,23 @@ function normalizeEnvEntries(
       ...(entry.hasStoredValue ? { hasStoredValue: true } : {}),
     }))
     .filter((entry) => entry.key.length > 0);
+}
+
+function normalizeEnvMap(env: McpServerDto['env']): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env ?? {})
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+      .map(([key, value]) => [key.trim(), value.trim()] as const)
+      .filter(([key]) => key.length > 0),
+  );
+}
+
+function normalizeMcpEventLog(eventLog: McpServerDto['eventLog']): McpServerConfig['eventLog'] {
+  return normalizeEventLogSettings(
+    typeof eventLog?.maxFileSizeMb === 'number'
+      ? { maxFileSizeMb: eventLog.maxFileSizeMb }
+      : undefined,
+  );
 }
 
 function inferEnvSource(value: string): McpServerEnvEntry['source'] {

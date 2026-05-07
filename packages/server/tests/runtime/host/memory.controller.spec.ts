@@ -1,4 +1,4 @@
-import { MemoryController } from '../../../src/runtime/host/memory.controller';
+import { MemoryController } from '../../../src/modules/runtime/host/memory.controller';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 
 describe('MemoryController', () => {

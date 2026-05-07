@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BadRequestException } from '@nestjs/common';
-import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
+import { PluginPersistenceService } from '../../../src/modules/plugin/persistence/plugin-persistence.service';
 
 describe('PluginPersistenceService', () => {
   it('stores, lists and updates plugin records in memory', () => {
@@ -488,7 +488,7 @@ describe('PluginPersistenceService', () => {
         records: [
           expect.objectContaining({
             level: 'warn',
-            message: 'Deleted plugin builtin.ping',
+            message: '插件 builtin.ping 已删除',
             type: 'plugin:deleted',
           }),
         ],

@@ -1,9 +1,9 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { BadRequestException } from '@nestjs/common';
-import { ConversationStoreService } from '../../../src/runtime/host/conversation-store.service';
-import { ConversationTodoService } from '../../../src/runtime/host/conversation-todo.service';
-import { TodoToolService } from '../../../src/execution/todo/todo-tool.service';
+import { ConversationStoreService } from '../../../src/modules/runtime/host/conversation-store.service';
+import { ConversationTodoService } from '../../../src/modules/runtime/host/conversation-todo.service';
+import { TodoToolService } from '../../../src/modules/execution/todo/todo-tool.service';
 
 describe('TodoToolService', () => {
   const conversationsEnvKey = 'GARLIC_CLAW_CONVERSATIONS_PATH';

@@ -6,10 +6,10 @@ import { BadRequestException } from '@nestjs/common';
 import {
   readRuntimeNativeShellOptions,
   readRuntimeNativeShellTimeout,
-} from '../../../src/execution/runtime/runtime-native-shell-options';
-import { RuntimeNativeShellService } from '../../../src/execution/runtime/runtime-native-shell.service';
-import { RuntimeOneShotShellService } from '../../../src/execution/runtime/runtime-one-shot-shell.service';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
+} from '../../../src/modules/execution/runtime/runtime-native-shell-options';
+import { RuntimeNativeShellService } from '../../../src/modules/execution/runtime/runtime-native-shell.service';
+import { RuntimeOneShotShellService } from '../../../src/modules/execution/runtime/runtime-one-shot-shell.service';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
 
 describe('RuntimeNativeShellService', () => {
   const workspaceRoots: string[] = [];

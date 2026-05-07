@@ -1,4 +1,4 @@
-import { HostModule } from '../../../src/runtime/host/host.module';
+import { HostModule } from '../../../src/modules/runtime/host/host.module';
 
 describe('HostModule', () => {
   it('exports direct conversation owners for HTTP and runtime consumers', () => {

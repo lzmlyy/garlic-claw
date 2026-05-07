@@ -11,7 +11,7 @@ import {
   resolveServerTestArtifactsRoot,
   resolveServerWorkspaceRoot,
 } from '../../../src/core/runtime/server-workspace-paths';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
 
 describe('server-workspace-paths', () => {
   const originalCwd = process.cwd();
@@ -22,6 +22,7 @@ describe('server-workspace-paths', () => {
   beforeEach(() => {
     repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-server-workspace-paths-'));
     fs.mkdirSync(path.join(repoRoot, 'packages', 'server'), { recursive: true });
+    fs.writeFileSync(path.join(repoRoot, 'packages', 'server', 'package.json'), JSON.stringify({ name: 'gc-test-server' }), 'utf-8');
     fs.writeFileSync(path.join(repoRoot, 'package.json'), JSON.stringify({ name: 'gc-test-root' }), 'utf-8');
     process.chdir(path.join(repoRoot, 'packages', 'server'));
     delete process.env.GARLIC_CLAW_WORKSPACE_ROOT;

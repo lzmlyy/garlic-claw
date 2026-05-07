@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { resolveLaunchTarget } from '../../../src/execution/mcp/mcp-stdio-launcher';
+import { readMcpChildEnv, resolveLaunchTarget } from '../../../src/modules/execution/mcp/mcp-stdio-launcher';
 
 describe('mcp-stdio-launcher', () => {
   const originalPlatform = process.platform;
@@ -20,6 +20,18 @@ describe('mcp-stdio-launcher', () => {
     expect(resolveLaunchTarget('npx', ['--version'])).toEqual({
       command: 'npx',
       args: ['--version'],
+    });
+  });
+
+  it('passes only declared environment keys to the MCP child process', () => {
+    expect(readMcpChildEnv({
+      GARLIC_CLAW_MCP_CHILD_ENV_KEYS: 'PATH\nEXPLICIT_KEY',
+      EXPLICIT_KEY: 'visible',
+      PATH: '/usr/bin',
+      SHOULD_NOT_LEAK: 'secret',
+    })).toEqual({
+      EXPLICIT_KEY: 'visible',
+      PATH: '/usr/bin',
     });
   });
 

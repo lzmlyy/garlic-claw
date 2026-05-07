@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { LoginDto } from '../../src/auth/dto/auth.dto';
+import { LoginDto } from '../../src/modules/auth/dto/auth.dto';
 
 describe('auth dto', () => {
   it('accepts the new single-secret login payload', () => {

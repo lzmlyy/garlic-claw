@@ -3,9 +3,9 @@ import http from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
 import { BadRequestException } from '@nestjs/common';
-import { readRuntimeJustBashOptions, readRuntimeJustBashTimeout } from '../../../src/execution/runtime/runtime-just-bash-options';
-import { RuntimeJustBashService } from '../../../src/execution/runtime/runtime-just-bash.service';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
+import { readRuntimeJustBashOptions, readRuntimeJustBashTimeout } from '../../../src/modules/execution/runtime/runtime-just-bash-options';
+import { RuntimeJustBashService } from '../../../src/modules/execution/runtime/runtime-just-bash.service';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
 
 describe('RuntimeJustBashService', () => {
   const workspaceRoots: string[] = [];

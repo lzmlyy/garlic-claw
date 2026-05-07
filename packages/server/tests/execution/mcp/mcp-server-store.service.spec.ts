@@ -61,6 +61,7 @@ describe('McpServerStoreService', () => {
     fs.mkdirSync(nestedServerRoot, { recursive: true });
     fs.mkdirSync(defaultConfigRoot, { recursive: true });
     fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'mcp-config-test' }), 'utf-8');
+    fs.writeFileSync(path.join(nestedServerRoot, 'package.json'), JSON.stringify({ name: 'mcp-config-test-server' }), 'utf-8');
     fs.writeFileSync(path.join(defaultConfigRoot, 'tavily-mcp.json'), JSON.stringify({
       name: 'tavily-mcp',
       command: 'npx',

@@ -1,11 +1,11 @@
-import { RuntimeCommandCaptureService } from '../../../src/execution/runtime/runtime-command-capture.service';
-import { RuntimeCommandService } from '../../../src/execution/runtime/runtime-command.service';
-import { RuntimeBackendRoutingService } from '../../../src/execution/runtime/runtime-backend-routing.service';
-import type { RuntimeBackend } from '../../../src/execution/runtime/runtime-command.types';
-import { RuntimeFilesystemBackendService } from '../../../src/execution/runtime/runtime-filesystem-backend.service';
-import type { RuntimeFilesystemBackend } from '../../../src/execution/runtime/runtime-filesystem-backend.types';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
-import { RuntimeToolBackendService } from '../../../src/execution/runtime/runtime-tool-backend.service';
+import { RuntimeCommandCaptureService } from '../../../src/modules/execution/runtime/runtime-command-capture.service';
+import { RuntimeCommandService } from '../../../src/modules/execution/runtime/runtime-command.service';
+import { RuntimeBackendRoutingService } from '../../../src/modules/execution/runtime/runtime-backend-routing.service';
+import type { RuntimeBackend } from '../../../src/modules/execution/runtime/runtime-command.types';
+import { RuntimeFilesystemBackendService } from '../../../src/modules/execution/runtime/runtime-filesystem-backend.service';
+import type { RuntimeFilesystemBackend } from '../../../src/modules/execution/runtime/runtime-filesystem-backend.types';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
+import { RuntimeToolBackendService } from '../../../src/modules/execution/runtime/runtime-tool-backend.service';
 
 describe('RuntimeToolBackendService', () => {
   const originalShellBackend = process.env.GARLIC_CLAW_RUNTIME_SHELL_BACKEND;

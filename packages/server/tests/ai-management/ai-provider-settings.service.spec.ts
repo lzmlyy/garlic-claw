@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { AiProviderSettingsService } from '../../src/ai-management/ai-provider-settings.service';
+import { AiProviderSettingsService } from '../../src/modules/ai-management/ai-provider-settings.service';
 
 describe('AiProviderSettingsService runtime config', () => {
   const tempSettingsPath = path.join(
@@ -26,6 +26,7 @@ describe('AiProviderSettingsService runtime config', () => {
     fs.mkdirSync(path.join(defaultConfigRoot, 'providers'), { recursive: true });
     fs.mkdirSync(nestedServerRoot, { recursive: true });
     fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'ai-config-test' }), 'utf-8');
+    fs.writeFileSync(path.join(nestedServerRoot, 'package.json'), JSON.stringify({ name: 'ai-config-test-server' }), 'utf-8');
     fs.writeFileSync(path.join(defaultConfigRoot, 'providers', 'openai.json'), JSON.stringify({
       id: 'openai',
       name: 'OpenAI',
@@ -73,6 +74,7 @@ describe('AiProviderSettingsService runtime config', () => {
     fs.mkdirSync(path.dirname(legacyFilePath), { recursive: true });
     fs.mkdirSync(nestedServerRoot, { recursive: true });
     fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'ai-config-legacy-test' }), 'utf-8');
+    fs.writeFileSync(path.join(nestedServerRoot, 'package.json'), JSON.stringify({ name: 'ai-config-legacy-test-server' }), 'utf-8');
     fs.writeFileSync(path.join(providerRoot, 'openai.json'), JSON.stringify({
       id: 'openai',
       name: 'OpenAI',
@@ -257,6 +259,7 @@ describe('AiProviderSettingsService runtime config', () => {
     fs.mkdirSync(path.dirname(legacyFilePath), { recursive: true });
     fs.mkdirSync(nestedServerRoot, { recursive: true });
     fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'ai-config-archive-test' }), 'utf-8');
+    fs.writeFileSync(path.join(nestedServerRoot, 'package.json'), JSON.stringify({ name: 'ai-config-archive-test-server' }), 'utf-8');
     fs.writeFileSync(path.join(providerRoot, 'openai.json'), JSON.stringify(providerPayload, null, 2), 'utf-8');
     fs.writeFileSync(legacyFilePath, JSON.stringify({
       providers: [{ ...providerPayload }],

@@ -15,7 +15,7 @@ import type {
   ToolSourceActionResult,
   ToolSourceInfo,
 } from '@garlic-claw/shared';
-import { Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createMcpConnectionConnectedEvent, createMcpConnectionErrorEvent, createMcpGovernanceEvent, createMcpToolErrorEvent, type LogEventPayload } from '../../../core/logging/log-event-payloads';
 import { RuntimeEventLogService } from '../../../core/logging/runtime-event-log.service';
@@ -34,6 +34,24 @@ type McpClientSession = Pick<Client, 'callTool' | 'close'>;
 const MCP_CONNECT_TIMEOUT = 15_000;
 const MCP_TOOL_CALL_TIMEOUT = 10_000;
 const MCP_MAX_RETRIES = 2;
+const MCP_COMMAND_ALLOWLIST_ENV_KEY = 'GARLIC_CLAW_MCP_COMMAND_ALLOWLIST';
+const MCP_CHILD_ENV_KEYS_ENV_KEY = 'GARLIC_CLAW_MCP_CHILD_ENV_KEYS';
+const DEFAULT_MCP_COMMAND_NAMES = new Set(['node', 'npm', 'npx']);
+const MCP_BASE_PROCESS_ENV_KEYS = [
+  'PATH',
+  'Path',
+  'PATHEXT',
+  'SystemRoot',
+  'WINDIR',
+  'HOME',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'TEMP',
+  'TMP',
+  'ComSpec',
+  'PROCESSOR_ARCHITECTURE',
+];
 
 @Injectable()
 export class McpService implements OnModuleDestroy, OnModuleInit {
@@ -84,6 +102,7 @@ export class McpService implements OnModuleDestroy, OnModuleInit {
     await this.syncServerRecord(config.name, this.requireServerConfig(config.name));
   }
   async saveServer(server: McpServerConfig, previousName?: string): Promise<McpServerConfig> {
+    this.ensureAllowedMcpCommand(server.command);
     return this.mcpServerStoreService.saveServer(server, previousName);
   }
   async removeServer(name: string): Promise<void> {
@@ -254,14 +273,29 @@ export class McpService implements OnModuleDestroy, OnModuleInit {
 
   private buildTransportConfig(config: McpServerConfig): { command: string; args: string[]; env: Record<string, string> } {
     const runtimeConfig = this.resolveTransportConfig(config);
+    this.ensureAllowedMcpCommand(runtimeConfig.command);
+    const explicitEnvEntries = readTransportEnvEntries(runtimeConfig)
+      .map(([key, value]): [string, string] => [key, resolveTransportEnvValue(key, value, this.configService)]);
+    const env: Record<string, string> = Object.fromEntries([
+      ...readBaseMcpProcessEnvEntries(),
+      ...explicitEnvEntries,
+    ]);
     return {
       command: process.execPath,
       args: [resolveMcpStdioLauncherPath(), runtimeConfig.command, ...runtimeConfig.args],
-      env: Object.fromEntries([
-        ...Object.entries(process.env).flatMap(([key, value]) => value === undefined ? [] : [[key, value]]),
-        ...readTransportEnvEntries(runtimeConfig).map(([key, value]) => [key, resolveTransportEnvValue(key, value, this.configService)]),
-      ]),
+      env: {
+        ...env,
+        [MCP_CHILD_ENV_KEYS_ENV_KEY]: Object.keys(env).join('\n'),
+      },
     };
+  }
+
+  private ensureAllowedMcpCommand(command: string): void {
+    const configuredAllowlist = this.configService.get<string>(MCP_COMMAND_ALLOWLIST_ENV_KEY);
+    if (isAllowedMcpCommand(command, configuredAllowlist)) {
+      return;
+    }
+    throw new BadRequestException(`MCP command 不在允许列表: ${command}`);
   }
 
   private resolveTransportConfig(config: McpServerConfig): McpServerConfig {
@@ -349,6 +383,80 @@ function readTransportEnvEntries(config: McpServerConfig): Array<[string, string
       .filter(([key]) => key.trim().length > 0);
   }
   return Object.entries(config.env ?? {});
+}
+
+function readBaseMcpProcessEnvEntries(env: NodeJS.ProcessEnv = process.env): Array<[string, string]> {
+  const entries = new Map<string, string>();
+  for (const key of MCP_BASE_PROCESS_ENV_KEYS) {
+    const entry = readProcessEnvEntry(env, key);
+    if (entry) {
+      entries.set(entry[0], entry[1]);
+    }
+  }
+  return [...entries];
+}
+
+function readProcessEnvEntry(env: NodeJS.ProcessEnv, key: string): [string, string] | null {
+  const value = env[key];
+  if (typeof value === 'string') {
+    return [key, value];
+  }
+  if (process.platform !== 'win32') {
+    return null;
+  }
+  const matchedKey = Object.keys(env).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+  const matchedValue = matchedKey ? env[matchedKey] : undefined;
+  return typeof matchedValue === 'string' && matchedKey ? [matchedKey, matchedValue] : null;
+}
+
+function isAllowedMcpCommand(command: string, configuredAllowlist?: string): boolean {
+  const trimmedCommand = command.trim();
+  if (!trimmedCommand) {
+    return false;
+  }
+  if (isSameExecutablePath(trimmedCommand, process.execPath)) {
+    return true;
+  }
+  const commandName = normalizeMcpCommandName(trimmedCommand);
+  if (isBareCommand(trimmedCommand) && DEFAULT_MCP_COMMAND_NAMES.has(commandName)) {
+    return true;
+  }
+  return readConfiguredMcpCommandAllowlist(configuredAllowlist)
+    .some((allowedCommand) => configuredCommandAllows(trimmedCommand, commandName, allowedCommand));
+}
+
+function configuredCommandAllows(command: string, commandName: string, allowedCommand: string): boolean {
+  const allowedName = normalizeMcpCommandName(allowedCommand);
+  if (isBareCommand(command) && isBareCommand(allowedCommand)) {
+    return commandName === allowedName;
+  }
+  return !isBareCommand(command) && !isBareCommand(allowedCommand) && isSameExecutablePath(command, allowedCommand);
+}
+
+function readConfiguredMcpCommandAllowlist(value?: string): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function normalizeMcpCommandName(command: string): string {
+  return path.basename(command).toLowerCase().replace(/\.(?:cmd|exe)$/u, '');
+}
+
+function isBareCommand(command: string): boolean {
+  return !path.isAbsolute(command) && !command.includes('/') && !command.includes('\\');
+}
+
+function isSameExecutablePath(left: string, right: string): boolean {
+  if (!path.isAbsolute(left) || !path.isAbsolute(right)) {
+    return false;
+  }
+  const normalizedLeft = path.resolve(left);
+  const normalizedRight = path.resolve(right);
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
 }
 
 function resolveTransportEnvValue(

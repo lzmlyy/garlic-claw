@@ -1,4 +1,4 @@
-import { GrepToolService } from '../../../src/execution/grep/grep-tool.service';
+import { GrepToolService } from '../../../src/modules/execution/grep/grep-tool.service';
 
 describe('GrepToolService', () => {
   it('formats empty grep results with an explicit next step', async () => {

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ProjectWorktreePostWriteService } from '../../../src/execution/project/project-worktree-post-write.service';
+import { ProjectWorktreePostWriteService } from '../../../src/modules/execution/project/project-worktree-post-write.service';
 
 describe('ProjectWorktreePostWriteService', () => {
   const tempRoots: string[] = [];

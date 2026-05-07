@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
 
 describe('ProjectWorktreeRootService', () => {
   let originalProjectWorktreePath: string | undefined;
@@ -29,6 +29,7 @@ describe('ProjectWorktreeRootService', () => {
     fs.mkdirSync(nestedRoot, { recursive: true });
     fs.writeFileSync(path.join(projectRoot, 'package.json'), '{}', 'utf8');
     fs.mkdirSync(path.join(projectRoot, 'packages', 'server'), { recursive: true });
+    fs.writeFileSync(path.join(projectRoot, 'packages', 'server', 'package.json'), '{}', 'utf8');
 
     expect(service.findRoot(nestedRoot)).toBe(projectRoot);
   });
@@ -39,6 +40,7 @@ describe('ProjectWorktreeRootService', () => {
     fs.mkdirSync(nestedRoot, { recursive: true });
     fs.writeFileSync(path.join(projectRoot, 'package.json'), '{}', 'utf8');
     fs.mkdirSync(path.join(projectRoot, 'packages', 'server'), { recursive: true });
+    fs.writeFileSync(path.join(projectRoot, 'packages', 'server', 'package.json'), '{}', 'utf8');
 
     expect(service.resolveRoot(nestedRoot)).toBe(projectRoot);
   });

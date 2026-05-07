@@ -1,7 +1,7 @@
 import {
   readRuntimeSearchSuggestedReadPath,
   renderRuntimeSearchSuggestedReadHint,
-} from '../../../src/execution/file/runtime-search-result-report';
+} from '../../../src/modules/execution/file/runtime-search-result-report';
 
 describe('runtime-search-result-report', () => {
   it('prefers shallower and shorter glob matches over the first raw result', () => {
