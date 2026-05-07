@@ -21,6 +21,7 @@ packages/shared/src/**/*.d.ts
 .env
 .run.pid
 *.log
+logs/
 coverage/
 .turbo/
 *.db
