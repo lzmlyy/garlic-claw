@@ -1,4 +1,4 @@
-import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
+import { PluginGovernanceService } from '../../../src/modules/plugin/governance/plugin-governance.service';
 
 describe('PluginGovernanceService', () => {
   it('uses builtin defaults for builtin plugins', () => {

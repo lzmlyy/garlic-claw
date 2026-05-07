@@ -1,11 +1,11 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { normalizePluginManifest, PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
-import { BuiltinPluginRegistryService } from '../../../src/plugin/builtin/builtin-plugin-registry.service';
-import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
-import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
-import type { ProjectPluginDefinitionRecord } from '../../../src/plugin/project/project-plugin-registry.service';
+import { normalizePluginManifest, PluginBootstrapService } from '../../../src/modules/plugin/bootstrap/plugin-bootstrap.service';
+import { BuiltinPluginRegistryService } from '../../../src/modules/plugin/builtin/builtin-plugin-registry.service';
+import { PluginGovernanceService } from '../../../src/modules/plugin/governance/plugin-governance.service';
+import { PluginPersistenceService } from '../../../src/modules/plugin/persistence/plugin-persistence.service';
+import type { ProjectPluginDefinitionRecord } from '../../../src/modules/plugin/project/project-plugin-registry.service';
 
 describe('PluginBootstrapService', () => {
   const envKey = 'GARLIC_CLAW_PLUGIN_STATE_PATH';

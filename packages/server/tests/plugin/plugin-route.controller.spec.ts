@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { PluginController } from '../../src/plugin/plugin.controller';
+import { PluginController } from '../../src/modules/plugin/plugin.controller';
 
 describe('PluginController route forwarding', () => {
   const pluginRemoteBootstrapService = {

@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/auth.dto';
-import { createSingleUserClaims, readAuthTtl, readLoginSecret } from './single-user-auth';
+import { createSingleUserClaims, readAuthTtl, readJwtSecret, readLoginSecret } from './single-user-auth';
 
 @Injectable()
 export class AuthService {
@@ -19,7 +19,7 @@ export class AuthService {
 
     return {
       accessToken: this.jwtService.sign(createSingleUserClaims(), {
-        secret: this.configService.get<string>('JWT_SECRET') ?? 'fallback-secret',
+        secret: readJwtSecret(this.configService),
         expiresIn: readAuthTtl(this.configService),
       }),
     };

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { SendMessageDto, SendMessagePartDto, UpdateMessageDto } from '../../src/conversation/dto/conversation.dto';
+import { SendMessageDto, SendMessagePartDto, UpdateMessageDto } from '../../src/modules/conversation/dto/conversation.dto';
 
 describe('conversation dto', () => {
   it('accepts structured message parts with provider and model overrides', () => {

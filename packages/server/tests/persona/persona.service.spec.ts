@@ -1,11 +1,11 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { ProjectWorktreeRootService } from '../../src/execution/project/project-worktree-root.service'
-import { DEFAULT_PERSONA_PROMPT } from '../../src/persona/default-persona'
-import { PersonaService } from '../../src/persona/persona.service'
-import { PersonaStoreService } from '../../src/persona/persona-store.service'
-import { ConversationStoreService } from '../../src/runtime/host/conversation-store.service'
+import { ProjectWorktreeRootService } from '../../src/modules/execution/project/project-worktree-root.service'
+import { DEFAULT_PERSONA_PROMPT } from '../../src/modules/persona/default-persona'
+import { PersonaService } from '../../src/modules/persona/persona.service'
+import { PersonaStoreService } from '../../src/modules/persona/persona-store.service'
+import { ConversationStoreService } from '../../src/modules/runtime/host/conversation-store.service'
 
 describe('PersonaService', () => {
   const originalPersonaPath = process.env.GARLIC_CLAW_PERSONAS_PATH

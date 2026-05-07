@@ -1,4 +1,4 @@
-import { replaceRuntimeText } from '../../../src/execution/file/runtime-text-replace';
+import { replaceRuntimeText } from '../../../src/modules/execution/file/runtime-text-replace';
 
 describe('replaceRuntimeText', () => {
   it('supports exact strategy', () => {

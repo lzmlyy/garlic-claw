@@ -1,8 +1,8 @@
-import { PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
-import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
-import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
-import { RuntimeGatewayConnectionLifecycleService } from '../../../src/runtime/gateway/runtime-gateway-connection-lifecycle.service';
-import { RuntimeGatewayRemoteTransportService } from '../../../src/runtime/gateway/runtime-gateway-remote-transport.service';
+import { PluginBootstrapService } from '../../../src/modules/plugin/bootstrap/plugin-bootstrap.service';
+import { PluginGovernanceService } from '../../../src/modules/plugin/governance/plugin-governance.service';
+import { PluginPersistenceService } from '../../../src/modules/plugin/persistence/plugin-persistence.service';
+import { RuntimeGatewayConnectionLifecycleService } from '../../../src/modules/runtime/gateway/runtime-gateway-connection-lifecycle.service';
+import { RuntimeGatewayRemoteTransportService } from '../../../src/modules/runtime/gateway/runtime-gateway-remote-transport.service';
 
 describe('Runtime gateway owners', () => {
   it('registers remote plugins against authenticated connections', () => {

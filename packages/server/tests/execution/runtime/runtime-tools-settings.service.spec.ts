@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   readRuntimeToolsConfiguredShellBackend,
   RuntimeToolsSettingsService,
-} from '../../../src/execution/runtime/runtime-tools-settings.service';
+} from '../../../src/modules/execution/runtime/runtime-tools-settings.service';
 
 describe('RuntimeToolsSettingsService', () => {
   const originalConfigPath = process.env.GARLIC_CLAW_SETTINGS_CONFIG_PATH;

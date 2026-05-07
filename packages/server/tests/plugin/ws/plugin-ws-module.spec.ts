@@ -1,6 +1,6 @@
-import { WS_ACTION, WS_TYPE } from '../../../src/plugin/ws/plugin-ws-message.constants';
-import { PluginWsInboundService } from '../../../src/plugin/ws/plugin-ws-inbound.service';
-import { PluginWsModule } from '../../../src/plugin/ws/plugin-ws.module';
+import { WS_ACTION, WS_TYPE } from '../../../src/modules/plugin/ws/plugin-ws-message.constants';
+import { PluginWsInboundService } from '../../../src/modules/plugin/ws/plugin-ws-inbound.service';
+import { PluginWsModule } from '../../../src/modules/plugin/ws/plugin-ws.module';
 
 describe('PluginWsModule inbound handling', () => {
   afterEach(() => {

@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { RuntimeToolPermissionService } from '../../../src/execution/runtime/runtime-tool-permission.service';
-import { RuntimeToolsSettingsService } from '../../../src/execution/runtime/runtime-tools-settings.service';
-import { ConversationStoreService } from '../../../src/runtime/host/conversation-store.service';
+import { RuntimeToolPermissionService } from '../../../src/modules/execution/runtime/runtime-tool-permission.service';
+import { RuntimeToolsSettingsService } from '../../../src/modules/execution/runtime/runtime-tools-settings.service';
+import { ConversationStoreService } from '../../../src/modules/runtime/host/conversation-store.service';
 
 describe('RuntimeToolPermissionService', () => {
   const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

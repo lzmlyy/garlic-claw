@@ -1,4 +1,4 @@
-import { RuntimeFilesystemPostWriteService } from '../../../src/execution/runtime/runtime-filesystem-post-write.service';
+import { RuntimeFilesystemPostWriteService } from '../../../src/modules/execution/runtime/runtime-filesystem-post-write.service';
 
 describe('RuntimeFilesystemPostWriteService', () => {
   it('keeps content unchanged when no provider is registered', () => {

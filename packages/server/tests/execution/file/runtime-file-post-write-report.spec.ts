@@ -1,7 +1,7 @@
 import {
   readRuntimeFilesystemPostWriteSummary,
   renderRuntimeFilesystemPostWriteLines,
-} from '../../../src/execution/file/runtime-file-post-write-report';
+} from '../../../src/modules/execution/file/runtime-file-post-write-report';
 
 describe('renderRuntimeFilesystemPostWriteLines', () => {
   it('groups diagnostics by file and keeps related file diagnostics visible', () => {

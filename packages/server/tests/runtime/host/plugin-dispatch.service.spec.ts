@@ -1,15 +1,15 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { BuiltinPluginRegistryService } from '../../../src/plugin/builtin/builtin-plugin-registry.service';
-import { PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
-import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
-import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
-import { ProjectPluginRegistryService } from '../../../src/plugin/project/project-plugin-registry.service';
-import { RuntimeGatewayConnectionLifecycleService } from '../../../src/runtime/gateway/runtime-gateway-connection-lifecycle.service';
-import { RuntimeGatewayRemoteTransportService } from '../../../src/runtime/gateway/runtime-gateway-remote-transport.service';
-import { PluginDispatchService } from '../../../src/runtime/host/plugin-dispatch.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { BuiltinPluginRegistryService } from '../../../src/modules/plugin/builtin/builtin-plugin-registry.service';
+import { PluginBootstrapService } from '../../../src/modules/plugin/bootstrap/plugin-bootstrap.service';
+import { PluginGovernanceService } from '../../../src/modules/plugin/governance/plugin-governance.service';
+import { PluginPersistenceService } from '../../../src/modules/plugin/persistence/plugin-persistence.service';
+import { ProjectPluginRegistryService } from '../../../src/modules/plugin/project/project-plugin-registry.service';
+import { RuntimeGatewayConnectionLifecycleService } from '../../../src/modules/runtime/gateway/runtime-gateway-connection-lifecycle.service';
+import { RuntimeGatewayRemoteTransportService } from '../../../src/modules/runtime/gateway/runtime-gateway-remote-transport.service';
+import { PluginDispatchService } from '../../../src/modules/runtime/host/plugin-dispatch.service';
 
 describe('PluginDispatchService', () => {
   let projectRootPath: string;

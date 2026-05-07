@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { ProjectSubagentTypeRegistryService } from '../../../src/execution/project/project-subagent-type-registry.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { ProjectSubagentTypeRegistryService } from '../../../src/modules/execution/project/project-subagent-type-registry.service';
 
 describe('ProjectSubagentTypeRegistryService', () => {
   const envKey = 'GARLIC_CLAW_SUBAGENT_PATH';

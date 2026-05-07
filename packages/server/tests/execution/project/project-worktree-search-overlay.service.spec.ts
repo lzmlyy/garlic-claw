@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { ProjectWorktreeSearchOverlayService } from '../../../src/execution/project/project-worktree-search-overlay.service';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { ProjectWorktreeSearchOverlayService } from '../../../src/modules/execution/project/project-worktree-search-overlay.service';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
 
 describe('ProjectWorktreeSearchOverlayService', () => {
   const originalWorkspaceRoot = process.env.GARLIC_CLAW_RUNTIME_WORKSPACES_PATH;
@@ -37,6 +37,7 @@ describe('ProjectWorktreeSearchOverlayService', () => {
 
     fs.mkdirSync(path.join(sessionEnvironment.sessionRoot, 'packages', 'server', 'src'), { recursive: true });
     fs.writeFileSync(path.join(sessionEnvironment.sessionRoot, 'package.json'), '{}', 'utf8');
+    fs.writeFileSync(path.join(sessionEnvironment.sessionRoot, 'packages', 'server', 'package.json'), '{}', 'utf8');
     fs.writeFileSync(
       path.join(sessionEnvironment.sessionRoot, 'packages', 'server', 'src', 'demo.ts'),
       'export const demo = 1;\n',

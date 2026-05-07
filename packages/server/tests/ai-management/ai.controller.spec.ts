@@ -1,4 +1,4 @@
-import { AiController } from '../../src/ai-management/ai.controller';
+import { AiController } from '../../src/modules/ai-management/ai.controller';
 
 describe('AiController', () => {
   const aiManagementService = {

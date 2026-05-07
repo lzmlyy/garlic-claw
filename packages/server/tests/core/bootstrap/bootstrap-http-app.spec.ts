@@ -8,9 +8,11 @@ jest.mock('../../../src/app/app.module', () => ({
   AppModule: class AppModule {},
 }));
 
+import { NestFactory } from '@nestjs/core';
+import { bootstrapHttpApp } from '../../../src/bootstrap/bootstrap-http-app';
+
 describe('bootstrapHttpApp', () => {
   afterEach(() => {
-    jest.resetModules();
     jest.clearAllMocks();
   });
 
@@ -33,7 +35,7 @@ describe('bootstrapHttpApp', () => {
     const toolManagementSettingsService = {
       deleteSourceOverrides: jest.fn(),
     };
-    const bootstrapUserService = { runStartupWarmup: jest.fn() };
+    const bootstrapUserService = { runStartupWarmup: jest.fn(), validateStartupAuthConfig: jest.fn() };
     const app = {
       enableShutdownHooks: jest.fn(),
       get: jest.fn((token: { name?: string }) => {
@@ -61,10 +63,7 @@ describe('bootstrapHttpApp', () => {
       setGlobalPrefix: jest.fn(),
       useGlobalPipes: jest.fn(),
     };
-    const { NestFactory } = await import('@nestjs/core');
     jest.mocked(NestFactory.create).mockResolvedValue(app as never);
-
-    const { bootstrapHttpApp } = await import('../../../src/bootstrap/bootstrap-http-app');
 
     await bootstrapHttpApp();
 

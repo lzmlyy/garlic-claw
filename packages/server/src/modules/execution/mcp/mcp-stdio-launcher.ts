@@ -4,6 +4,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let shuttingDown = false;
+const MCP_CHILD_ENV_KEYS_ENV_KEY = 'GARLIC_CLAW_MCP_CHILD_ENV_KEYS';
 
 function main(): void {
   const [command, ...args] = process.argv.slice(2);
@@ -14,7 +15,7 @@ function main(): void {
   try {
     const target = resolveLaunchTarget(command, args);
     child = spawn(target.command, target.args, {
-      env: process.env,
+      env: readMcpChildEnv(),
       shell: false,
       stdio: 'pipe',
       windowsHide: true,
@@ -36,6 +37,18 @@ export function resolveLaunchTarget(command: string, args: string[]): { command:
     command: process.execPath,
     args: [resolveBundledNpmCli(command), ...args],
   };
+}
+
+export function readMcpChildEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const allowedKeys = new Set((env[MCP_CHILD_ENV_KEYS_ENV_KEY] ?? '')
+    .split('\n')
+    .map((key) => key.trim())
+    .filter((key) => key.length > 0));
+  const entries: Array<[string, string]> = [...allowedKeys].flatMap((key) => {
+    const value = env[key];
+    return typeof value === 'string' ? [[key, value]] : [];
+  });
+  return Object.fromEntries(entries);
 }
 
 function pipeProcessStreams(): void {
