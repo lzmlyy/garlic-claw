@@ -3,9 +3,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { PluginCallContext } from '@garlic-claw/shared';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { SINGLE_USER_ID } from '../../../src/auth/single-user-auth';
-import { ConversationMessageService } from '../../../src/runtime/host/conversation-message.service';
-import { ConversationStoreService } from '../../../src/runtime/host/conversation-store.service';
+import { SINGLE_USER_ID } from '../../../src/modules/auth/single-user-auth';
+import { ConversationMessageService } from '../../../src/modules/runtime/host/conversation-message.service';
+import { ConversationStoreService } from '../../../src/modules/runtime/host/conversation-store.service';
 
 describe('ConversationMessageService', () => {
   const envKey = 'GARLIC_CLAW_CONVERSATIONS_PATH';

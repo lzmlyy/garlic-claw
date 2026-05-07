@@ -414,20 +414,20 @@ async function persistHttpSmokeArtifacts(tempDir, input) {
 async function runSmokeProviderSelectionSteps(apiBase, state, input) {
   if (input.listStepName) {
     await runStep(input.listStepName, async () => {
-      const providers = await getJson(apiBase, '/ai/providers');
+      const providers = await getJson(apiBase, '/ai/providers', { headers: input.headers() });
       ensure(Array.isArray(providers) && providers.some((entry) => entry.id === input.providerId), `Expected providers list to include smoke provider "${input.providerId}"`);
     });
   }
 
   await runStep(input.detailStepName, async () => {
-    const provider = await getJson(apiBase, `/ai/providers/${input.providerId}`);
+    const provider = await getJson(apiBase, `/ai/providers/${input.providerId}`, { headers: input.headers() });
     state.providerId = provider.id;
     state.modelId = input.modelId ?? provider.defaultModel ?? provider.models?.[0] ?? null;
     ensure(typeof state.modelId === 'string' && state.modelId.length > 0, `Expected provider "${input.providerId}" to expose a testable model`);
   });
 
   await runStep(input.modelsStepName, async () => {
-    const models = await getJson(apiBase, `/ai/providers/${state.providerId}/models`);
+    const models = await getJson(apiBase, `/ai/providers/${state.providerId}/models`, { headers: input.headers() });
     ensure(Array.isArray(models) && models.some((entry) => entry.id === state.modelId), 'Expected provider model list to include selected model');
   });
 }
@@ -438,6 +438,7 @@ async function runSmokeConnectionCheck(apiBase, state, input) {
       body: {
         modelId: state.modelId,
       },
+      headers: input.headers(),
       ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
     });
     ensure(result.ok === true, 'Expected provider connection test to succeed');
@@ -515,7 +516,7 @@ async function runSmokeConversationDeleteVerification(apiBase, state, input) {
 
 async function runSmokeProviderDelete(apiBase, state, input) {
   await runStep(input.stepName, async () => {
-    const result = await deleteJson(apiBase, `/ai/providers/${state.providerId}`);
+    const result = await deleteJson(apiBase, `/ai/providers/${state.providerId}`, { headers: input.headers() });
     ensure(result.success === true, 'Expected provider delete response');
   });
 }
@@ -524,11 +525,12 @@ async function runSmokeProviderDeleteVerification(apiBase, state, input) {
   await runStep(input.detailStepName, async () => {
     await getJson(apiBase, `/ai/providers/${state.providerId}`, {
       expectedStatus: 404,
+      headers: input.headers(),
     });
   });
 
   await runStep(input.listStepName, async () => {
-    const providers = await getJson(apiBase, '/ai/providers');
+    const providers = await getJson(apiBase, '/ai/providers', { headers: input.headers() });
     ensure(!providers.some((entry) => entry.id === state.providerId), 'Expected provider list to exclude deleted provider');
   });
 }
@@ -574,6 +576,7 @@ async function runContextCompactionModelSmoke(apiBase, state, input) {
           },
         },
       },
+      headers: input.headers(),
     });
     ensure(config.values.contextCompaction.strategy === 'summary', 'Expected summary compaction strategy to persist');
   });
@@ -630,6 +633,7 @@ async function runSubagentAutoCompactionSmoke(apiBase, state, input) {
           contextLength: 256,
           name: 'Smoke Auto Compaction',
         },
+        headers: input.headers(),
       });
       ensure(model.id === compactionModelId, 'Expected auto compaction smoke model to be created');
       ensure(model.contextLength === 256, 'Expected auto compaction smoke model to expose small context length');
@@ -663,6 +667,7 @@ async function runSubagentAutoCompactionSmoke(apiBase, state, input) {
             },
           },
         },
+        headers: input.headers(),
       });
       ensure(config.values.contextCompaction.keepRecentMessages === 0, 'Expected auto compaction smoke config to keep zero recent messages');
       ensure(config.values.contextCompaction.strategy === 'summary', 'Expected auto compaction smoke to use summary strategy');
@@ -708,7 +713,7 @@ async function runSubagentAutoCompactionSmoke(apiBase, state, input) {
     isolatedConversationId = null;
 
     await runStep('ai.model.delete.auto-compaction', async () => {
-      const result = await deleteJson(apiBase, `/ai/providers/${state.providerId}/models/${compactionModelId}`);
+      const result = await deleteJson(apiBase, `/ai/providers/${state.providerId}/models/${compactionModelId}`, { headers: input.headers() });
       ensure(result.success === true, 'Expected auto compaction smoke model delete response');
     });
     state.modelId = originalModelId;
@@ -723,6 +728,7 @@ async function runRealProviderHttpFlow(apiBase, state, input) {
 
   await runSmokeProviderSelectionSteps(apiBase, state, {
     detailStepName: 'ai.provider.get.real',
+    headers: userHeaders,
     listStepName: 'ai.providers.list.real',
     modelId: input.realModelId,
     modelsStepName: 'ai.models.list.real',
@@ -730,6 +736,7 @@ async function runRealProviderHttpFlow(apiBase, state, input) {
   });
 
   await runSmokeConnectionCheck(apiBase, state, {
+    headers: userHeaders,
     stepName: 'ai.test-connection.real',
     timeoutMs: 60_000,
   });
@@ -836,11 +843,13 @@ async function runCoreHttpFlow(apiBase, state, input) {
   });
 
   await runSmokeProviderDelete(apiBase, state, {
+    headers: input.headers,
     stepName: 'ai.provider.delete',
   });
 
   await runSmokeProviderDeleteVerification(apiBase, state, {
     detailStepName: 'ai.provider.get.after-delete',
+    headers: input.headers,
     listStepName: 'ai.providers.list.after-delete',
   });
 }
@@ -906,8 +915,8 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('ai.provider-catalog+providers.list.initial', async () => {
     const [catalog, providers] = await Promise.all([
-      getJson(apiBase, '/ai/provider-catalog'),
-      getJson(apiBase, '/ai/providers'),
+      getJson(apiBase, '/ai/provider-catalog', { headers: adminHeaders() }),
+      getJson(apiBase, '/ai/providers', { headers: adminHeaders() }),
     ]);
     ensure(Array.isArray(catalog) && catalog.length > 0, 'Expected provider catalog to be non-empty');
     ensure(Array.isArray(providers), 'Expected providers list to be an array');
@@ -923,12 +932,13 @@ async function runHttpFlow(apiBase, state, input) {
         models: [state.modelId, 'smoke-vision'],
         name: 'Smoke OpenAI',
       },
+      headers: adminHeaders(),
     });
     ensure(provider.id === state.providerId, 'Expected upserted provider id to match');
   });
 
   await runStep('ai.providers.list', async () => {
-    const providers = await getJson(apiBase, '/ai/providers');
+    const providers = await getJson(apiBase, '/ai/providers', { headers: adminHeaders() });
     ensure(providers.some((entry) => entry.id === state.providerId), 'Expected providers list to include smoke provider');
   });
 
@@ -938,6 +948,7 @@ async function runHttpFlow(apiBase, state, input) {
         providerId: state.providerId,
         modelId: state.modelId,
       },
+      headers: adminHeaders(),
     });
     ensure(selection?.providerId === state.providerId, 'Expected updated default selection to point at smoke provider');
     ensure(selection?.modelId === state.modelId, 'Expected updated default selection to point at smoke model');
@@ -945,7 +956,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('ai.default-selection.get', async () => {
-    const selection = await getJson(apiBase, '/ai/default-selection');
+    const selection = await getJson(apiBase, '/ai/default-selection', { headers: adminHeaders() });
     ensure(selection?.providerId === state.providerId, 'Expected default selection to point at smoke provider');
     ensure(selection?.modelId === state.modelId, 'Expected default selection to point at smoke model');
     ensure(selection?.source === 'default', 'Expected default selection source to be default');
@@ -953,6 +964,7 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runSmokeProviderSelectionSteps(apiBase, state, {
     detailStepName: 'ai.provider.get',
+    headers: adminHeaders,
     listStepName: null,
     modelId: state.modelId,
     modelsStepName: 'ai.models.list',
@@ -960,7 +972,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('ai.discover-models', async () => {
-    const models = await postJson(apiBase, `/ai/providers/${state.providerId}/discover-models`);
+    const models = await postJson(apiBase, `/ai/providers/${state.providerId}/discover-models`, { headers: adminHeaders() });
     ensure(Array.isArray(models) && models.some((entry) => entry.id === state.modelId), 'Expected discovered models to include fake model');
   });
 
@@ -975,13 +987,14 @@ async function runHttpFlow(apiBase, state, input) {
         contextLength: 65_536,
         name: 'Smoke Extra',
       },
+      headers: adminHeaders(),
     });
     ensure(model.id === 'smoke-extra', 'Expected extra model to be created');
     ensure(model.contextLength === 65_536, 'Expected explicit context length to persist on model upsert');
   });
 
   await runStep('ai.model.context-length', async () => {
-    const models = await getJson(apiBase, `/ai/providers/${state.providerId}/models`);
+    const models = await getJson(apiBase, `/ai/providers/${state.providerId}/models`, { headers: adminHeaders() });
     const extraModel = models.find((entry) => entry.id === 'smoke-extra');
     ensure(extraModel?.contextLength === 65_536, 'Expected model list to expose persisted context length');
   });
@@ -991,6 +1004,7 @@ async function runHttpFlow(apiBase, state, input) {
       body: {
         modelId: state.modelId,
       },
+      headers: adminHeaders(),
     });
     ensure(provider.defaultModel === state.modelId, 'Expected default model update to persist');
   });
@@ -1003,11 +1017,13 @@ async function runHttpFlow(apiBase, state, input) {
         },
         reasoning: true,
       },
+      headers: adminHeaders(),
     });
     ensure(model.capabilities.reasoning === true, 'Expected model capability update to persist');
   });
 
   await runSmokeConnectionCheck(apiBase, state, {
+    headers: adminHeaders,
     stepName: 'ai.test-connection',
   });
 
@@ -1019,7 +1035,7 @@ async function runHttpFlow(apiBase, state, input) {
   }
 
   await runStep('ai.vision-fallback.get', async () => {
-    const config = await getJson(apiBase, '/ai/vision-fallback');
+    const config = await getJson(apiBase, '/ai/vision-fallback', { headers: adminHeaders() });
     ensure(typeof config.enabled === 'boolean', 'Expected vision fallback config');
   });
 
@@ -1032,6 +1048,7 @@ async function runHttpFlow(apiBase, state, input) {
         prompt: 'Describe this image for smoke',
         providerId: state.providerId,
       },
+      headers: adminHeaders(),
     });
     ensure(config.enabled === true, 'Expected vision fallback update to persist');
   });
@@ -1066,7 +1083,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('ai.host-model-routing.get', async () => {
-    const routing = await getJson(apiBase, '/ai/host-model-routing');
+    const routing = await getJson(apiBase, '/ai/host-model-routing', { headers: adminHeaders() });
     ensure(Array.isArray(routing.fallbackChatModels), 'Expected host routing config');
   });
 
@@ -1078,12 +1095,13 @@ async function runHttpFlow(apiBase, state, input) {
           conversationTitle: { modelId: state.modelId, providerId: state.providerId },
         },
       },
+      headers: adminHeaders(),
     });
     ensure(Array.isArray(routing.fallbackChatModels) && routing.fallbackChatModels.length === 1, 'Expected host routing update to persist');
   });
 
   await runStep('skills.list', async () => {
-    const skills = await getJson(apiBase, '/skills');
+    const skills = await getJson(apiBase, '/skills', { headers: adminHeaders() });
     ensure(Array.isArray(skills) && skills.some((entry) => entry.id === input.smokeSkillId), 'Expected smoke skill to be discoverable');
     ensure(skills.some((entry) =>
       entry.id === 'project/weather-query'
@@ -1094,25 +1112,26 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('skills.refresh', async () => {
-    const skills = await postJson(apiBase, '/skills/refresh');
+    const skills = await postJson(apiBase, '/skills/refresh', { headers: adminHeaders() });
     ensure(Array.isArray(skills) && skills.some((entry) => entry.id === input.smokeSkillId), 'Expected refresh to retain smoke skill');
   });
 
   await runStep('skills.governance', async () => {
-    const skills = await getJson(apiBase, '/skills');
+    const skills = await getJson(apiBase, '/skills', { headers: adminHeaders() });
     ensure(Array.isArray(skills) && skills.length > 0, 'Expected discovered skills before updating governance');
     for (const skill of skills) {
       const detail = await putJson(apiBase, `/skills/${encodeURIComponent(skill.id)}/governance`, {
         body: {
           loadPolicy: 'deny',
         },
+        headers: adminHeaders(),
       });
       ensure(detail.governance?.loadPolicy === 'deny', `Expected skill governance update to persist for ${skill.id}`);
     }
   });
 
   await runStep('skills.events.get', async () => {
-    const events = await getJson(apiBase, `/skills/${encodeURIComponent(input.smokeSkillId)}/events?limit=20`);
+    const events = await getJson(apiBase, `/skills/${encodeURIComponent(input.smokeSkillId)}/events?limit=20`, { headers: adminHeaders() });
     ensure(Array.isArray(events.items), 'Expected skill events payload');
   });
 
@@ -1200,7 +1219,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('personas.list', async () => {
-    const personas = await getJson(apiBase, '/personas');
+    const personas = await getJson(apiBase, '/personas', { headers: adminHeaders() });
     ensure(Array.isArray(personas) && personas.length > 0, 'Expected personas list to be non-empty');
     state.defaultPersonaId = personas.find((entry) => entry.isDefault)?.id ?? personas[0].id;
     state.personaId = state.defaultPersonaId;
@@ -1240,7 +1259,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('personas.avatar.get', async () => {
-    const avatar = await getJson(apiBase, `/personas/${state.managedPersonaId}/avatar`);
+    const avatar = await getJson(apiBase, `/personas/${state.managedPersonaId}/avatar`, { headers: adminHeaders() });
     ensure(typeof avatar === 'string' && avatar.includes('<svg'), 'Expected persona avatar endpoint to return svg content');
   });
 
@@ -1255,7 +1274,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('personas.get', async () => {
-    const persona = await getJson(apiBase, `/personas/${state.managedPersonaId}`);
+    const persona = await getJson(apiBase, `/personas/${state.managedPersonaId}`, { headers: adminHeaders() });
     ensure(persona.id === state.managedPersonaId, 'Expected persona detail to match created persona');
     ensure(persona.beginDialogs?.[0]?.content === '先给出结构化提纲。', 'Expected persona detail to include begin dialogs');
   });
@@ -1361,6 +1380,7 @@ async function runHttpFlow(apiBase, state, input) {
       body: {
         loadPolicy: 'allow',
       },
+      headers: adminHeaders(),
     });
     ensure(detail.governance?.loadPolicy === 'allow', 'Expected skill governance allow update to persist');
   });
@@ -1407,7 +1427,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('ai.subagent-config.get', async () => {
-    const config = await getJson(apiBase, '/ai/subagent-config');
+    const config = await getJson(apiBase, '/ai/subagent-config', { headers: adminHeaders() });
     ensure(typeof config === 'object' && config !== null, 'Expected subagent config snapshot');
     ensure(config.schema?.items?.llm?.type === 'object', 'Expected subagent llm schema');
     ensure(config.schema?.items?.session?.type === 'object', 'Expected subagent session schema');
@@ -1425,6 +1445,7 @@ async function runHttpFlow(apiBase, state, input) {
           },
         },
       },
+      headers: adminHeaders(),
     });
     ensure(config.values?.llm?.targetSubagentType === 'general', 'Expected subagent targetSubagentType to persist');
     ensure(config.values?.session?.maxConversationSubagents === 6, 'Expected subagent maxConversationSubagents to persist');
@@ -1570,7 +1591,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('ai.runtime-tools-config.get', async () => {
-    const config = await getJson(apiBase, '/ai/runtime-tools-config');
+    const config = await getJson(apiBase, '/ai/runtime-tools-config', { headers: adminHeaders() });
     ensure(typeof config === 'object' && config !== null, 'Expected runtime tools config snapshot');
     ensure(config.schema?.items?.shellBackend?.type === 'string', 'Expected runtime tools shell backend schema');
     ensure(Array.isArray(config.schema?.items?.shellBackend?.options), 'Expected runtime tools shell backend options');
@@ -1597,6 +1618,7 @@ async function runHttpFlow(apiBase, state, input) {
           },
         },
       },
+      headers: adminHeaders(),
     });
     ensure(config.values?.shellBackend === readSmokeRuntimeToolsShellBackendKind(), 'Expected runtime tools shell backend to persist');
     ensure(config.values?.bashOutput?.maxLines === 2, 'Expected runtime tools config maxLines to persist');
@@ -1667,6 +1689,7 @@ async function runHttpFlow(apiBase, state, input) {
           },
         },
       },
+      headers: adminHeaders(),
     });
     ensure(config.values?.bashOutput?.maxBytes === 16, 'Expected runtime tools config capture maxBytes to persist');
     ensure(config.values?.bashOutput?.maxLines === 200, 'Expected runtime tools config capture maxLines to persist');
@@ -1747,6 +1770,7 @@ async function runHttpFlow(apiBase, state, input) {
           },
         },
       },
+      headers: adminHeaders(),
     });
     ensure(config.values?.shellBackend === readSmokeRuntimeToolsShellBackendKind(), 'Expected runtime tools shell backend to restore');
     ensure(config.values?.bashOutput?.maxLines === 200, 'Expected runtime tools config maxLines to restore');
@@ -2400,7 +2424,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.list', async () => {
-    const plugins = await getJson(apiBase, '/plugins');
+    const plugins = await getJson(apiBase, '/plugins', { headers: adminHeaders() });
     ensure(Array.isArray(plugins), 'Expected plugin list payload');
     const projectPlugin = plugins.find((entry) => entry.id === 'project.smoke-local-echo');
     ensure(projectPlugin, 'Expected project local plugin from config/plugins to appear in plugin list');
@@ -2409,24 +2433,24 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.connected', async () => {
-    const plugins = await getJson(apiBase, '/plugins/connected');
+    const plugins = await getJson(apiBase, '/plugins/connected', { headers: adminHeaders() });
     ensure(Array.isArray(plugins), 'Expected connected plugin list payload');
   });
 
   await runStep('plugins.project-local.health', async () => {
-    const health = await getJson(apiBase, '/plugins/project.smoke-local-echo/health');
+    const health = await getJson(apiBase, '/plugins/project.smoke-local-echo/health', { headers: adminHeaders() });
     ensure(typeof health === 'object' && health !== null, 'Expected project local plugin health payload');
   });
 
   await runStep('plugins.project-local.reload', async () => {
-    const result = await postJson(apiBase, '/plugins/project.smoke-local-echo/actions/reload');
+    const result = await postJson(apiBase, '/plugins/project.smoke-local-echo/actions/reload', { headers: adminHeaders() });
     ensure(result.accepted === true, 'Expected project local plugin reload action to succeed');
-    const plugins = await getJson(apiBase, '/plugins');
+    const plugins = await getJson(apiBase, '/plugins', { headers: adminHeaders() });
     ensure(plugins.some((entry) => entry.id === 'project.smoke-local-echo'), 'Expected project local plugin to remain registered after reload');
   });
 
   await runStep('ai.context-governance.get', async () => {
-    const config = await getJson(apiBase, '/ai/context-governance-config');
+    const config = await getJson(apiBase, '/ai/context-governance-config', { headers: adminHeaders() });
     ensure(typeof config === 'object' && config !== null, 'Expected context governance config snapshot');
   });
 
@@ -2444,6 +2468,7 @@ async function runHttpFlow(apiBase, state, input) {
           },
         },
       },
+      headers: adminHeaders(),
     });
     ensure(!('memoryContext' in config.values), 'Expected context governance config to exclude memory settings');
     ensure(config.values.contextCompaction.strategy === 'sliding', 'Expected context governance compaction strategy to persist');
@@ -2451,8 +2476,8 @@ async function runHttpFlow(apiBase, state, input) {
 
   await runStep('commands.overview+version', async () => {
     const [overview, version] = await Promise.all([
-      getJson(apiBase, '/command-catalog/overview'),
-      getJson(apiBase, '/command-catalog/version'),
+      getJson(apiBase, '/command-catalog/overview', { headers: adminHeaders() }),
+      getJson(apiBase, '/command-catalog/version', { headers: adminHeaders() }),
     ]);
     ensure(Array.isArray(overview.commands), 'Expected command overview payload');
     ensure(overview.commands.some((entry) => entry.commandId === 'internal.context-governance:/compact:command'), 'Expected internal context governance command');
@@ -2480,7 +2505,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.subagent-overview', async () => {
-    const overview = await getJson(apiBase, '/subagents/overview');
+    const overview = await getJson(apiBase, '/subagents/overview', { headers: adminHeaders() });
     ensure(Array.isArray(overview.subagents), 'Expected subagent overview payload');
   });
 
@@ -2490,7 +2515,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.subagents.types', async () => {
-    const subagentTypes = await getJson(apiBase, '/subagents/types');
+    const subagentTypes = await getJson(apiBase, '/subagents/types', { headers: adminHeaders() });
     ensure(Array.isArray(subagentTypes), 'Expected subagent type list payload');
     ensure(subagentTypes.some((entry) => entry.id === 'general'), 'Expected general subagent type');
     ensure(subagentTypes.some((entry) => entry.id === 'explore'), 'Expected explore subagent type');
@@ -2500,6 +2525,7 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('plugins.subagent-detail.missing', async () => {
     await getJson(apiBase, '/subagents/subagent-session-missing', {
       expectedStatus: 404,
+      headers: adminHeaders(),
     });
   });
 
@@ -2528,34 +2554,35 @@ async function runHttpFlow(apiBase, state, input) {
         },
         version: '1.0.0',
       },
+    headers: adminHeaders(),
     });
     ensure(plugin.id === state.remotePluginId, 'Expected remote plugin slot to be upserted');
   });
 
   await runStep('plugins.remote.connection', async () => {
-    const remoteConnection = await getJson(apiBase, `/plugins/${state.remotePluginId}/remote-connection`);
+    const remoteConnection = await getJson(apiBase, `/plugins/${state.remotePluginId}/remote-connection`, { headers: adminHeaders() });
     state.remoteConnection = remoteConnection;
     ensure(remoteConnection.pluginName === state.remotePluginId, 'Expected remote connection payload');
     ensure(remoteConnection.accessKey === 'smoke-remote-access-key', 'Expected remote connection to expose persisted access key');
   });
 
   await runStep('plugins.remote.health.offline', async () => {
-    const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
+    const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`, { headers: adminHeaders() });
     ensure(health?.status === 'offline', 'Expected unconnected remote plugin health to be offline');
   });
 
   await runStep('plugins.remote.connect', async () => {
     state.remotePluginHandle = await startRemoteRoutePlugin(input.remotePluginScriptPath, state.remoteConnection);
-    await waitForPluginHealth(apiBase, state.remotePluginId, true);
+    await waitForPluginHealth(apiBase, state.remotePluginId, true, adminHeaders);
   });
 
   await runStep('plugins.remote.health.online', async () => {
-    const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
+    const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`, { headers: adminHeaders() });
     ensure(health?.status === 'healthy', 'Expected connected remote plugin health to be healthy');
   });
 
   await runStep('plugins.config.get', async () => {
-    const config = await getJson(apiBase, `/plugins/${state.remotePluginId}/config`);
+    const config = await getJson(apiBase, `/plugins/${state.remotePluginId}/config`, { headers: adminHeaders() });
     ensure(typeof config === 'object' && config !== null, 'Expected plugin config snapshot payload');
   });
 
@@ -2567,12 +2594,13 @@ async function runHttpFlow(apiBase, state, input) {
         },
       },
       expectedStatus: 400,
+      headers: adminHeaders(),
     });
     ensure(String(result?.message ?? '').includes('未声明配置 schema'), 'Expected plugin config update without schema to be rejected');
   });
 
   await runStep('plugins.llm-preference.get', async () => {
-    const preference = await getJson(apiBase, `/plugins/${state.remotePluginId}/llm-preference`);
+    const preference = await getJson(apiBase, `/plugins/${state.remotePluginId}/llm-preference`, { headers: adminHeaders() });
     ensure(preference.mode === 'inherit', 'Expected plugin llm preference to default to inherit');
   });
 
@@ -2583,6 +2611,7 @@ async function runHttpFlow(apiBase, state, input) {
         modelId: state.modelId,
         providerId: state.providerId,
       },
+    headers: adminHeaders(),
     });
     ensure(preference.mode === 'override', 'Expected plugin llm preference override to persist');
     ensure(preference.modelId === state.modelId, 'Expected plugin llm preference model to persist');
@@ -2590,7 +2619,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.scopes.get', async () => {
-    const scope = await getJson(apiBase, `/plugins/${state.remotePluginId}/scopes`);
+    const scope = await getJson(apiBase, `/plugins/${state.remotePluginId}/scopes`, { headers: adminHeaders() });
     ensure(typeof scope.defaultEnabled === 'boolean', 'Expected plugin scope payload');
   });
 
@@ -2602,13 +2631,14 @@ async function runHttpFlow(apiBase, state, input) {
         },
         defaultEnabled: true,
       },
+    headers: adminHeaders(),
     });
     ensure(scope.defaultEnabled === true, 'Expected plugin default scope to remain enabled');
     ensure(scope.conversations?.[state.conversationId] === true, 'Expected plugin conversation scope update to persist');
   });
 
   await runStep('plugins.event-log.get', async () => {
-    const settings = await getJson(apiBase, `/plugins/${state.remotePluginId}/event-log`);
+    const settings = await getJson(apiBase, `/plugins/${state.remotePluginId}/event-log`, { headers: adminHeaders() });
     ensure(typeof settings.maxFileSizeMb === 'number', 'Expected plugin event log settings payload');
   });
 
@@ -2617,18 +2647,19 @@ async function runHttpFlow(apiBase, state, input) {
       body: {
         maxFileSizeMb: 2,
       },
+    headers: adminHeaders(),
     });
     ensure(settings.maxFileSizeMb === 2, 'Expected plugin event log settings update to persist');
   });
 
   await runStep('plugins.events.get', async () => {
-    const events = await getJson(apiBase, `/plugins/${state.remotePluginId}/events?limit=20`);
+    const events = await getJson(apiBase, `/plugins/${state.remotePluginId}/events?limit=20`, { headers: adminHeaders() });
     ensure(Array.isArray(events.items), 'Expected plugin events list payload');
     ensure(events.items.length > 0, 'Expected plugin events list to contain governance records');
   });
 
   await runStep('plugins.storage.list.initial', async () => {
-    const entries = await getJson(apiBase, `/plugins/${state.remotePluginId}/storage`);
+    const entries = await getJson(apiBase, `/plugins/${state.remotePluginId}/storage`, { headers: adminHeaders() });
     ensure(Array.isArray(entries), 'Expected plugin storage list payload');
   });
 
@@ -2641,28 +2672,29 @@ async function runHttpFlow(apiBase, state, input) {
           source: 'http-smoke',
         },
       },
+    headers: adminHeaders(),
     });
     ensure(entry.key === 'smoke/runtime', 'Expected plugin storage key to persist');
     ensure(entry.value?.enabled === true, 'Expected plugin storage value to persist');
   });
 
   await runStep('plugins.storage.list.after-put', async () => {
-    const entries = await getJson(apiBase, `/plugins/${state.remotePluginId}/storage?prefix=smoke/`);
+    const entries = await getJson(apiBase, `/plugins/${state.remotePluginId}/storage?prefix=smoke/`, { headers: adminHeaders() });
     ensure(entries.some((entry) => entry.key === 'smoke/runtime'), 'Expected plugin storage list to include stored key');
   });
 
   await runStep('plugins.storage.delete', async () => {
-    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}/storage?key=${encodeURIComponent('smoke/runtime')}`);
+    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}/storage?key=${encodeURIComponent('smoke/runtime')}`, { headers: adminHeaders() });
     ensure(deleted === true, 'Expected plugin storage deletion to succeed');
   });
 
   await runStep('plugins.storage.list.after-delete', async () => {
-    const entries = await getJson(apiBase, `/plugins/${state.remotePluginId}/storage?prefix=smoke/`);
+    const entries = await getJson(apiBase, `/plugins/${state.remotePluginId}/storage?prefix=smoke/`, { headers: adminHeaders() });
     ensure(!entries.some((entry) => entry.key === 'smoke/runtime'), 'Expected plugin storage list to exclude deleted key');
   });
 
   await runStep('plugins.remote.metadata.cached.initial', async () => {
-    const plugins = await getJson(apiBase, '/plugins');
+    const plugins = await getJson(apiBase, '/plugins', { headers: adminHeaders() });
     const plugin = plugins.find((entry) => entry.name === state.remotePluginId);
     ensure(plugin?.remote?.metadataCache?.status === 'cached', 'Expected remote plugin metadata cache to be cached after first registration');
     ensure(typeof plugin.remote.metadataCache.lastSyncedAt === 'string', 'Expected remote plugin metadata cache lastSyncedAt');
@@ -2840,17 +2872,17 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.crons.list', async () => {
-    const crons = await getJson(apiBase, `/plugins/${state.remotePluginId}/crons`);
+    const crons = await getJson(apiBase, `/plugins/${state.remotePluginId}/crons`, { headers: adminHeaders() });
     ensure(crons.some((entry) => entry.id === state.remotePluginCronId), 'Expected plugin cron list to include created cron');
   });
 
   await runStep('plugins.crons.delete.success', async () => {
-    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}/crons/${state.remotePluginCronId}`);
+    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}/crons/${state.remotePluginCronId}`, { headers: adminHeaders() });
     ensure(deleted === true, 'Expected deleting created plugin cron to succeed');
   });
 
   await runStep('plugins.crons.list.after-delete', async () => {
-    const crons = await getJson(apiBase, `/plugins/${state.remotePluginId}/crons`);
+    const crons = await getJson(apiBase, `/plugins/${state.remotePluginId}/crons`, { headers: adminHeaders() });
     ensure(!crons.some((entry) => entry.id === state.remotePluginCronId), 'Expected plugin cron list to exclude deleted cron');
   });
 
@@ -2866,28 +2898,28 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.sessions.list.active', async () => {
-    const sessions = await getJson(apiBase, `/plugins/${state.remotePluginId}/sessions`);
+    const sessions = await getJson(apiBase, `/plugins/${state.remotePluginId}/sessions`, { headers: adminHeaders() });
     ensure(sessions.some((entry) => entry.conversationId === state.conversationId), 'Expected plugin session list to include created session');
   });
 
   await runStep('plugins.sessions.delete.success', async () => {
-    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}/sessions/${state.conversationId}`);
+    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}/sessions/${state.conversationId}`, { headers: adminHeaders() });
     ensure(deleted === true, 'Expected deleting created plugin session to succeed');
   });
 
   await runStep('plugins.sessions.list.after-delete', async () => {
-    const sessions = await getJson(apiBase, `/plugins/${state.remotePluginId}/sessions`);
+    const sessions = await getJson(apiBase, `/plugins/${state.remotePluginId}/sessions`, { headers: adminHeaders() });
     ensure(!sessions.some((entry) => entry.conversationId === state.conversationId), 'Expected plugin session list to exclude deleted session');
   });
 
   await runStep('plugins.remote.action.refresh-metadata', async () => {
-    const result = await postJson(apiBase, `/plugins/${state.remotePluginId}/actions/refresh-metadata`);
+    const result = await postJson(apiBase, `/plugins/${state.remotePluginId}/actions/refresh-metadata`, { headers: adminHeaders() });
     ensure(result.accepted === true, 'Expected remote plugin refresh-metadata action to be accepted');
   });
 
   await runStep('plugins.remote.health.disconnected', async () => {
-    await waitForPluginHealth(apiBase, state.remotePluginId, false);
-    const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`);
+    await waitForPluginHealth(apiBase, state.remotePluginId, false, adminHeaders);
+    const health = await getJson(apiBase, `/plugins/${state.remotePluginId}/health`, { headers: adminHeaders() });
     ensure(health?.status === 'offline', 'Expected refresh-metadata action to disconnect remote plugin before re-register');
   });
 
@@ -2902,11 +2934,11 @@ async function runHttpFlow(apiBase, state, input) {
       state.remoteConnection,
       'refresh-v2',
     );
-    await waitForPluginHealth(apiBase, state.remotePluginId, true);
+    await waitForPluginHealth(apiBase, state.remotePluginId, true, adminHeaders);
   });
 
   await runStep('plugins.remote.metadata.cached.refreshed', async () => {
-    const plugins = await getJson(apiBase, '/plugins');
+    const plugins = await getJson(apiBase, '/plugins', { headers: adminHeaders() });
     const plugin = plugins.find((entry) => entry.name === state.remotePluginId);
     ensure(plugin?.remote?.metadataCache?.status === 'cached', 'Expected remote plugin metadata cache to remain cached after refresh');
     ensure(typeof plugin.remote.metadataCache.lastSyncedAt === 'string', 'Expected refreshed metadata cache lastSyncedAt');
@@ -2918,21 +2950,21 @@ async function runHttpFlow(apiBase, state, input) {
   await runStep('plugins.remote.stop-client.after-refresh', async () => {
     await state.remotePluginHandle?.stop?.();
     state.remotePluginHandle = null;
-    await waitForPluginHealth(apiBase, state.remotePluginId, false);
+    await waitForPluginHealth(apiBase, state.remotePluginId, false, adminHeaders);
   });
 
   await runStep('plugins.remote.delete', async () => {
-    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}`);
+    const deleted = await deleteJson(apiBase, `/plugins/${state.remotePluginId}`, { headers: adminHeaders() });
     ensure(deleted.pluginId === state.remotePluginId, 'Expected remote plugin deletion to succeed');
   });
 
   await runStep('plugins.list.after-remote-delete', async () => {
-    const plugins = await getJson(apiBase, '/plugins');
+    const plugins = await getJson(apiBase, '/plugins', { headers: adminHeaders() });
     ensure(!plugins.some((entry) => entry.pluginId === state.remotePluginId), 'Expected plugin list to exclude deleted remote plugin');
   });
 
   await runStep('tools.overview', async () => {
-    const overview = await getJson(apiBase, '/tools/overview');
+    const overview = await getJson(apiBase, '/tools/overview', { headers: adminHeaders() });
     ensure(Array.isArray(overview.sources), 'Expected tool overview sources');
     const runtimeSource = overview.sources.find((entry) => entry.kind === 'internal' && entry.id === 'runtime-tools');
     const subagentSource = overview.sources.find((entry) => entry.kind === 'internal' && entry.id === 'subagent');
@@ -2949,6 +2981,7 @@ async function runHttpFlow(apiBase, state, input) {
       body: {
         enabled: false,
       },
+      headers: adminHeaders(),
     });
     ensure(source.enabled === false, 'Expected tool source to disable');
   });
@@ -2958,6 +2991,7 @@ async function runHttpFlow(apiBase, state, input) {
       body: {
         enabled: true,
       },
+      headers: adminHeaders(),
     });
     ensure(source.enabled === true, 'Expected tool source to re-enable');
   });
@@ -2967,6 +3001,7 @@ async function runHttpFlow(apiBase, state, input) {
       body: {
         enabled: false,
       },
+      headers: adminHeaders(),
     });
     ensure(tool.enabled === false, 'Expected tool to disable');
   });
@@ -2976,12 +3011,13 @@ async function runHttpFlow(apiBase, state, input) {
       body: {
         enabled: true,
       },
+      headers: adminHeaders(),
     });
     ensure(tool.enabled === true, 'Expected tool to re-enable');
   });
 
   await runStep('mcp.servers.get.initial', async () => {
-    const snapshot = await getJson(apiBase, '/mcp/servers');
+    const snapshot = await getJson(apiBase, '/mcp/servers', { headers: adminHeaders() });
     ensure(Array.isArray(snapshot.servers), 'Expected MCP snapshot');
   });
 
@@ -2993,22 +3029,23 @@ async function runHttpFlow(apiBase, state, input) {
         env: {},
         name: state.mcpName,
       },
+    headers: adminHeaders(),
     });
     ensure(server.name === state.mcpName, 'Expected MCP create response');
   });
 
   await runStep('mcp.servers.get.after-create', async () => {
-    const snapshot = await getJson(apiBase, '/mcp/servers');
+    const snapshot = await getJson(apiBase, '/mcp/servers', { headers: adminHeaders() });
     ensure(snapshot.servers.some((entry) => entry.name === state.mcpName), 'Expected MCP list to include created server');
   });
 
   await runStep('mcp.servers.events.get', async () => {
-    const events = await getJson(apiBase, `/mcp/servers/${encodeURIComponent(state.mcpName)}/events?limit=20`);
+    const events = await getJson(apiBase, `/mcp/servers/${encodeURIComponent(state.mcpName)}/events?limit=20`, { headers: adminHeaders() });
     ensure(Array.isArray(events.items), 'Expected MCP events payload');
   });
 
   await runStep('tools.overview.after-mcp-create', async () => {
-    const overview = await getJson(apiBase, '/tools/overview');
+    const overview = await getJson(apiBase, '/tools/overview', { headers: adminHeaders() });
     ensure(
       overview.sources.some((entry) => entry.kind === 'mcp' && entry.id === state.mcpName && entry.health === 'healthy' && entry.totalTools > 0),
       'Expected tools overview to include a healthy MCP source with discovered tools',
@@ -3020,7 +3057,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('tools.source.action.mcp.health-check', async () => {
-    const result = await postJson(apiBase, `/tools/sources/mcp/${encodeURIComponent(state.mcpName)}/actions/health-check`);
+    const result = await postJson(apiBase, `/tools/sources/mcp/${encodeURIComponent(state.mcpName)}/actions/health-check`, { headers: adminHeaders() });
     ensure(result.accepted === true && result.message.includes('passed'), 'Expected MCP source health-check to succeed');
   });
 
@@ -3032,23 +3069,24 @@ async function runHttpFlow(apiBase, state, input) {
         env: {},
         name: state.mcpName,
       },
+    headers: adminHeaders(),
     });
     ensure(server.name === state.mcpName, 'Expected MCP update response');
   });
 
   await runStep('mcp.servers.get.after-update', async () => {
-    const snapshot = await getJson(apiBase, '/mcp/servers');
+    const snapshot = await getJson(apiBase, '/mcp/servers', { headers: adminHeaders() });
     const server = snapshot.servers.find((entry) => entry.name === state.mcpName);
     ensure(server?.args?.includes('--updated'), 'Expected MCP list to reflect updated args');
   });
 
   await runStep('mcp.servers.delete', async () => {
-    const deleted = await deleteJson(apiBase, `/mcp/servers/${state.mcpName}`);
+    const deleted = await deleteJson(apiBase, `/mcp/servers/${state.mcpName}`, { headers: adminHeaders() });
     ensure(deleted.deleted === true, 'Expected MCP delete response');
   });
 
   await runStep('mcp.servers.get.after-delete', async () => {
-    const snapshot = await getJson(apiBase, '/mcp/servers');
+    const snapshot = await getJson(apiBase, '/mcp/servers', { headers: adminHeaders() });
     ensure(!snapshot.servers.some((entry) => entry.name === state.mcpName), 'Expected MCP list to exclude deleted server');
   });
 
@@ -3186,7 +3224,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.subagent-overview.with-subagent', async () => {
-    const overview = await getJson(apiBase, '/subagents/overview');
+    const overview = await getJson(apiBase, '/subagents/overview', { headers: adminHeaders() });
     const subagent = overview.subagents.find((entry) => entry.conversationId === state.automationSubagentSessionId);
     ensure(subagent, 'Expected subagent overview to include automation-created conversation projection');
     ensure(subagent.description === '自动化烟测任务（已更新）', 'Expected subagent overview to expose persisted subagent description');
@@ -3196,7 +3234,7 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.subagent-detail.success', async () => {
-    const subagent = await waitForSubagentTaskCompletion(apiBase, state.automationSubagentSessionId);
+    const subagent = await waitForSubagentTaskCompletion(apiBase, state.automationSubagentSessionId, adminHeaders);
     ensure(subagent.conversationId === state.automationSubagentSessionId, 'Expected subagent conversation detail to load');
     ensure(subagent.description === '自动化烟测任务（已更新）', 'Expected subagent detail to expose persisted description');
     ensure(subagent.pluginId === 'subagent', 'Expected subagent detail source id');
@@ -3208,14 +3246,14 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('plugins.subagent-delete.success', async () => {
-    const closed = await postJson(apiBase, `/subagents/${state.automationSubagentSessionId}/close`);
+    const closed = await postJson(apiBase, `/subagents/${state.automationSubagentSessionId}/close`, { headers: adminHeaders() });
     ensure(closed.conversationId === state.automationSubagentSessionId, 'Expected close_subagent route to return the same conversation id');
     ensure(closed.status === 'closed', 'Expected close_subagent route to mark the subagent closed');
     ensure(typeof closed.closedAt === 'string' && closed.closedAt.length > 0, 'Expected close_subagent route to expose closedAt');
   });
 
   await runStep('plugins.subagent-detail.after-delete', async () => {
-    const subagent = await getJson(apiBase, `/subagents/${state.automationSubagentSessionId}`);
+    const subagent = await getJson(apiBase, `/subagents/${state.automationSubagentSessionId}`, { headers: adminHeaders() });
     ensure(subagent.status === 'closed', 'Expected closed subagent detail to remain queryable');
   });
 
@@ -3235,12 +3273,12 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runStep('ai.model.delete', async () => {
-    const result = await deleteJson(apiBase, `/ai/providers/${state.providerId}/models/smoke-extra`);
+    const result = await deleteJson(apiBase, `/ai/providers/${state.providerId}/models/smoke-extra`, { headers: adminHeaders() });
     ensure(result.success === true, 'Expected model delete response');
   });
 
   await runStep('ai.model.list.after-delete', async () => {
-    const models = await getJson(apiBase, `/ai/providers/${state.providerId}/models`);
+    const models = await getJson(apiBase, `/ai/providers/${state.providerId}/models`, { headers: adminHeaders() });
     ensure(!models.some((entry) => entry.id === 'smoke-extra'), 'Expected model list to exclude deleted model');
   });
 
@@ -3260,11 +3298,13 @@ async function runHttpFlow(apiBase, state, input) {
   });
 
   await runSmokeProviderDelete(apiBase, state, {
+    headers: adminHeaders,
     stepName: 'ai.provider.delete',
   });
 
   await runSmokeProviderDeleteVerification(apiBase, state, {
     detailStepName: 'ai.provider.get.after-delete',
+    headers: adminHeaders,
     listStepName: 'ai.providers.list.after-delete',
   });
 }
@@ -3393,7 +3433,7 @@ async function prepareWorkingMcpScript(filePath) {
 async function verifyRequiredBuildArtifacts() {
   const requiredFiles = [
     path.join(SERVER_DIR, 'dist', 'src', 'main.js'),
-    path.join(SERVER_DIR, 'dist', 'src', 'execution', 'mcp', 'mcp-stdio-launcher.js'),
+    path.join(SERVER_DIR, 'dist', 'src', 'modules', 'execution', 'mcp', 'mcp-stdio-launcher.js'),
   ];
 
   for (const filePath of requiredFiles) {
@@ -3911,9 +3951,9 @@ async function waitForBootstrapAdminLogin(apiBase) {
   throw new Error('Timed out waiting for bootstrap admin login');
 }
 
-async function waitForPluginHealth(apiBase, pluginId, expectedOk) {
+async function waitForPluginHealth(apiBase, pluginId, expectedOk, headers) {
   try {
-    const health = await getJson(apiBase, `/plugins/${pluginId}/health`);
+    const health = await getJson(apiBase, `/plugins/${pluginId}/health`, { headers: headers() });
     if (readPluginHealthOk(health) === expectedOk) {
       return health;
     }
@@ -3925,7 +3965,7 @@ async function waitForPluginHealth(apiBase, pluginId, expectedOk) {
 
   while (Date.now() - startedAt < DEFAULT_TIMEOUT_MS) {
     try {
-      const health = await getJson(apiBase, `/plugins/${pluginId}/health`);
+      const health = await getJson(apiBase, `/plugins/${pluginId}/health`, { headers: headers() });
       if (readPluginHealthOk(health) === expectedOk) {
         return health;
       }
@@ -3943,11 +3983,11 @@ function readPluginHealthOk(health) {
   return health?.status === 'healthy';
 }
 
-async function waitForSubagentTaskCompletion(apiBase, conversationId) {
+async function waitForSubagentTaskCompletion(apiBase, conversationId, headers) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < DEFAULT_TIMEOUT_MS) {
-    const subagent = await getJson(apiBase, `/subagents/${conversationId}`);
+    const subagent = await getJson(apiBase, `/subagents/${conversationId}`, { headers: headers() });
     if (subagent?.status === 'completed') {
       return subagent;
     }

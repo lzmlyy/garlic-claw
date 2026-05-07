@@ -1,7 +1,7 @@
 import {
   resolveKnownModelToolCallName,
   sanitizeModelToolCallName,
-} from '../../../src/execution/tool/model-tool-call-name';
+} from '../../../src/modules/execution/tool/model-tool-call-name';
 
 describe('model-tool-call-name', () => {
   it('sanitizes leaked channel suffixes', () => {

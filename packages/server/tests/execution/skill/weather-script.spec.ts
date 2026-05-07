@@ -1,9 +1,8 @@
 import { spawn } from 'node:child_process';
 import * as http from 'node:http';
 import * as path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
 
-const projectRoot = new ProjectWorktreeRootService().resolveRoot(process.cwd());
+const projectRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
 const scriptPath = path.join(
   projectRoot,
   'config',

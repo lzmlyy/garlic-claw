@@ -1,4 +1,4 @@
-import { GlobToolService } from '../../../src/execution/glob/glob-tool.service';
+import { GlobToolService } from '../../../src/modules/execution/glob/glob-tool.service';
 
 describe('GlobToolService', () => {
   it('formats empty glob results with explicit totals', async () => {

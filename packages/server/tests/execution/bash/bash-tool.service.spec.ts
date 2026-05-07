@@ -1,5 +1,5 @@
-import { BashToolService } from '../../../src/execution/bash/bash-tool.service';
-import * as runtimePowerShellVariant from '../../../src/execution/runtime/runtime-powershell-variant';
+import { BashToolService } from '../../../src/modules/execution/bash/bash-tool.service';
+import * as runtimePowerShellVariant from '../../../src/modules/execution/runtime/runtime-powershell-variant';
 
 describe('BashToolService', () => {
   const originalHintsTestRoot = process.env.GARLIC_CLAW_HINTS_TEST_ROOT;

@@ -3,7 +3,7 @@ import {
   listWindowsPowerShellCommandCandidates,
   readWindowsPowerShellVariant,
   supportsWindowsPowerShellAndAnd,
-} from '../../../src/execution/runtime/runtime-powershell-variant';
+} from '../../../src/modules/execution/runtime/runtime-powershell-variant';
 
 describe('runtime-powershell-variant', () => {
   const originalPath = process.env.PATH;

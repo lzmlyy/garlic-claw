@@ -2,8 +2,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { BadRequestException } from '@nestjs/common';
-import { ProjectWorktreeFileService } from '../../../src/execution/project/project-worktree-file.service';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
+import { ProjectWorktreeFileService } from '../../../src/modules/execution/project/project-worktree-file.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
 
 describe('ProjectWorktreeFileService', () => {
   let originalCwd: string;
@@ -17,6 +17,7 @@ describe('ProjectWorktreeFileService', () => {
     projectRoot = path.join(tempRoot, 'repo');
     fs.mkdirSync(path.join(projectRoot, 'packages', 'server'), { recursive: true });
     fs.writeFileSync(path.join(projectRoot, 'package.json'), '{}', 'utf8');
+    fs.writeFileSync(path.join(projectRoot, 'packages', 'server', 'package.json'), '{}', 'utf8');
     fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
     process.chdir(projectRoot);
     service = new ProjectWorktreeFileService(new ProjectWorktreeRootService());

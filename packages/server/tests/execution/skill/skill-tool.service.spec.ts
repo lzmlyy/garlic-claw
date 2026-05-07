@@ -1,9 +1,9 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { SkillRegistryService } from '../../../src/execution/skill/skill-registry.service';
-import { SkillToolService } from '../../../src/execution/skill/skill-tool.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { SkillRegistryService } from '../../../src/modules/execution/skill/skill-registry.service';
+import { SkillToolService } from '../../../src/modules/execution/skill/skill-tool.service';
 
 describe('SkillToolService', () => {
   let tempRoot: string;

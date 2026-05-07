@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectWorktreeRootService } from '../../../src/execution/project/project-worktree-root.service';
-import { ProjectPluginRegistryService } from '../../../src/plugin/project/project-plugin-registry.service';
+import { ProjectWorktreeRootService } from '../../../src/modules/execution/project/project-worktree-root.service';
+import { ProjectPluginRegistryService } from '../../../src/modules/plugin/project/project-plugin-registry.service';
 
 describe('ProjectPluginRegistryService', () => {
   let projectRootPath: string;

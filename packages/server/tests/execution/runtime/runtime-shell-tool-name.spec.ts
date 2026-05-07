@@ -2,7 +2,7 @@ import {
   isAbsoluteShellWorkdir,
   readRuntimeShellToolAliases,
   readRuntimeShellToolName,
-} from '../../../src/execution/runtime/runtime-shell-tool-name';
+} from '../../../src/modules/execution/runtime/runtime-shell-tool-name';
 
 describe('runtime-shell-tool-name', () => {
   it('returns powershell for windows native-shell and bash elsewhere', () => {

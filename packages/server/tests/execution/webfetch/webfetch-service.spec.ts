@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { WebFetchService } from '../../../src/execution/webfetch/webfetch-service';
+import { WebFetchService } from '../../../src/modules/execution/webfetch/webfetch-service';
 
 describe('WebFetchService', () => {
   const service = new WebFetchService();

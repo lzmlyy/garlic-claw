@@ -7104,6 +7104,7 @@ describe('ToolRegistryService', () => {
     fs.mkdirSync(path.join(workspaceRoot, 'packages', 'server', 'src'), { recursive: true });
     fs.mkdirSync(path.join(workspaceRoot, 'docs'), { recursive: true });
     fs.writeFileSync(path.join(workspaceRoot, 'package.json'), '{}', 'utf8');
+    fs.writeFileSync(path.join(workspaceRoot, 'packages', 'server', 'package.json'), '{}', 'utf8');
     fs.writeFileSync(path.join(workspaceRoot, 'packages', 'server', 'src', 'runtime.ts'), 'smoke-workspace\n', 'utf8');
     fs.writeFileSync(path.join(workspaceRoot, 'docs', 'guide.md'), '# smoke\n', 'utf8');
 
@@ -7270,6 +7271,7 @@ describe('ToolRegistryService', () => {
     fs.mkdirSync(path.join(workspaceRoot, 'packages', 'server', 'src'), { recursive: true });
     fs.mkdirSync(path.join(workspaceRoot, 'docs'), { recursive: true });
     fs.writeFileSync(path.join(workspaceRoot, 'package.json'), '{}', 'utf8');
+    fs.writeFileSync(path.join(workspaceRoot, 'packages', 'server', 'package.json'), '{}', 'utf8');
     fs.writeFileSync(path.join(workspaceRoot, 'packages', 'server', 'src', 'runtime.ts'), 'smoke-workspace\nsecondary line\n', 'utf8');
     fs.writeFileSync(path.join(workspaceRoot, 'docs', 'guide.md'), '# smoke\n', 'utf8');
 

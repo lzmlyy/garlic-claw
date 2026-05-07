@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ConversationStoreService } from '../../../src/runtime/host/conversation-store.service';
-import { ConversationTodoService } from '../../../src/runtime/host/conversation-todo.service';
+import { ConversationStoreService } from '../../../src/modules/runtime/host/conversation-store.service';
+import { ConversationTodoService } from '../../../src/modules/runtime/host/conversation-todo.service';
 
 describe('ConversationTodoService', () => {
   const conversationsEnvKey = 'GARLIC_CLAW_CONVERSATIONS_PATH';

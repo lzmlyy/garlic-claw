@@ -3,7 +3,7 @@ import {
   joinRuntimeVisiblePath,
   normalizeRuntimeVisiblePath,
   resolveRuntimeVisiblePath,
-} from '../../../src/execution/runtime/runtime-visible-path';
+} from '../../../src/modules/execution/runtime/runtime-visible-path';
 
 describe('runtime-visible-path', () => {
   it('normalizes visible paths', () => {

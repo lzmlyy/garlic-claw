@@ -33,11 +33,18 @@ export class RuntimeOneShotShellService {
         return await this.spawnAndWait(candidate, input.timeoutMs);
       } catch (error) {
         if (
-          error instanceof Error
+          error != null
+          && typeof error === 'object'
           && 'code' in error
           && (error as NodeJS.ErrnoException).code === 'ENOENT'
         ) {
-          lastError = error;
+          if (error instanceof Error) {
+            lastError = error;
+          } else {
+            const wrapped = new Error(String((error as any).message ?? 'spawn ENOENT'));
+            (wrapped as any).code = (error as any).code;
+            lastError = wrapped;
+          }
           continue;
         }
         throw error;

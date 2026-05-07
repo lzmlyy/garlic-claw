@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { type AuthenticatedUser } from './http-auth';
-import { SINGLE_USER_EMAIL, SINGLE_USER_ID, SINGLE_USER_USERNAME } from './single-user-auth';
+import { readJwtSecret, SINGLE_USER_EMAIL, SINGLE_USER_ID, SINGLE_USER_USERNAME } from './single-user-auth';
 
 type JwtPayload = {
   email?: string;
@@ -30,9 +30,10 @@ export class RequestAuthService {
 
   private async authenticateJwtToken(token: string): Promise<AuthenticatedUser> {
     let payload: JwtPayload;
+    const jwtSecret = readJwtSecret(this.configService);
     try {
       payload = this.jwtService.verify<JwtPayload>(token, {
-        secret: this.configService.get<string>('JWT_SECRET') || 'fallback-secret',
+        secret: jwtSecret,
       });
     } catch {
       throw new UnauthorizedException('访问令牌无效');

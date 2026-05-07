@@ -1,10 +1,10 @@
 import { BadRequestException, BadGatewayException } from '@nestjs/common';
-import { AiManagementService } from '../../src/ai-management/ai-management.service';
-import { AiProviderSettingsService } from '../../src/ai-management/ai-provider-settings.service';
-import * as settingsStore from '../../src/ai-management/ai-settings.store';
-import type { AiSettingsFile } from '../../src/ai-management/ai-management.types';
+import { AiManagementService } from '../../src/modules/ai-management/ai-management.service';
+import { AiProviderSettingsService } from '../../src/modules/ai-management/ai-provider-settings.service';
+import * as settingsStore from '../../src/modules/ai-management/ai-settings.store';
+import type { AiSettingsFile } from '../../src/modules/ai-management/ai-management.types';
 
-jest.mock('../../src/ai-management/ai-settings.store', () => {
+jest.mock('../../src/modules/ai-management/ai-settings.store', () => {
   const settings: AiSettingsFile = {
     defaultSelection: null,
     models: [],

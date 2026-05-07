@@ -2,10 +2,10 @@ import type { JsonObject } from '@garlic-claw/shared';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createConversationHistorySignatureFromHistoryMessages } from '../../src/conversation/conversation-history-signature';
-import { ContextGovernanceService } from '../../src/conversation/context-governance.service';
-import { ContextGovernanceSettingsService } from '../../src/conversation/context-governance-settings.service';
-import { ConversationStoreService } from '../../src/runtime/host/conversation-store.service';
+import { createConversationHistorySignatureFromHistoryMessages } from '../../src/modules/conversation/conversation-history-signature';
+import { ContextGovernanceService } from '../../src/modules/conversation/context-governance.service';
+import { ContextGovernanceSettingsService } from '../../src/modules/conversation/context-governance-settings.service';
+import { ConversationStoreService } from '../../src/modules/runtime/host/conversation-store.service';
 
 type GenerateTextInput = {
   allowFallbackChatModels?: boolean;

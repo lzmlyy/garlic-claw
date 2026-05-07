@@ -1,7 +1,7 @@
-import { BuiltinPluginRegistryService } from '../../../src/plugin/builtin/builtin-plugin-registry.service';
-import { PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
-import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
-import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
+import { BuiltinPluginRegistryService } from '../../../src/modules/plugin/builtin/builtin-plugin-registry.service';
+import { PluginBootstrapService } from '../../../src/modules/plugin/bootstrap/plugin-bootstrap.service';
+import { PluginGovernanceService } from '../../../src/modules/plugin/governance/plugin-governance.service';
+import { PluginPersistenceService } from '../../../src/modules/plugin/persistence/plugin-persistence.service';
 
 describe('PluginBootstrapService remote access', () => {
   it('exposes builtin registry in constructor metadata for Nest injection', () => {

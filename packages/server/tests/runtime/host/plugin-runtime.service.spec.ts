@@ -2,10 +2,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { PluginCronDescriptor, PluginCronJobSummary } from '@garlic-claw/shared';
-import { PluginBootstrapService } from '../../../src/plugin/bootstrap/plugin-bootstrap.service';
-import { PluginGovernanceService } from '../../../src/plugin/governance/plugin-governance.service';
-import { PluginPersistenceService } from '../../../src/plugin/persistence/plugin-persistence.service';
-import { PluginRuntimeService } from '../../../src/runtime/host/plugin-runtime.service';
+import { PluginBootstrapService } from '../../../src/modules/plugin/bootstrap/plugin-bootstrap.service';
+import { PluginGovernanceService } from '../../../src/modules/plugin/governance/plugin-governance.service';
+import { PluginPersistenceService } from '../../../src/modules/plugin/persistence/plugin-persistence.service';
+import { PluginRuntimeService } from '../../../src/modules/runtime/host/plugin-runtime.service';
 
 const trackedServices: Array<{
   onApplicationBootstrap?: () => void;

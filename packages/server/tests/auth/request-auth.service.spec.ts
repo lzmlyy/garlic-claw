@@ -2,7 +2,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
-import { RequestAuthService } from '../../src/auth/request-auth.service';
+import { RequestAuthService } from '../../src/modules/auth/request-auth.service';
 
 describe('RequestAuthService', () => {
   const configService = {
@@ -38,9 +38,29 @@ describe('RequestAuthService', () => {
       username: 'local-owner',
       email: 'local-owner@garlic-claw.local',
     });
+    expect(jwtService.verify).toHaveBeenCalledWith('jwt-token', {
+      secret: 'jwt-secret',
+    });
   });
 
   it('rejects jwt requests without a bearer token', async () => {
     await expect(service.authenticateJwtRequest({ headers: {} } as never as Request)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('fails before verification when JWT_SECRET is not configured', async () => {
+    const missingJwtConfig = {
+      get: jest.fn(),
+    } as never as ConfigService;
+    service = new RequestAuthService(
+      missingJwtConfig,
+      jwtService as never as JwtService,
+    );
+
+    await expect(
+      service.authenticateJwtRequest({
+        headers: { authorization: 'Bearer jwt-token' },
+      } as never as Request),
+    ).rejects.toThrow('JWT_SECRET 未配置');
+    expect(jwtService.verify).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
-import { RuntimeCommandCaptureService } from '../../../src/execution/runtime/runtime-command-capture.service';
-import { RuntimeCommandService } from '../../../src/execution/runtime/runtime-command.service';
-import type { RuntimeBackend } from '../../../src/execution/runtime/runtime-command.types';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
+import { RuntimeCommandCaptureService } from '../../../src/modules/execution/runtime/runtime-command-capture.service';
+import { RuntimeCommandService } from '../../../src/modules/execution/runtime/runtime-command.service';
+import type { RuntimeBackend } from '../../../src/modules/execution/runtime/runtime-command.types';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
 
 describe('RuntimeCommandService', () => {
   it('uses the first registered backend as default and supports explicit backend selection', async () => {
@@ -9,7 +9,10 @@ describe('RuntimeCommandService', () => {
     const betaBackend = createRuntimeBackend('beta');
     const service = new RuntimeCommandService(
       [alphaBackend, betaBackend],
-      new RuntimeCommandCaptureService(new RuntimeSessionEnvironmentService()),
+      new RuntimeCommandCaptureService(
+        new RuntimeSessionEnvironmentService(),
+        { readToolOutputCaptureOptions: jest.fn().mockReturnValue({ enabled: false, maxBytes: 5000, maxFilesPerSession: 3 }) } as never,
+      ),
     );
 
     expect(service.getDefaultBackendKind()).toBe('alpha');
@@ -42,7 +45,10 @@ describe('RuntimeCommandService', () => {
   it('rejects unknown backend kind', async () => {
     const service = new RuntimeCommandService(
       [createRuntimeBackend('alpha')],
-      new RuntimeCommandCaptureService(new RuntimeSessionEnvironmentService()),
+      new RuntimeCommandCaptureService(
+        new RuntimeSessionEnvironmentService(),
+        { readToolOutputCaptureOptions: jest.fn().mockReturnValue({ enabled: false, maxBytes: 5000, maxFilesPerSession: 3 }) } as never,
+      ),
     );
 
     await expect(service.executeCommand({

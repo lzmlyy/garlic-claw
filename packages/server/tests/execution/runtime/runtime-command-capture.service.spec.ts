@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { RuntimeCommandCaptureService } from '../../../src/execution/runtime/runtime-command-capture.service';
-import { RuntimeSessionEnvironmentService } from '../../../src/execution/runtime/runtime-session-environment.service';
-import { RuntimeToolsSettingsService } from '../../../src/execution/runtime/runtime-tools-settings.service';
+import { RuntimeCommandCaptureService } from '../../../src/modules/execution/runtime/runtime-command-capture.service';
+import { RuntimeSessionEnvironmentService } from '../../../src/modules/execution/runtime/runtime-session-environment.service';
+import { RuntimeToolsSettingsService } from '../../../src/modules/execution/runtime/runtime-tools-settings.service';
 
 describe('RuntimeCommandCaptureService', () => {
   let runtimeWorkspaceRoot: string;

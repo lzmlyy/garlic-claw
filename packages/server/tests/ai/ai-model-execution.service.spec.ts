@@ -1,6 +1,6 @@
-import { AiProviderSettingsService } from '../../src/ai-management/ai-provider-settings.service';
+import { AiProviderSettingsService } from '../../src/modules/ai-management/ai-provider-settings.service';
 const mockGenerateText = jest.fn();
-const mockIsLoopFinished = jest.fn(() => 'loop-finished-stop');
+const mockStepCountIs = jest.fn(() => 'step-count-stop');
 const mockStreamText = jest.fn();
 const mockOpenAiChat = jest.fn(() => ({ id: 'mock-openai-model' }));
 const mockCreateOpenAI = jest.fn(() => ({ chat: mockOpenAiChat }));
@@ -11,7 +11,7 @@ const mockCreateGoogleGenerativeAI = jest.fn(() => mockGeminiModel);
 
 jest.mock('ai', () => ({
   generateText: mockGenerateText,
-  isLoopFinished: mockIsLoopFinished,
+  stepCountIs: mockStepCountIs,
   streamText: mockStreamText,
 }));
 
@@ -30,7 +30,7 @@ jest.mock('@ai-sdk/google', () => ({
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { AiModelExecutionService } from '../../src/ai/ai-model-execution.service';
+import { AiModelExecutionService } from '../../src/modules/ai/ai-model-execution.service';
 
 describe('AiModelExecutionService', () => {
   let settingsPath: string;
@@ -39,7 +39,7 @@ describe('AiModelExecutionService', () => {
     jest.clearAllMocks();
     mockGenerateText.mockReset();
     mockStreamText.mockReset();
-    mockIsLoopFinished.mockClear();
+    mockStepCountIs.mockClear();
     mockOpenAiChat.mockClear();
     mockCreateOpenAI.mockClear();
     mockAnthropicModel.mockClear();
@@ -772,9 +772,9 @@ describe('AiModelExecutionService', () => {
       },
     } as never);
 
-    expect(mockIsLoopFinished).toHaveBeenCalledTimes(1);
+    expect(mockStepCountIs).toHaveBeenCalledTimes(1);
     expect(mockStreamText).toHaveBeenCalledWith(expect.objectContaining({
-      stopWhen: 'loop-finished-stop',
+      stopWhen: 'step-count-stop',
       tools: {
         weather_search: {},
       },

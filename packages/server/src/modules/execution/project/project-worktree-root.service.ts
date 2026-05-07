@@ -20,7 +20,7 @@ export class ProjectWorktreeRootService {
     while (true) {
       if (
         fs.existsSync(path.join(currentPath, 'package.json'))
-        && fs.existsSync(path.join(currentPath, 'packages', 'server'))
+        && fs.existsSync(path.join(currentPath, 'packages', 'server', 'package.json'))
       ) {
         return currentPath;
       }

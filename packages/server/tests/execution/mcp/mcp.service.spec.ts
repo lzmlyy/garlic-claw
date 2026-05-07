@@ -24,7 +24,7 @@ describe('McpService', () => {
   const envKey = 'GARLIC_CLAW_MCP_CONFIG_PATH';
   const secretEnvKey = 'GARLIC_CLAW_MCP_SECRET_STATE_PATH';
   const toolManagementEnvKey = 'GARLIC_CLAW_TOOL_MANAGEMENT_CONFIG_PATH';
-  const configService = { get: jest.fn() };
+  const configService = { get: jest.fn((key: string) => process.env[key]) };
   let tempConfigRoot: string;
   let tempLogRoot: string;
   let tempSecretStorePath: string;
@@ -51,6 +51,9 @@ describe('McpService', () => {
     delete process.env[envKey];
     delete process.env[secretEnvKey];
     delete process.env.GARLIC_CLAW_SETTINGS_CONFIG_PATH;
+    delete process.env.GARLIC_CLAW_MCP_COMMAND_ALLOWLIST;
+    delete process.env.GARLIC_CLAW_MCP_REF_VALUE;
+    delete process.env.GARLIC_CLAW_MCP_SHOULD_NOT_LEAK;
     tempConfigRoot = path.join(os.tmpdir(), `mcp.service.spec-${Date.now()}-${Math.random()}`, 'servers');
     tempLogRoot = path.join(os.tmpdir(), `mcp.service.logs-${Date.now()}-${Math.random()}`);
     tempSecretStorePath = path.join(os.tmpdir(), `mcp.service.secret-${Date.now()}-${Math.random()}`, 'mcp-secrets.server.json');
@@ -78,6 +81,9 @@ describe('McpService', () => {
     delete process.env[secretEnvKey];
     delete process.env.GARLIC_CLAW_LOG_ROOT;
     delete process.env.GARLIC_CLAW_SETTINGS_CONFIG_PATH;
+    delete process.env.GARLIC_CLAW_MCP_COMMAND_ALLOWLIST;
+    delete process.env.GARLIC_CLAW_MCP_REF_VALUE;
+    delete process.env.GARLIC_CLAW_MCP_SHOULD_NOT_LEAK;
     delete process.env[toolManagementEnvKey];
     fs.rmSync(path.dirname(tempConfigRoot), { recursive: true, force: true });
     fs.rmSync(tempLogRoot, { recursive: true, force: true });
@@ -502,7 +508,15 @@ describe('McpService', () => {
   });
 
   it('routes stdio MCP servers through the local launcher process', () => {
-    const config = createServer('weather');
+    process.env.GARLIC_CLAW_MCP_REF_VALUE = 'from-config-service';
+    process.env.GARLIC_CLAW_MCP_SHOULD_NOT_LEAK = 'secret-value';
+    const config = {
+      ...createServer('weather'),
+      env: {
+        EXPLICIT_KEY: 'literal-value',
+        REF_KEY: '${GARLIC_CLAW_MCP_REF_VALUE}',
+      },
+    };
 
     const transport = (service as any).buildTransportConfig(config) as {
       args: string[];
@@ -514,6 +528,28 @@ describe('McpService', () => {
     expect(transport.args[0]).toMatch(/mcp-stdio-launcher\.js$/);
     expect(transport.args.slice(1)).toEqual(['npx', '-y', 'weather-mcp']);
     expect(typeof transport.env).toBe('object');
+    expect(transport.env.EXPLICIT_KEY).toBe('literal-value');
+    expect(transport.env.REF_KEY).toBe('from-config-service');
+    expect(transport.env.GARLIC_CLAW_MCP_SHOULD_NOT_LEAK).toBeUndefined();
+  });
+
+  it('rejects MCP commands outside the allowlist before persisting config', async () => {
+    await expect(service.saveServer({
+      ...createServer('unsafe'),
+      command: 'powershell',
+    })).rejects.toThrow('MCP command 不在允许列表');
+  });
+
+  it('accepts explicitly configured MCP command allowlist entries', async () => {
+    process.env.GARLIC_CLAW_MCP_COMMAND_ALLOWLIST = 'uvx';
+
+    await expect(service.saveServer({
+      ...createServer('custom'),
+      command: 'uvx',
+    })).resolves.toEqual(expect.objectContaining({
+      command: 'uvx',
+      name: 'custom',
+    }));
   });
 
   it('resolves stored-secret env entries from the local MCP secret store at runtime', async () => {

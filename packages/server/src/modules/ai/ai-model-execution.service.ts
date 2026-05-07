@@ -2,7 +2,7 @@ import type { AiModelUsage, JsonObject, PluginLlmMessage, PluginLlmTransportMode
 import { Injectable } from '@nestjs/common';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateText, isLoopFinished, streamText, type LanguageModel, type ModelMessage, type Tool } from 'ai';
+import { generateText, stepCountIs, streamText, type LanguageModel, type ModelMessage, type Tool } from 'ai';
 import { createRequire } from 'node:module';
 import { uuidv7 } from 'uuidv7';
 import { AiProviderSettingsService } from '../ai-management/ai-provider-settings.service';
@@ -129,7 +129,7 @@ export class AiModelExecutionService {
     };
   }
 
-  private buildToolExecutionOptions(tools?: Record<string, Tool>) { return tools ? { experimental_repairToolCall: this.createRepairToolCall(tools), stopWhen: isLoopFinished(), tools } : {}; }
+  private buildToolExecutionOptions(tools?: Record<string, Tool>) { return tools ? { experimental_repairToolCall: this.createRepairToolCall(tools), stopWhen: stepCountIs(20), tools } : {}; }
 
   private async readTextExecutionResult(input: AiModelExecutionRequest, target: AiExecutionTarget, streamCollect: boolean): Promise<AiModelExecutionResult> {
     if (streamCollect) {
