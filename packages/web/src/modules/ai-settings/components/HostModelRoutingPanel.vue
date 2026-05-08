@@ -155,7 +155,13 @@ import type {
   AiHostModelRoutingConfig,
   AiModelRouteTarget,
 } from '@garlic-claw/shared'
-import { DEFAULT_AI_CHAT_AUTO_RETRY_CONFIG } from '@garlic-claw/shared'
+const DEFAULT_AI_CHAT_AUTO_RETRY_CONFIG: AiChatAutoRetryConfig = {
+  enabled: true,
+  maxRetries: 2,
+  initialDelayMs: 2000,
+  maxDelayMs: 30000,
+  backoffFactor: 2,
+}
 
 interface HostModelRoutingOption extends AiModelRouteTarget {
   label: string
