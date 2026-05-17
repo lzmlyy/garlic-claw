@@ -5,6 +5,40 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Garlic Claw - AI 秘书</title>
+    <script>
+      // FOUC guard: set html class before first paint
+      // This runs synchronously, blocking render until complete.
+      (function () {
+        try {
+          var stored = localStorage.getItem('garlic-claw:appearance')
+          var mode = 'system'
+          if (stored) {
+            var parsed = JSON.parse(stored)
+            if (parsed && parsed.mode) mode = parsed.mode
+          } else {
+            // Fallback: check old legacy key
+            var old = localStorage.getItem('garlic-claw:theme')
+            if (old === '"dark"' || old === 'dark') mode = 'dark'
+            else if (old === '"light"' || old === 'light') mode = 'light'
+            else if (old === '"system"' || old === 'system') mode = 'system'
+          }
+          if (mode === 'system') {
+            mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+          }
+          var root = document.documentElement
+          if (mode === 'dark') {
+            root.classList.add('dark')
+            root.style.background = 'rgba(18,20,28,0.55)'
+          } else {
+            root.classList.add('light')
+            root.style.background = 'rgba(248,250,252,0.92)'
+          }
+        } catch (_) {
+          document.documentElement.classList.add('dark')
+          document.documentElement.style.background = 'rgba(18,20,28,0.55)'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

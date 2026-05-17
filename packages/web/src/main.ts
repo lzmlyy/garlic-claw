@@ -6,10 +6,14 @@ import '@/shared/styles/element-plus'
 import { addRequestErrorListener } from '@/shared/api/http'
 import { useThemeStore } from '@/shared/stores/theme'
 import { useUiStore } from '@/shared/stores/ui'
+import { hydrateTheme } from '@/shared/theme/hydration'
 
 import App from './App.vue'
 import router from './app/router'
 import '@/shared/styles/app.css'
+
+// ── Pre-mount theme hydration: restore tokens before first paint ──
+hydrateTheme()
 
 const pinia = createPinia()
 const uiStore = useUiStore(pinia)
