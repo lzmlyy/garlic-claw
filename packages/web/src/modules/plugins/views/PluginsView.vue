@@ -546,7 +546,7 @@ async function runActionForPlugin(input: {
 
 <style scoped>
 .plugins-page {
-  background: var(--shell-bg);
+  background: transparent;
 }
 
 .hero-action {
@@ -646,7 +646,8 @@ async function runActionForPlugin(input: {
   border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--surface-panel-soft);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--gc-blur-standard));
+  -webkit-backdrop-filter: blur(var(--gc-blur-standard));
 }
 
 .page-banner.error {
@@ -662,7 +663,7 @@ async function runActionForPlugin(input: {
 .plugins-inner {
   display: flex;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .plugins-sidebar {

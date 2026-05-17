@@ -3,7 +3,7 @@
     :model-value="visible"
     width="760px"
     top="8vh"
-    :teleported="false"
+    :teleported="true"
     destroy-on-close
     class="model-discovery-dialog"
     @close="$emit('close')"

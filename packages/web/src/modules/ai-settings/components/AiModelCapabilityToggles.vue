@@ -210,7 +210,7 @@ function toggleImageOutput() {
 }
 
 .capability-card.active {
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--gc-shadow-md);
 }
 
 .capability-card strong {

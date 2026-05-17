@@ -177,7 +177,7 @@ const riskLabel = computed(() => {
   gap: 6px;
   padding: 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--gc-atmosphere-1);
 }
 
 .remote-item code {

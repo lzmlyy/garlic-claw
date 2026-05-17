@@ -3,7 +3,7 @@
     :model-value="visible"
     width="760px"
     top="8vh"
-    :teleported="false"
+    :teleported="true"
     :show-close="false"
     :close-on-click-modal="false"
     destroy-on-close

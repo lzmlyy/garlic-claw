@@ -414,8 +414,8 @@ function submit() {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-panel-soft);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--gc-blur-standard));
+  -webkit-backdrop-filter: blur(var(--gc-blur-standard));
   box-shadow: none;
   margin: 0;
   color: var(--text);
@@ -473,8 +473,8 @@ function submit() {
   padding: 8px 12px;
   border: none;
   border-radius: 10px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--gc-accent);
+  color: var(--gc-accent-foreground);
   cursor: pointer;
 }
 

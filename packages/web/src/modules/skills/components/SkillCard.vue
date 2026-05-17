@@ -56,13 +56,13 @@ function statusClass(loadPolicy: SkillLoadPolicy): string {
   border-left: 4px solid var(--success);
   border-radius: 12px;
   padding: 0.95rem 1rem;
-  background: var(--surface-panel, color-mix(in srgb, var(--shell-bg, #0f172a) 78%, white 4%));
+  background: var(--surface-panel, color-mix(in oklch, var(--gc-surface-elevated, oklch(0.25 0.01 240)) 86%, var(--gc-surface-tint) 4%));
   transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .skill-card:hover {
   border-color: color-mix(in srgb, var(--shell-active, #18a058) 26%, var(--border, rgba(133, 163, 199, 0.24)));
-  background: var(--provider-row-hover-bg, color-mix(in srgb, var(--shell-bg, #0f172a) 66%, white 8%));
+  background: var(--provider-row-hover-bg, color-mix(in oklch, var(--gc-surface-elevated, oklch(0.25 0.01 240)) 76%, var(--gc-surface-tint) 8%));
 }
 
 .skill-card.active {

@@ -416,8 +416,8 @@ function cloneUtilityModelRoles(
 
 .primary-button {
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--gc-accent);
+  color: var(--gc-accent-foreground);
 }
 
 .actions {

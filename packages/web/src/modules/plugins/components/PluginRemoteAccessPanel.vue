@@ -217,7 +217,7 @@ function handleSave() {
   padding: 0.72rem 0.85rem;
   border-radius: 14px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--gc-atmosphere-1);
 }
 
 .field.readonly {

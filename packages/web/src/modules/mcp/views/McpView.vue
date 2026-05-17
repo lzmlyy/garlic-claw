@@ -98,13 +98,13 @@ const viewOptions: ReadonlyArray<{ label: string; value: McpPageView; icon: Icon
 
 <style scoped>
 .mcp-page {
-  background: var(--shell-bg);
+  background: transparent;
 }
 
 .mcp-inner {
   display: flex;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .mcp-sidebar {
@@ -184,8 +184,8 @@ const viewOptions: ReadonlyArray<{ label: string; value: McpPageView; icon: Icon
 }
 
 .mcp-page :deep(.view-header-action.active) {
-  border-color: rgba(103, 199, 207, 0.42);
-  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.2);
+  border-color: var(--gc-accent);
+  box-shadow: var(--gc-focus-shadow);
 }
 
 @media (max-width: 800px) {

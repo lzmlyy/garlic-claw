@@ -294,9 +294,9 @@ function saveContextLength(model: AiModelConfig) {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-panel);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.08);
+  backdrop-filter: blur(var(--gc-blur-deep));
+  -webkit-backdrop-filter: blur(var(--gc-blur-deep));
+  box-shadow: var(--gc-shadow-lg), var(--gc-shadow-glow);
   min-width: 0;
 }
 
@@ -429,8 +429,8 @@ function saveContextLength(model: AiModelConfig) {
   border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--surface-panel-soft);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--gc-blur-standard));
+  -webkit-backdrop-filter: blur(var(--gc-blur-standard));
   min-width: 0;
 }
 
@@ -460,8 +460,8 @@ function saveContextLength(model: AiModelConfig) {
 
 .primary-button {
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--gc-accent);
+  color: var(--gc-accent-foreground);
   cursor: pointer;
 }
 

@@ -547,13 +547,13 @@ function readToolModeLabel(mode: 'all' | 'none' | 'selected') {
 
 <style scoped>
 .persona-page {
-  background: var(--shell-bg);
+  background: transparent;
 }
 
 .persona-inner {
   display: flex;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .persona-sidebar {
@@ -711,8 +711,8 @@ function readToolModeLabel(mode: 'all' | 'none' | 'selected') {
 }
 
 .primary-button {
-  background: #0b63b5;
-  color: #ffffff;
+  background: var(--gc-accent);
+  color: var(--gc-accent-foreground);
 }
 
 .danger-button {
@@ -888,7 +888,7 @@ function readToolModeLabel(mode: 'all' | 'none' | 'selected') {
   position: absolute;
   bottom: 0; left: 0; right: 0;
   background: var(--surface-overlay-strong);
-  color: #fff;
+  color: var(--gc-foreground);
   font-size: 10px;
   text-align: center;
   padding: 2px 0;

@@ -87,16 +87,17 @@ async function newChat() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  border-right: 1px solid var(--border);
-  background: var(--surface-sidebar-gradient);
-  backdrop-filter: blur(var(--glass-blur));
+  border-right: 1px solid var(--gc-border);
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur));
+  -webkit-backdrop-filter: blur(var(--gc-blur));
 }
 
 .rail-header {
   padding: 1.1rem;
   display: grid;
   gap: 1rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--gc-border);
 }
 
 .brand-block {
@@ -136,8 +137,8 @@ async function newChat() {
 }
 
 .conversation-item.active {
-  border-color: rgba(103, 199, 207, 0.36);
-  background: rgba(103, 199, 207, 0.16);
+  border-color: var(--gc-glass-border);
+  background: var(--gc-interactive-active-bg);
 }
 
 .conversation-title {
@@ -167,7 +168,11 @@ async function newChat() {
   flex: 1;
   min-width: 0;
   min-height: 100%;
-  overflow: hidden;
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur));
+  -webkit-backdrop-filter: blur(var(--gc-blur));
+  border-left: 1px solid var(--gc-border);
+  overflow: visible;
 }
 
 @media (max-width: 900px) {

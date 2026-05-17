@@ -94,7 +94,7 @@ function handleToggleDarkMode() {
   background:
     radial-gradient(circle at top right, rgba(245, 158, 11, 0.12), transparent 28%),
     radial-gradient(circle at left 20%, rgba(148, 163, 184, 0.08), transparent 26%),
-    var(--shell-bg);
+    var(--gc-surface-base);
 }
 
 .settings-page-header {
@@ -131,11 +131,12 @@ function handleToggleDarkMode() {
 }
 
 .settings-card {
-  border: 1px solid var(--shell-border);
-  border-radius: 20px;
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius);
   padding: 24px;
-  background: var(--surface-panel-soft-strong);
-  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.08);
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur));
+  box-shadow: var(--gc-shadow);
 }
 
 .settings-row {

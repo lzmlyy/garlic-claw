@@ -101,10 +101,10 @@ function formatOperationLabel(value: ChatPendingRuntimePermission['operations'][
 
 <style scoped>
 .permission-panel {
-  border: 1px solid rgba(255, 196, 87, 0.24);
+  border: 1px solid color-mix(in oklch, var(--warning) 24%, transparent);
   border-radius: var(--radius);
   background:
-    linear-gradient(135deg, rgba(255, 196, 87, 0.12), rgba(255, 122, 69, 0.08)),
+    linear-gradient(135deg, var(--surface-warning-soft), transparent),
     var(--surface-panel-muted-strong);
   padding: 14px 16px;
   display: grid;
@@ -130,8 +130,8 @@ function formatOperationLabel(value: ChatPendingRuntimePermission['operations'][
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 196, 87, 0.18);
-  color: #ffd36f;
+  background: var(--surface-warning-soft);
+  color: var(--warning);
   font-size: 12px;
   font-weight: 700;
 }
@@ -146,7 +146,7 @@ function formatOperationLabel(value: ChatPendingRuntimePermission['operations'][
   gap: 12px;
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--gc-glass-border);
   background: var(--surface-subtle);
 }
 
@@ -183,8 +183,8 @@ function formatOperationLabel(value: ChatPendingRuntimePermission['operations'][
 .capability-chip {
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(255, 196, 87, 0.14);
-  color: #ffd36f;
+  background: var(--surface-warning-soft);
+  color: var(--warning);
   font-size: 12px;
   font-weight: 600;
 }
@@ -207,7 +207,7 @@ function formatOperationLabel(value: ChatPendingRuntimePermission['operations'][
 }
 
 .permission-action {
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--gc-glass-border);
   background: var(--surface-overlay);
   box-shadow: none;
   color: var(--text);
@@ -221,7 +221,7 @@ function formatOperationLabel(value: ChatPendingRuntimePermission['operations'][
 }
 
 .permission-action.danger {
-  border-color: rgba(255, 107, 107, 0.28);
+  border-color: color-mix(in oklch, var(--danger) 28%, transparent);
   color: var(--danger);
 }
 </style>

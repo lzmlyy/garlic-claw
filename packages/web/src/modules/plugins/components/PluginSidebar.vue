@@ -718,7 +718,7 @@ const SHOW_SYSTEM_BUILTINS_STORAGE_KEY = 'garlic-claw:plugin-sidebar:show-system
 }
 
 .health-dot.degraded {
-  background: #f0b24b;
+  background: var(--warning);
 }
 
 .health-dot.error {
@@ -726,7 +726,7 @@ const SHOW_SYSTEM_BUILTINS_STORAGE_KEY = 'garlic-claw:plugin-sidebar:show-system
 }
 
 .health-dot.offline {
-  background: #697093;
+  background: var(--text-muted);
 }
 
 @media (max-width: 960px) {

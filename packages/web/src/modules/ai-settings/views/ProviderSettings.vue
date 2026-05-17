@@ -446,7 +446,7 @@ function saveCtx(model: AiModelConfig) {
    布局
    ═══════════════════════════════════════════════════════════════════════ */
 .ai-settings-page {
-  background: var(--shell-bg, #0f172a);
+  background: transparent;
   --provider-row-hover-bg: rgba(255, 255, 255, 0.08);
   --provider-row-driver-hover-bg: rgba(255, 255, 255, 0.12);
   --provider-row-kind-hover-bg: rgba(255, 255, 255, 0.1);
@@ -630,7 +630,7 @@ function saveCtx(model: AiModelConfig) {
 }
 
 .field-input :deep(.el-input__wrapper) {
-  background: var(--shell-bg, #0f172a);
+  background: var(--gc-surface-elevated, var(--shell-bg, #0f172a));
   box-shadow: 0 0 0 1px var(--shell-border, #334155) inset;
 }
 
@@ -646,10 +646,10 @@ function saveCtx(model: AiModelConfig) {
 
 /* ── 消息文本 ── */
 .msg-muted { color: var(--shell-text-tertiary, #94a3b8); font-size: 13px; margin: 8px 0; }
-.msg-error { color: #ef4444; font-size: 13px; margin: 8px 0; }
+.msg-error { color: var(--danger); font-size: 13px; margin: 8px 0; }
 .msg-status { padding: 6px 10px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
-.msg-status.success { background: rgba(24, 160, 88, 0.1); color: #22c55e; }
-.msg-status.error { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.msg-status.success { background: var(--surface-success-soft); color: var(--success); }
+.msg-status.error { background: var(--surface-danger-soft); color: var(--danger); }
 .placeholder { margin-top: 24px; }
 
 /* ── 服务商列表 ── */
@@ -941,19 +941,18 @@ function saveCtx(model: AiModelConfig) {
 .ai-settings-content .sidebar-card,
 .ai-settings-content .panel-shell,
 .ai-settings-content .model-card {
-  background: var(--shell-bg-elevated, #1e293b) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  box-shadow: none !important;
+  background: var(--gc-surface-glass) !important;
+  backdrop-filter: blur(var(--gc-blur-deep)) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(var(--gc-blur-deep)) saturate(1.2) !important;
 }
 
 /* ── 内部元素 ── */
 .ai-settings-content .provider-item,
 .ai-settings-content .model-item,
 .ai-settings-content .status-text {
-  background: var(--shell-bg, #0f172a) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  background: var(--gc-surface-elevated) !important;
+  backdrop-filter: blur(var(--gc-blur-standard)) saturate(1.1) !important;
+  -webkit-backdrop-filter: blur(var(--gc-blur-standard)) saturate(1.1) !important;
 }
 
 .ai-settings-content .provider-item:hover,

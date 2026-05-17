@@ -818,8 +818,8 @@ defineExpose({
   height: 24px;
   padding: 0 8px;
   border-radius: 999px;
-  background: rgba(24, 160, 88, 0.14);
-  color: var(--shell-active, #18a058);
+  background: var(--surface-success-soft);
+  color: var(--success);
   font-size: 12px;
   font-weight: 600;
 }
@@ -837,7 +837,7 @@ defineExpose({
 }
 
 .sidebar-hint {
-  color: #f5d38c;
+  color: var(--warning);
 }
 
 .sidebar-tools,
@@ -856,7 +856,7 @@ defineExpose({
 }
 
 .field-input :deep(.el-input__wrapper) {
-  background: var(--shell-bg, #0f172a);
+  background: var(--gc-surface-elevated, var(--shell-bg, #0f172a));
   box-shadow: 0 0 0 1px var(--shell-border, #334155) inset;
 }
 
@@ -1085,8 +1085,8 @@ defineExpose({
 }
 
 .action-icon-button.active {
-  border-color: rgba(103, 199, 207, 0.42);
-  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.2);
+  border-color: var(--gc-accent);
+  box-shadow: var(--gc-focus-shadow);
 }
 
 .hero-action .action-icon {

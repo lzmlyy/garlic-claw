@@ -179,7 +179,7 @@
         :model-value="editorOpen"
         width="960px"
         top="6vh"
-        :teleported="false"
+        :teleported="true"
         class="editor-dialog-shell"
         @close="editorOpen = false"
       >

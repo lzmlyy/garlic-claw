@@ -183,13 +183,13 @@ function handleSkillEventLogUpdate(payload: { maxFileSizeMb: number }) {
 
 <style scoped>
 .skills-page {
-  background: var(--shell-bg);
+  background: transparent;
 }
 
 .skills-inner {
   display: flex;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .skills-sidebar {
@@ -322,7 +322,7 @@ function handleSkillEventLogUpdate(payload: { maxFileSizeMb: number }) {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .skills-page .field-input {
@@ -330,7 +330,7 @@ function handleSkillEventLogUpdate(payload: { maxFileSizeMb: number }) {
 }
 
 .skills-page .field-input :deep(.el-input__wrapper) {
-  background: var(--shell-bg, #0f172a);
+  background: var(--gc-surface-elevated, var(--shell-bg, #0f172a));
   box-shadow: 0 0 0 1px var(--shell-border, #334155) inset;
 }
 
@@ -507,7 +507,7 @@ function handleSkillEventLogUpdate(payload: { maxFileSizeMb: number }) {
   display: grid;
   gap: 0.55rem;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--gc-atmosphere-1);
 }
 
 .skills-page .empty-state.compact {
@@ -545,8 +545,8 @@ function handleSkillEventLogUpdate(payload: { maxFileSizeMb: number }) {
 }
 
 .skills-page :deep(.view-header-action.active) {
-  border-color: rgba(103, 199, 207, 0.42);
-  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.2);
+  border-color: var(--gc-accent);
+  box-shadow: var(--gc-focus-shadow);
 }
 
 @media (max-width: 800px) {

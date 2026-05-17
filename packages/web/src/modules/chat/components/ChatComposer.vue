@@ -283,12 +283,12 @@ function selectCommandSuggestion(trigger: string) {
 }
 
 .upload-notice.info {
-  background: rgba(68, 204, 136, 0.12);
+  background: var(--surface-success-soft);
   color: var(--success);
 }
 
 .upload-notice.error {
-  background: rgba(226, 74, 74, 0.12);
+  background: var(--surface-danger-soft);
   color: var(--danger);
 }
 
@@ -380,7 +380,7 @@ function selectCommandSuggestion(trigger: string) {
   border-radius: 999px;
   background: var(--danger);
   box-shadow: none;
-  color: #fff;
+  color: var(--gc-primary-foreground);
 }
 
 .composer {
@@ -402,8 +402,8 @@ function selectCommandSuggestion(trigger: string) {
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--surface-panel-soft-strong);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--gc-blur-standard));
+  -webkit-backdrop-filter: blur(var(--gc-blur-standard));
   color: var(--text);
   resize: none;
   overflow-y: auto;
@@ -449,15 +449,15 @@ function selectCommandSuggestion(trigger: string) {
 }
 
 .send-button {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-  color: #fff;
+  background: linear-gradient(135deg, var(--gc-accent), var(--gc-accent));
+  color: var(--gc-primary-foreground);
   border-color: transparent;
 }
 
 .stop-button {
-  background: color-mix(in srgb, var(--danger) 16%, transparent);
-  border-color: rgba(226, 74, 74, 0.3);
-  color: #ffb0b0;
+  background: var(--surface-danger-soft);
+  border-color: color-mix(in oklch, var(--danger) 30%, transparent);
+  color: var(--danger);
 }
 
 .command-suggestions {
@@ -471,9 +471,9 @@ function selectCommandSuggestion(trigger: string) {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface-panel-strong);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.24), 0 0 15px rgba(103, 199, 207, 0.08);
+  backdrop-filter: blur(var(--gc-blur-deep));
+  -webkit-backdrop-filter: blur(var(--gc-blur-deep));
+  box-shadow: var(--gc-shadow-lg), var(--gc-shadow-glow);
   z-index: 20;
 }
 

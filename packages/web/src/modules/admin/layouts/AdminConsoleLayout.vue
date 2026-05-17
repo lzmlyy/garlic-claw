@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import ThemeToggle from '@/shared/components/header/ThemeToggle.vue'
+import AppearanceButton from '@/modules/appearance/components/AppearanceButton.vue'
+import AppearanceControlCenter from '@/modules/appearance/components/AppearanceControlCenter.vue'
+import { useAppearancePanel } from '@/modules/appearance/composables/useAppearancePanel'
 import { useAdminShellPreferences } from '@/modules/admin/modules/admin-shell-preferences'
 import { useAuthStore } from '@/shared/stores/auth'
 import altArrowLeftBold from '@iconify-icons/solar/alt-arrow-left-bold'
@@ -24,6 +27,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const { isOpen: ccOpen } = useAppearancePanel()
 const {
   topbarPullCordEnabled,
   topbarCollapsed,
@@ -466,20 +470,23 @@ watch(preferredExpandedSiderWidth, (width) => {
 </script>
 
 <template>
-  <div
-    class="admin-shell"
-    :class="{
-      'topbar-collapsible': topbarPullCordEnabled,
-      'topbar-collapsed': topbarCollapsed,
-      'topbar-pull-animating': topbarPullAnimating,
-    }"
-  >
+  <div class="admin-layout-root">
+    <div
+      class="admin-shell"
+      :class="{
+        'is-preview-mode': ccOpen,
+        'topbar-collapsible': topbarPullCordEnabled,
+        'topbar-collapsed': topbarCollapsed,
+        'topbar-pull-animating': topbarPullAnimating,
+      }"
+    >
     <div ref="topbarShellRef" class="admin-topbar-shell">
       <header class="admin-topbar">
         <div class="topbar-left">
           <span class="topbar-brand">🦞🧄 Garlic Claw</span>
         </div>
         <div class="topbar-right">
+          <AppearanceButton />
           <ThemeToggle />
           <button type="button" class="topbar-action-button" @click="handleLogout">
             <Icon class="topbar-action-icon" :icon="logout3Bold" aria-hidden="true" />
@@ -539,22 +546,38 @@ watch(preferredExpandedSiderWidth, (width) => {
           </nav>
 
           <div
+            v-if="!isHidden"
             class="sider-footer"
-            :style="isHidden ? { bottom: `calc(${handleBottom}px + var(--app-safe-area-bottom, 0px))` } : undefined"
           >
             <button
               type="button"
               class="sider-trigger"
-              :class="{ 'is-dragging': hiddenHandleDragging }"
               :aria-label="triggerText"
               @click="onHandleClick"
-              @mousedown="onHandleStart"
-              @touchstart="onHandleStart"
             >
               <Icon class="trigger-icon" :icon="triggerIcon" aria-hidden="true" />
               <span class="sider-trigger-text">{{ triggerText }}</span>
             </button>
           </div>
+
+          <Teleport v-if="isHidden" to="body">
+            <div
+              class="gc-sider-float"
+              :style="{ bottom: `calc(${handleBottom}px + var(--app-safe-area-bottom, 0px))` }"
+            >
+              <button
+                type="button"
+                class="gc-sider-float-btn"
+                :class="{ 'is-dragging': hiddenHandleDragging }"
+                :aria-label="triggerText"
+                @click="onHandleClick"
+                @mousedown="onHandleStart"
+                @touchstart="onHandleStart"
+              >
+                <Icon class="gc-sider-float-icon" :icon="triggerIcon" aria-hidden="true" />
+              </button>
+            </div>
+          </Teleport>
         </div>
       </aside>
       <div
@@ -572,15 +595,45 @@ watch(preferredExpandedSiderWidth, (width) => {
       </main>
     </div>
   </div>
+  </div>
+
+  <AppearanceControlCenter />
 </template>
 
 <style scoped>
+/* ═══ Layout root — contains the app shell and the control center ═══ */
+.admin-layout-root {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ═══ App shell ═══ */
 .admin-shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: visible;
+  /* Smooth transition in/out of preview mode */
+  transition:
+    transform 600ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 600ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 600ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+/* ── Preview mode: app recedes into spatial depth ── */
+.admin-shell.is-preview-mode {
+  transform: perspective(1200px) scale(0.92) translateX(-28px) rotateY(1.5deg);
+  border-radius: 18px;
   overflow: hidden;
-  background: var(--shell-bg);
+  pointer-events: none;
+  user-select: none;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.35),
+    0 6px 20px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 .admin-topbar-shell {
@@ -602,9 +655,11 @@ watch(preferredExpandedSiderWidth, (width) => {
   height: 48px;
   min-height: 48px;
   padding: 0 16px;
-  background: var(--shell-bg-elevated);
-  border-bottom: 1px solid var(--shell-border);
-  z-index: 100;
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--gc-blur)) saturate(1.2);
+  border-bottom: 1px solid var(--gc-border);
+  z-index: var(--gc-z-card);
   transition:
     transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
     opacity 0.18s ease;
@@ -633,11 +688,11 @@ watch(preferredExpandedSiderWidth, (width) => {
   align-items: center;
   gap: 8px;
   min-height: 36px;
-  border: 1px solid var(--shell-border-light);
-  border-radius: 8px;
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius-sm);
   padding: 0 12px;
   background: transparent;
-  color: var(--shell-text-secondary);
+  color: var(--gc-text-muted);
   font-size: 14px;
   transition:
     background-color 0.2s ease,
@@ -646,9 +701,9 @@ watch(preferredExpandedSiderWidth, (width) => {
 }
 
 .topbar-action-button:hover {
-  border-color: #64748b;
-  background-color: var(--shell-bg-hover);
-  color: var(--shell-text);
+  border-color: var(--gc-border-strong);
+  background-color: var(--gc-surface-elevated);
+  color: var(--gc-text);
 }
 
 .topbar-action-icon {
@@ -662,7 +717,7 @@ watch(preferredExpandedSiderWidth, (width) => {
   -webkit-appearance: none;
   position: absolute;
   top: 100%;
-  z-index: 110;
+  z-index: calc(var(--gc-z-card) + 10);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -701,7 +756,7 @@ watch(preferredExpandedSiderWidth, (width) => {
 .topbar-pull-cord-line {
   width: 2px;
   height: 18px;
-  background: linear-gradient(180deg, rgba(203, 213, 225, 0.92), rgba(120, 134, 156, 0.72));
+  background: linear-gradient(180deg, var(--gc-foreground), var(--gc-muted-foreground));
   transition: height 0.18s ease;
 }
 
@@ -709,11 +764,9 @@ watch(preferredExpandedSiderWidth, (width) => {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.42);
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.95), rgba(241, 245, 249, 0.9)),
-    var(--shell-bg-elevated);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  border: 1px solid var(--gc-border);
+  background: var(--gc-surface-floating);
+  box-shadow: var(--gc-shadow-sm);
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -722,8 +775,8 @@ watch(preferredExpandedSiderWidth, (width) => {
 }
 
 .topbar-pull-cord:hover .topbar-pull-cord-handle {
-  border-color: rgba(148, 163, 184, 0.6);
-  box-shadow: 0 12px 22px rgba(15, 23, 42, 0.18);
+  border-color: var(--gc-border-strong);
+  box-shadow: var(--gc-shadow);
 }
 
 .admin-shell.topbar-pull-animating .topbar-pull-cord-line {
@@ -733,16 +786,19 @@ watch(preferredExpandedSiderWidth, (width) => {
 .admin-body {
   display: flex;
   flex: 1;
-  overflow: hidden;
+  overflow: visible;
+  background: var(--gc-surface-base);
 }
 
 .admin-nav {
   align-self: stretch;
   position: relative;
   overflow: hidden;
-  border-right: 1px solid var(--shell-border);
-  background-color: var(--shell-bg-elevated);
-  color: var(--shell-text);
+  border-right: 1px solid var(--gc-border);
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--gc-blur)) saturate(1.2);
+  color: var(--gc-text);
   transition: width 0.24s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: width;
 }
@@ -808,9 +864,9 @@ watch(preferredExpandedSiderWidth, (width) => {
   gap: 12px;
   min-height: 52px;
   margin: 0;
-  border-radius: 8px;
+  border-radius: var(--gc-radius-sm);
   padding: 0 20px;
-  color: var(--shell-text-secondary);
+  color: var(--gc-text-muted);
   text-decoration: none;
   transition:
     background-color 0.2s ease,
@@ -818,13 +874,13 @@ watch(preferredExpandedSiderWidth, (width) => {
 }
 
 .menu-item:hover {
-  background-color: var(--shell-bg-hover);
-  color: var(--shell-text);
+  background-color: var(--gc-surface-elevated);
+  color: var(--gc-text);
 }
 
 .menu-item.active {
-  color: var(--shell-active);
-  background-color: rgba(24, 160, 88, 0.1);
+  color: var(--gc-accent);
+  background-color: var(--gc-accent-bg);
 }
 
 .menu-item--divided {
@@ -873,22 +929,22 @@ watch(preferredExpandedSiderWidth, (width) => {
   justify-content: flex-start;
   overflow: hidden;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--gc-radius-sm);
   background: transparent;
-  color: var(--shell-text-secondary);
+  color: var(--gc-text-muted);
   white-space: nowrap;
   box-shadow: none;
   padding: 8px 0;
 }
 
 .sider-trigger:hover {
-  background-color: var(--shell-bg-hover);
-  color: var(--shell-text);
+  background-color: var(--gc-surface-elevated);
+  color: var(--gc-text);
   border-color: transparent;
 }
 
 .sider-trigger:active {
-  background-color: var(--shell-bg-hover);
+  background-color: var(--gc-surface-elevated);
 }
 
 .trigger-icon {
@@ -917,7 +973,6 @@ watch(preferredExpandedSiderWidth, (width) => {
   height: 100%;
   overflow: auto;
   min-width: 0;
-  background-color: var(--shell-bg);
 }
 
 .admin-sider-resize-handle {
@@ -925,14 +980,14 @@ watch(preferredExpandedSiderWidth, (width) => {
   width: 2px;
   flex: 0 0 1px;
   cursor: col-resize;
-  background: rgba(148, 163, 184, 0.22);
+  background: var(--gc-border);
   touch-action: none;
   transition: background-color 0.18s ease;
 }
 
 .admin-sider-resize-handle:hover,
 .admin-nav.is-resizing + .admin-sider-resize-handle {
-  background: rgba(59, 130, 246, 0.42);
+  background: var(--gc-accent);
 }
 
 .admin-nav.is-compact {
@@ -987,6 +1042,8 @@ watch(preferredExpandedSiderWidth, (width) => {
   min-width: 0 !important;
   overflow: visible;
   border-right: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .admin-nav.is-hidden .sider-inner {
@@ -1003,31 +1060,32 @@ watch(preferredExpandedSiderWidth, (width) => {
 .admin-nav.is-hidden .sider-footer {
   position: fixed;
   left: 0;
-  z-index: 1000;
+  z-index: 9999;
   overflow: visible;
   padding: 0;
 }
 
 .admin-nav.is-hidden .sider-trigger {
   position: relative;
-  z-index: 10000;
+  z-index: 9999;
   width: 60px;
   min-width: 60px;
   height: 36px;
   cursor: grab;
-  border: 1px solid var(--shell-border-light);
+  border: 1px solid var(--gc-border);
   border-left: none;
-  border-radius: 0 16px 16px 0;
-  background-color: var(--shell-bg-elevated);
-  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.32);
-  color: var(--shell-text);
+  border-radius: 0 var(--gc-radius) var(--gc-radius) 0;
+  background-color: var(--gc-surface-floating);
+  backdrop-filter: blur(var(--gc-blur));
+  box-shadow: var(--gc-shadow);
+  color: var(--gc-text);
   justify-content: center;
   padding: 0 0 0 10px;
 }
 
 .admin-nav.is-hidden .sider-trigger.is-dragging {
   cursor: grabbing;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--gc-shadow);
 }
 
 .admin-nav.is-hidden .sider-trigger::before {
@@ -1039,7 +1097,7 @@ watch(preferredExpandedSiderWidth, (width) => {
   height: 16px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background-color: rgba(203, 213, 225, 0.22);
+  background-color: var(--gc-border);
 }
 
 .admin-nav.is-hidden .sider-trigger-text {
@@ -1058,5 +1116,75 @@ watch(preferredExpandedSiderWidth, (width) => {
   .menu-item {
     min-height: 48px;
   }
+}
+</style>
+
+<style>
+/* ═══ Teleported sidebar floating toggle (non-scoped — rendered outside admin-nav) ═══ */
+.gc-sider-float {
+  position: fixed;
+  left: 0;
+  z-index: 9999;
+  overflow: visible;
+  padding: 0;
+}
+
+.gc-sider-float-btn {
+  position: relative;
+  z-index: 9999;
+  width: 60px;
+  min-width: 60px;
+  height: 36px;
+  cursor: grab;
+  border: 1px solid var(--gc-border);
+  border-left: none;
+  border-radius: 0 var(--gc-radius) var(--gc-radius) 0;
+  background-color: var(--gc-surface-floating);
+  backdrop-filter: blur(var(--gc-blur));
+  -webkit-backdrop-filter: blur(var(--gc-blur));
+  box-shadow: var(--gc-shadow);
+  color: var(--gc-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 0 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gc-sider-float-btn::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 4px;
+  height: 16px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background-color: var(--gc-border);
+}
+
+.gc-sider-float-btn.is-dragging {
+  cursor: grabbing;
+  box-shadow: var(--gc-shadow);
+}
+
+.gc-sider-float-btn:hover {
+  border-color: var(--gc-border-strong);
+}
+
+.gc-sider-float-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  min-width: 20px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--gc-text);
+  opacity: 1;
+  flex-shrink: 0;
 }
 </style>

@@ -326,6 +326,7 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   flex-direction: column;
   gap: 8px;
   padding: 0;
+  background: transparent;
 }
 
 .chat-stage {
@@ -335,6 +336,12 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   flex-direction: column;
   gap: 8px;
   padding: 12px 16px 16px;
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur));
+  -webkit-backdrop-filter: blur(var(--gc-blur));
+  border-radius: var(--gc-radius) var(--gc-radius) 0 0;
+  border: 1px solid var(--gc-border);
+  border-bottom: none;
 }
 
 .chat-tabs {
@@ -343,9 +350,9 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   overflow-x: auto;
   flex-shrink: 0;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--gc-border);
   border-bottom: none;
-  background: var(--surface-panel-soft-strong);
+  background: var(--gc-surface-base);
 }
 
 .chat-tab {
@@ -355,11 +362,11 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   min-height: 32px;
   padding: 0 12px;
   border: none;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--gc-border);
   border-radius: 0;
-  background: var(--surface-subtle);
+  background: var(--gc-surface-base);
   box-shadow: none;
-  color: var(--text-muted);
+  color: var(--gc-text-muted);
   font-size: 12px;
   white-space: nowrap;
   font-family: inherit;
@@ -371,23 +378,23 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
 }
 
 .chat-tab:hover {
-  background: var(--surface-panel-hover-soft);
-  color: var(--text);
+  background: var(--gc-surface-elevated);
+  color: var(--gc-text);
 }
 
 .chat-tab.active {
-  background: var(--surface-panel-strong);
-  color: var(--text);
-  box-shadow: inset 0 2px 0 0 var(--accent);
+  background: var(--gc-surface-elevated);
+  color: var(--gc-text);
+  box-shadow: inset 0 2px 0 0 var(--gc-accent);
 }
 
 .chat-toolbar {
   padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--header-gradient);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius);
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur));
+  -webkit-backdrop-filter: blur(var(--gc-blur));
   flex-shrink: 0;
 }
 
@@ -436,14 +443,14 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   min-width: 0;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(10, 19, 24, 0.42);
-  border: 1px solid rgba(103, 199, 207, 0.18);
+  background: var(--gc-surface-floating);
+  border: 1px solid var(--gc-border);
 }
 
 .toolbar-context-usage-percent {
   font-size: 12px;
   font-weight: 700;
-  color: #e7fbff;
+  color: var(--gc-foreground);
 }
 
 .toolbar-context-usage-tokens {
@@ -457,16 +464,15 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  background: var(--gc-surface-base);
+  box-shadow: inset 0 0 0 1px var(--gc-border);
 }
 
 .toolbar-context-progress-fill {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #63d2c6 0%, #7cd5ff 54%, #ffd38a 100%);
-  box-shadow: 0 0 16px rgba(124, 213, 255, 0.25);
+  background: linear-gradient(90deg, var(--success), var(--gc-accent), var(--warning));
 }
 
 .toolbar-settings-link {
@@ -475,10 +481,10 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   align-items: center;
   justify-content: center;
   padding: 8px 12px;
-  border: 1px solid rgba(103, 199, 207, 0.24);
-  border-radius: 10px;
-  background: rgba(10, 19, 24, 0.38);
-  color: var(--accent);
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius-sm);
+  background: var(--gc-surface-elevated);
+  color: var(--gc-accent);
   text-decoration: none;
   font-size: 13px;
 }
@@ -504,9 +510,9 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
 }
 
 .chat-todo-panel {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-panel-muted-strong);
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius);
+  background: var(--gc-surface-elevated);
   padding: 14px 16px;
   display: grid;
   gap: 10px;
@@ -552,7 +558,7 @@ function readTodoPriorityLabel(priority: "high" | "medium" | "low") {
   align-items: center;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--gc-glass-border);
   background: var(--surface-subtle);
 }
 

@@ -387,7 +387,8 @@ function isRuntimeBusy(health: PluginHealthSnapshot | null | undefined): boolean
   background: var(--surface-panel-hover-soft);
   border: 1px solid var(--border);
   color: var(--text);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--gc-blur-standard));
+  -webkit-backdrop-filter: blur(var(--gc-blur-standard));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 

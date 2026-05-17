@@ -81,17 +81,17 @@ async function handleDevLogin() {
   justify-content: center;
   min-height: 100vh;
   padding: 1.5rem;
-  background: transparent;
+  background: var(--gc-surface-base);
 }
 
 .auth-card {
   width: min(380px, 100%);
   padding: 2.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-card-gradient);
-  box-shadow: var(--shadow), 0 0 20px rgba(103, 199, 207, 0.12);
-  backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius);
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur));
+  box-shadow: var(--gc-shadow);
 }
 
 .auth-card h1 {

@@ -238,7 +238,7 @@ function sourceLabel(source: 'manifest' | 'hook-filter'): string {
 
 <style scoped>
 .commands-page {
-  background: var(--shell-bg);
+  background: transparent;
 }
 
 .commands-inner {
@@ -449,8 +449,8 @@ function sourceLabel(source: 'manifest' | 'hook-filter'): string {
 }
 
 .commands-page :deep(.view-header-action.active) {
-  border-color: rgba(103, 199, 207, 0.42);
-  box-shadow: 0 0 0 1px rgba(103, 199, 207, 0.2);
+  border-color: var(--gc-accent);
+  box-shadow: var(--gc-focus-shadow);
 }
 
 @media (max-width: 800px) {
