@@ -1,159 +1,170 @@
-/* === 设计令牌（默认暗色主题） === */
+/* ═══════════════════════════════════════════════════════════════
+   Static CSS fallback tokens.
+   Overridden at runtime by the ThemeEngine pipeline (hydrateTheme).
+   Use var() references to --gc-* aliases so the fallback stays in
+   sync with whatever the pipeline last computed.
+   ═══════════════════════════════════════════════════════════════ */
+
 :root {
-  /* 表面 / 背景色 */
-  --bg-card: rgba(14, 24, 38, 0.9);
-  --bg-input: rgba(18, 33, 52, 0.88);
-  --bg-sidebar: rgba(9, 15, 24, 0.98);
-  --bg-glass: rgba(15, 25, 40, 0.96);
-  --bg-glass-light: rgba(10, 17, 29, 0.96);
+  /* ── Surface tiers → delegated to dynamic depth tokens ── */
+  --gc-surface-base: var(--gc-surface-base, rgba(20, 22, 30, 0.60));
+  --gc-surface-elevated: var(--gc-surface-elevated, rgba(30, 33, 44, 0.76));
+  --gc-surface-floating: var(--gc-surface-floating, rgba(38, 41, 54, 0.88));
+  --gc-surface-overlay: var(--gc-surface-overlay, rgba(16, 18, 26, 0.52));
 
-  /* 表面渐变 */
-  --surface-card-gradient:
-    linear-gradient(180deg, rgba(15, 25, 40, 0.96), rgba(10, 17, 29, 0.96)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
-  --surface-hero-gradient:
-    linear-gradient(135deg, rgba(103, 199, 207, 0.1), rgba(240, 198, 118, 0.05)),
-    linear-gradient(180deg, rgba(15, 25, 40, 0.96), rgba(10, 17, 29, 0.96));
-  --surface-sidebar-gradient:
-    linear-gradient(180deg, rgba(9, 15, 24, 0.98), rgba(9, 15, 24, 0.9)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  /* ── Glass surface ── */
+  --gc-surface-glass: var(--gc-surface-glass, var(--gc-surface-elevated));
 
-  /* 面板表面 */
-  --surface-panel: rgba(14, 24, 38, 0.85);
-  --surface-panel-strong: rgba(14, 24, 38, 0.96);
-  --surface-panel-soft: rgba(11, 21, 35, 0.72);
-  --surface-panel-soft-strong: rgba(11, 21, 35, 0.9);
-  --surface-panel-muted: rgba(12, 22, 36, 0.52);
-  --surface-panel-muted-strong: rgba(12, 22, 36, 0.78);
-  --surface-panel-hover: rgba(11, 21, 35, 0.85);
-  --surface-panel-hover-soft: rgba(9, 17, 29, 0.42);
-  --surface-panel-hover-faint: rgba(9, 17, 29, 0.32);
+  /* ── Dynamic border colors ── */
+  --gc-border: var(--gc-border, rgba(255, 255, 255, 0.08));
+  --gc-border-subtle: var(--gc-border-subtle, rgba(255, 255, 255, 0.05));
+  --gc-border-strong: var(--gc-border-strong, rgba(255, 255, 255, 0.14));
 
-  /* 微表面 */
-  --surface-subtle: rgba(255, 255, 255, 0.03);
-  --surface-subtle-strong: rgba(255, 255, 255, 0.06);
+  /* ── Dynamic shadows (fallback to neutral dark) ── */
+  --gc-shadow-xs: var(--gc-shadow-xs, 0 1px 4px rgba(0, 0, 0, 0.12));
+  --gc-shadow-sm: var(--gc-shadow-sm, 0 4px 16px rgba(0, 0, 0, 0.20));
+  --gc-shadow-md: var(--gc-shadow-md, 0 8px 32px rgba(0, 0, 0, 0.28));
+  --gc-shadow-lg: var(--gc-shadow-lg, 0 16px 48px rgba(0, 0, 0, 0.36));
+  --gc-shadow-xl: var(--gc-shadow-xl, 0 24px 64px rgba(0, 0, 0, 0.44));
+  --gc-shadow-glow: var(--gc-shadow-glow, 0 0 16px rgba(103, 199, 207, 0.20));
 
-  /* 遮罩 / 覆盖层 */
-  --surface-overlay: rgba(0, 0, 0, 0.45);
-  --surface-overlay-strong: rgba(0, 0, 0, 0.6);
+  /* ── Blur ── */
+  --gc-blur-light: var(--gc-blur-light, 8px);
+  --gc-blur-standard: var(--gc-blur-standard, 18px);
+  --gc-blur-deep: var(--gc-blur-deep, 24px);
 
-  /* 代码块背景 */
-  --surface-code: rgba(0, 0, 0, 0.18);
+  /* ── Radius ── */
+  --gc-radius: 18px;
+  --gc-radius-sm: 10px;
+  --gc-radius-lg: 24px;
 
-  /* 语义色表面 */
+  /* ── Text (fallback to neutral) ── */
+  --gc-text: var(--gc-foreground, rgba(255, 255, 255, 0.92));
+  --gc-text-muted: var(--gc-muted-foreground, rgba(255, 255, 255, 0.56));
+  --gc-text-secondary: var(--gc-muted-foreground, rgba(255, 255, 255, 0.72));
+
+  /* ── Accent (fallback to teal/cyan) ── */
+  --gc-accent: var(--gc-accent, oklch(62% 0.14 186));
+  --gc-accent-hover: var(--gc-primary, oklch(72% 0.14 186));
+  --gc-accent-bg: color-mix(in oklch, var(--gc-accent) 12%, transparent);
+
+  /* ── Material (fallback) ── */
+  --gc-reflection-intensity: 0.35;
+  --gc-grain-opacity: 0.011;
+  --gc-blur-density: 22px;
+  --gc-edge-light: linear-gradient(135deg, oklch(95% 0.003 215 / 0.04) 0%, transparent 50%);
+  --gc-refraction-tint: oklch(50% 0.002 215 / 0.016);
+  --gc-glass-noise: url(#gc-glass-noise);
+  --gc-glass-reflection: linear-gradient(180deg, oklch(95% 0.003 215 / 0.04) 0%, transparent 12px);
+
+  /* ── Atmosphere → delegated to dynamic tokens ── */
+  --gc-atmosphere-1: var(--gc-atmosphere-1, rgba(103, 199, 207, 0.03));
+  --gc-atmosphere-2: var(--gc-atmosphere-2, rgba(103, 199, 207, 0.07));
+  --gc-atmosphere-3: var(--gc-atmosphere-3, rgba(103, 199, 207, 0.12));
+
+  /* ── Z-index ── */
+  --gc-z-base: 0;
+  --gc-z-card: 100;
+  --gc-z-floating: 300;
+  --gc-z-dropdown: 500;
+  --gc-z-modal: 1000;
+  --gc-z-tooltip: 2000;
+
+  /* ── Transitions ── */
+  --gc-transition-fast: var(--gc-transition-fast, 120ms cubic-bezier(0.2, 0, 0, 1));
+  --gc-transition-normal: var(--gc-transition-normal, 180ms cubic-bezier(0.2, 0, 0, 1));
+  --gc-transition-slow: var(--gc-transition-slow, 240ms cubic-bezier(0.2, 0, 0, 1));
+
+  /* ── Interactive ── */
+  --gc-interactive-hover-bg: var(--gc-interactive-hover-bg, color-mix(in oklch, var(--gc-card) 82%, var(--gc-atmosphere-3)));
+  --gc-interactive-active-bg: var(--gc-interactive-active-bg, color-mix(in oklch, var(--gc-card) 72%, var(--gc-atmosphere-3)));
+
+  /* ── Legacy bridge (for gradual migration) ── */
+  --text: var(--gc-text);
+  --text-muted: var(--gc-text-muted);
+  --accent: var(--gc-accent);
+  --accent-hover: var(--gc-accent-hover);
+  --border: var(--gc-border);
+  --border-hover: var(--gc-border-strong);
+  --radius: var(--gc-radius);
+  --radius-sm: var(--gc-radius-sm);
+  --radius-lg: var(--gc-radius-lg);
+  --shadow: var(--gc-shadow-md);
+  --shadow-sm: var(--gc-shadow-sm);
+  --glass-blur: var(--gc-blur-standard);
+
+  /* Legacy surface bridge */
+  --bg-card: var(--gc-surface-elevated);
+  --bg-input: var(--gc-surface-base);
+  --bg-sidebar: var(--gc-surface-elevated);
+  --bg-glass: var(--gc-surface-elevated);
+  --bg-glass-light: var(--gc-surface-base);
+  --surface-panel: var(--gc-surface-elevated);
+  --surface-panel-strong: var(--gc-surface-elevated);
+  --surface-panel-soft: var(--gc-surface-base);
+  --surface-panel-soft-strong: var(--gc-surface-elevated);
+  --surface-panel-muted: var(--gc-surface-base);
+  --surface-panel-muted-strong: var(--gc-surface-elevated);
+  --surface-panel-hover: var(--gc-surface-elevated);
+  --surface-panel-hover-soft: var(--gc-surface-elevated);
+  --surface-panel-hover-faint: var(--gc-surface-base);
+  --surface-subtle: var(--gc-surface-base);
+  --surface-subtle-strong: var(--gc-surface-elevated);
+  --surface-overlay: var(--gc-surface-overlay);
+  --surface-overlay-strong: var(--gc-surface-overlay);
+  --surface-code: var(--gc-surface-base);
+  --surface-card-gradient: var(--gc-surface-elevated);
+  --surface-hero-gradient: var(--gc-surface-elevated);
+  --surface-sidebar-gradient: var(--gc-surface-elevated);
   --surface-success-soft: rgba(89, 207, 155, 0.14);
   --surface-info-soft: rgba(76, 189, 255, 0.12);
   --surface-danger-soft: rgba(255, 107, 107, 0.12);
   --surface-warning-soft: rgba(255, 184, 77, 0.15);
   --surface-brand-soft: rgba(124, 106, 246, 0.16);
-
-  /* 聚焦环 */
-  --focus-ring: rgba(103, 199, 207, 0.24);
-
-  /* Shell 配色 */
-  --shell-bg: #0f172a;
-  --shell-bg-elevated: #1e293b;
-  --shell-bg-hover: #334155;
-  --shell-text: #f1f5f9;
-  --shell-text-secondary: #cbd5e1;
-  --shell-text-tertiary: #94a3b8;
-  --shell-border: #334155;
-  --shell-border-light: #475569;
-  --shell-active: #18a058;
-
-  /* 颜色系统 */
-  --text: #ecf3ff;
-  --text-muted: #92a6c4;
-  --accent: #67c7cf;
-  --accent-hover: #9ce8e0;
-  --accent-light: rgba(103, 199, 207, 0.14);
-  --success: #59cf9b;
-  --danger: #f36c6c;
-  --warning: #f0c676;
-  --border: rgba(133, 163, 199, 0.18);
-  --border-hover: rgba(133, 163, 199, 0.3);
-  --border-glow: rgba(103, 199, 207, 0.15);
-
-  /* 间距与效果 */
-  --radius: 22px;
-  --radius-sm: 12px;
-  --radius-lg: 24px;
-  --shadow: 0 24px 56px rgba(1, 6, 15, 0.28);
-  --shadow-sm: 0 12px 28px rgba(1, 6, 15, 0.2);
-  --glass-blur: 18px;
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.25s ease;
-
-  /* 标题渐变背景 */
-  --header-gradient: linear-gradient(135deg, rgba(103, 199, 207, 0.12), rgba(103, 199, 207, 0.05));
+  --shell-bg: var(--gc-surface-base);
+  --shell-bg-elevated: var(--gc-surface-elevated);
+  --shell-bg-hover: var(--gc-surface-elevated);
+  --shell-text: var(--gc-text);
+  --shell-text-secondary: var(--gc-text-muted);
+  --shell-text-tertiary: var(--gc-text-muted);
+  --shell-border: var(--gc-border);
+  --shell-border-light: var(--gc-border-subtle);
+  --shell-active: var(--gc-accent);
+  --focus-ring: var(--gc-accent-bg);
+  --header-gradient: var(--gc-surface-elevated);
 }
 
-/* === 亮色主题覆写 === */
+/* ═══ Light mode overrides ═══ */
 html.light {
-  --bg-card: rgba(255, 255, 255, 0.92);
-  --bg-input: rgba(248, 250, 252, 0.95);
-  --bg-sidebar: rgba(248, 250, 252, 0.98);
-  --bg-glass: rgba(255, 255, 255, 0.9);
-  --bg-glass-light: rgba(248, 250, 252, 0.95);
+  --gc-surface-base: var(--gc-surface-base, rgba(248, 250, 252, 0.92));
+  --gc-surface-elevated: var(--gc-surface-elevated, rgba(255, 255, 255, 0.96));
+  --gc-surface-floating: var(--gc-surface-floating, rgba(255, 255, 255, 0.98));
+  --gc-surface-overlay: var(--gc-surface-overlay, rgba(241, 245, 249, 0.90));
 
-  --surface-card-gradient:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94)),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.015), transparent);
-  --surface-hero-gradient:
-    linear-gradient(135deg, rgba(8, 145, 178, 0.12), rgba(22, 163, 74, 0.06)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.95));
-  --surface-sidebar-gradient:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.98)),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.015), transparent);
+  --gc-border: var(--gc-border, rgba(0, 0, 0, 0.08));
+  --gc-border-subtle: var(--gc-border-subtle, rgba(0, 0, 0, 0.05));
+  --gc-border-strong: var(--gc-border-strong, rgba(0, 0, 0, 0.14));
 
-  --surface-panel: rgba(255, 255, 255, 0.86);
-  --surface-panel-strong: rgba(255, 255, 255, 0.96);
-  --surface-panel-soft: rgba(255, 255, 255, 0.72);
-  --surface-panel-soft-strong: rgba(248, 250, 252, 0.96);
-  --surface-panel-muted: rgba(241, 245, 249, 0.82);
-  --surface-panel-muted-strong: rgba(241, 245, 249, 0.92);
-  --surface-panel-hover: rgba(241, 245, 249, 0.98);
-  --surface-panel-hover-soft: rgba(226, 232, 240, 0.72);
-  --surface-panel-hover-faint: rgba(226, 232, 240, 0.5);
+  --gc-shadow-xs: var(--gc-shadow-xs, 0 1px 4px rgba(0, 0, 0, 0.05));
+  --gc-shadow-sm: var(--gc-shadow-sm, 0 4px 16px rgba(0, 0, 0, 0.07));
+  --gc-shadow-md: var(--gc-shadow-md, 0 8px 32px rgba(0, 0, 0, 0.10));
+  --gc-shadow-lg: var(--gc-shadow-lg, 0 16px 48px rgba(0, 0, 0, 0.14));
+  --gc-shadow-xl: var(--gc-shadow-xl, 0 24px 64px rgba(0, 0, 0, 0.18));
+  --gc-shadow-glow: var(--gc-shadow-glow, 0 0 16px rgba(8, 145, 178, 0.14));
 
-  --surface-subtle: rgba(15, 23, 42, 0.04);
-  --surface-subtle-strong: rgba(15, 23, 42, 0.07);
-  --surface-overlay: rgba(148, 163, 184, 0.24);
-  --surface-overlay-strong: rgba(148, 163, 184, 0.42);
-  --surface-code: rgba(15, 23, 42, 0.08);
+  --gc-text: var(--gc-foreground, rgba(15, 23, 42, 0.92));
+  --gc-text-muted: var(--gc-muted-foreground, rgba(71, 85, 105, 0.72));
+  --gc-text-secondary: var(--gc-muted-foreground, rgba(51, 65, 85, 0.82));
 
-  --surface-success-soft: rgba(22, 163, 74, 0.12);
-  --surface-info-soft: rgba(8, 145, 178, 0.12);
-  --surface-danger-soft: rgba(220, 38, 38, 0.1);
-  --surface-warning-soft: rgba(217, 119, 6, 0.14);
-  --surface-brand-soft: rgba(14, 165, 233, 0.12);
+  --gc-accent: var(--gc-accent, oklch(42% 0.12 186));
+  --gc-accent-hover: var(--gc-primary, oklch(32% 0.12 186));
+  --gc-accent-bg: color-mix(in oklch, var(--gc-accent) 10%, transparent);
 
-  --focus-ring: rgba(8, 145, 178, 0.2);
+  --gc-atmosphere-1: var(--gc-atmosphere-1, rgba(8, 145, 178, 0.03));
+  --gc-atmosphere-2: var(--gc-atmosphere-2, rgba(8, 145, 178, 0.06));
+  --gc-atmosphere-3: var(--gc-atmosphere-3, rgba(8, 145, 178, 0.10));
 
-  --shell-bg: #f8fafc;
-  --shell-bg-elevated: #ffffff;
-  --shell-bg-hover: #f1f5f9;
-  --shell-text: #0f172a;
-  --shell-text-secondary: #475569;
-  --shell-text-tertiary: #94a3b8;
-  --shell-border: #e2e8f0;
-  --shell-border-light: #cbd5e1;
-  --shell-active: #0891b2;
-
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --accent: #0891b2;
-  --accent-hover: #0e7490;
-  --accent-light: rgba(8, 145, 178, 0.12);
-  --success: #16a34a;
-  --danger: #dc2626;
-  --warning: #d97706;
-  --border: rgba(148, 163, 184, 0.25);
-  --border-hover: rgba(148, 163, 184, 0.4);
-  --border-glow: rgba(8, 145, 178, 0.15);
-
-  --shadow: 0 24px 56px rgba(0, 0, 0, 0.08);
-  --shadow-sm: 0 12px 28px rgba(0, 0, 0, 0.06);
-
-  --header-gradient: linear-gradient(135deg, rgba(8, 145, 178, 0.08), rgba(8, 145, 178, 0.03));
+  --gc-reflection-intensity: 0.30;
+  --gc-edge-light: linear-gradient(135deg, oklch(99% 0.002 215 / 0.05) 0%, transparent 50%);
+  --gc-glass-reflection: linear-gradient(180deg, oklch(99% 0.002 215 / 0.03) 0%, transparent 10px);
 }

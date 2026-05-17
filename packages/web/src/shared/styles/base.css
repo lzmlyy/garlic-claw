@@ -1,4 +1,4 @@
-/* 全局基础层：reset、基础排版、基础控件与浏览器杂项。 */
+/* Global reset + surface enforcement */
 * {
   margin: 0;
   padding: 0;
@@ -11,41 +11,40 @@ body,
   height: 100%;
   width: 100%;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  color: var(--text);
+  color: var(--gc-text);
   line-height: 1.6;
 }
 
 a {
-  color: var(--accent);
+  color: var(--gc-accent);
   text-decoration: none;
 }
 
 a:hover {
-  color: var(--accent-hover);
+  color: var(--gc-accent-hover);
 }
 
 button:not(.el-button) {
   cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius-sm);
   padding: 0.65rem 1.2rem;
   font-size: 0.9rem;
   font-family: inherit;
-  background: var(--accent);
-  color: #fff;
+  background: var(--gc-surface-elevated);
+  color: var(--gc-text);
   transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+    background var(--gc-transition-fast),
+    border-color var(--gc-transition-fast);
 }
 
 button:not(.el-button):hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: var(--gc-accent-bg);
+  border-color: var(--gc-accent);
 }
 
 button:not(.el-button):active:not(:disabled) {
-  background: var(--accent);
+  background: var(--gc-surface-base);
 }
 
 button:not(.el-button):disabled {
@@ -83,6 +82,10 @@ button:not(.el-button):disabled {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
 }

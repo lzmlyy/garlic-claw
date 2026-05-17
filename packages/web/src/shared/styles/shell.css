@@ -1,39 +1,54 @@
-/* 应用壳层：根背景、主题背景与装饰图案。 */
+/* ═══════════════════════════════════════════════════════════════
+   Global Environment Layer
+   html/body/#app provide the spatial backdrop: vignette, ambient
+   light, bloom, and surface gradient.  All colors route through
+   --gc-* tokens set dynamically by the ThemeEngine pipeline.
+   ═══════════════════════════════════════════════════════════════ */
+
 html,
 body,
 #app {
   background:
-    radial-gradient(circle at top right, rgba(103, 199, 207, 0.14), transparent 32%),
-    radial-gradient(circle at bottom left, rgba(240, 198, 118, 0.12), transparent 28%),
-    linear-gradient(180deg, rgba(9, 15, 24, 0.98), rgba(8, 13, 21, 0.99));
-  position: relative;
+    /* Vignette: edge-darkening for spatial depth (dynamic) */
+    var(--gc-vignette, radial-gradient(ellipse 75% 60% at 50% 50%, transparent 30%, rgba(0,0,0,0.12) 70%, rgba(0,0,0,0.28) 100%)),
+    /* Ambient glow: accent-tinted atmospheric bloom (dynamic) */
+    radial-gradient(ellipse 80% 55% at 55% 15%, var(--gc-atmosphere-3, rgba(103,199,207,0.10)) 0%, transparent 60%),
+    /* Accent bloom spots — dynamic atmosphere layers */
+    radial-gradient(circle at 85% 15%, var(--gc-atmosphere-2, rgba(103,199,207,0.08)), transparent 32%),
+    radial-gradient(circle at 15% 85%, var(--gc-atmosphere-1, rgba(103,199,207,0.06)), transparent 28%),
+    /* Base surface gradient — dynamic surface layers */
+    linear-gradient(180deg, var(--gc-surface-base, rgba(18,20,28,0.92)) 0%, var(--gc-surface-elevated, rgba(28,30,40,0.88)) 100%);
+  min-height: 100%;
 }
 
 html.light,
 html.light body,
 html.light #app {
   background:
-    radial-gradient(circle at top right, rgba(8, 145, 178, 0.1), transparent 32%),
-    radial-gradient(circle at bottom left, rgba(217, 119, 6, 0.08), transparent 28%),
-    linear-gradient(180deg, #f8fafc, #f1f5f9);
+    var(--gc-vignette, radial-gradient(ellipse 75% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.04) 80%, rgba(0,0,0,0.08) 100%)),
+    radial-gradient(ellipse 80% 55% at 55% 15%, var(--gc-atmosphere-3, rgba(8,145,178,0.06)) 0%, transparent 55%),
+    radial-gradient(circle at 85% 15%, var(--gc-atmosphere-2, rgba(8,145,178,0.04)), transparent 32%),
+    radial-gradient(circle at 15% 85%, var(--gc-atmosphere-1, rgba(8,145,178,0.03)), transparent 28%),
+    linear-gradient(180deg, var(--gc-surface-base, rgba(248,250,252,0.98)) 0%, var(--gc-surface-elevated, rgba(255,255,255,0.96)) 100%);
 }
 
+/* Subtle grid — above environment, below content. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
   background-size: 24px 24px;
-  mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent 72%);
+  mask-image: linear-gradient(180deg, rgba(128,128,128,0.18), transparent 72%);
   pointer-events: none;
-  z-index: -1;
+  z-index: 0;
 }
 
 html.light body::before {
   background-image:
-    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 72%);
+    linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,0.12), transparent 72%);
 }
