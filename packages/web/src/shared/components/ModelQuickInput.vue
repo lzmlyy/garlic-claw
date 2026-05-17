@@ -244,7 +244,7 @@ defineExpose({
 }
 
 :deep(.quick-input .el-input__wrapper) {
-  background: var(--surface-panel-soft-strong);
+  background: var(--gc-surface-base);
 }
 
 .suggestions {
@@ -254,12 +254,12 @@ defineExpose({
   right: 0;
   max-height: 320px;
   overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-panel-strong);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 12px 28px rgba(1, 6, 15, 0.2), 0 0 15px rgba(103, 199, 207, 0.1);
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius);
+  background: var(--gc-surface-floating);
+  backdrop-filter: blur(var(--gc-blur));
+  -webkit-backdrop-filter: blur(var(--gc-blur));
+  box-shadow: var(--gc-shadow);
   z-index: 20;
 }
 
@@ -273,13 +273,13 @@ defineExpose({
   background: transparent;
   box-shadow: none;
   margin: 0;
-  color: var(--text);
+  color: var(--gc-text);
   text-align: left;
 }
 
 .suggestion-item:hover,
 .suggestion-item.selected {
-  background: var(--bg-input);
+  background: var(--gc-surface-elevated);
 }
 
 .provider-badge {

@@ -20,16 +20,17 @@ defineProps<{
   gap: 18px;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   padding: 1.5rem 2rem;
 }
 
 .console-page-shell {
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--shell-border);
-  border-radius: 16px;
-  background: var(--shell-bg-elevated);
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius);
+  background: var(--gc-surface-elevated);
+  backdrop-filter: blur(var(--gc-blur));
   overflow-y: auto;
   overflow-x: hidden;
   padding: 1.25rem 1.5rem;
@@ -37,7 +38,7 @@ defineProps<{
 
 .console-page-shell.no-padding {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 @media (max-width: 720px) {

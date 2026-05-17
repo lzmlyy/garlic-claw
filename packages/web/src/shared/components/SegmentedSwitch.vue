@@ -42,22 +42,22 @@ function handleUpdate(value: string | number | boolean | undefined) {
 
 <style scoped>
 .segmented-switch {
-  --el-radio-button-checked-bg-color: color-mix(in srgb, var(--accent) 14%, transparent);
-  --el-radio-button-checked-border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-  --el-radio-button-checked-text-color: var(--accent);
+  --el-radio-button-checked-bg-color: var(--gc-accent-bg);
+  --el-radio-button-checked-border-color: var(--gc-accent-bg);
+  --el-radio-button-checked-text-color: var(--gc-accent);
   --el-radio-button-bg-color: transparent;
-  --el-radio-button-text-color: var(--text-muted);
-  --el-radio-button-border-color: rgba(133, 163, 199, 0.14);
+  --el-radio-button-text-color: var(--gc-text-muted);
+  --el-radio-button-border-color: var(--gc-border);
   --el-fill-color-blank: transparent;
   padding: 3px;
-  border-radius: 10px;
-  border: 1px solid rgba(133, 163, 199, 0.14);
-  background: var(--surface-panel-hover-soft);
+  border-radius: var(--gc-radius-sm);
+  border: 1px solid var(--gc-border);
+  background: var(--gc-surface-base);
 }
 
 .segmented-switch :deep(.el-radio-button__inner) {
   min-height: 30px;
-  border-radius: 8px;
+  border-radius: var(--gc-radius-sm);
   border: 1px solid transparent;
   background: transparent;
   box-shadow: none;
@@ -65,7 +65,7 @@ function handleUpdate(value: string | number | boolean | undefined) {
 
 .segmented-switch :deep(.el-radio-button:first-child .el-radio-button__inner),
 .segmented-switch :deep(.el-radio-button:last-child .el-radio-button__inner) {
-  border-radius: 8px;
+  border-radius: var(--gc-radius-sm);
 }
 
 .segmented-switch :deep(.el-radio-button.is-active .el-radio-button__inner) {

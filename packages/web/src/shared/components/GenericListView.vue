@@ -403,8 +403,8 @@ function goNextPage() {
 }
 
 .table-shell {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius);
   overflow: auto;
 }
 

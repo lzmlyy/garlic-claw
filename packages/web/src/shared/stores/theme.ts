@@ -1,106 +1,78 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed } from 'vue'
+import { useAppearanceStore } from './appearance'
 
-type ThemeValue = 'dark' | 'light' | 'system'
+/**
+ * Legacy theme store — delegates to useAppearanceStore.
+ *
+ * All mode state and persistence is owned by the appearance store.
+ * This store exists for backward compatibility with components that
+ * use the old isDark/followSystem API (ThemePanel, ThemeToggle, etc.).
+ */
 
-const STORAGE_KEY = 'garlic-claw:theme'
-
-function readStoredTheme(): ThemeValue {
-  if (typeof window === 'undefined') {
-    return 'dark'
-  }
-  const stored = window.localStorage.getItem(STORAGE_KEY)
-  if (stored === 'light' || stored === 'dark' || stored === 'system') {
-    return stored
-  }
-  return 'dark'
-}
-
-function writeStoredTheme(value: ThemeValue) {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.localStorage.setItem(STORAGE_KEY, value)
-}
-
-function getSystemDark(): boolean {
-  if (typeof window === 'undefined') {
-    return true
-  }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-}
+const OLD_STORAGE_KEY = 'garlic-claw:theme'
 
 export const useThemeStore = defineStore('theme', () => {
-  const followSystem = ref(false)
-  const isDark = ref(true)
+  const appearance = useAppearanceStore()
 
-  let systemMediaQuery: MediaQueryList | null = null
+  // ── Computed (derived from appearance store) ──
 
-  function applyTheme() {
-    const dark = followSystem.value ? getSystemDark() : isDark.value
-    if (dark) {
-      document.documentElement.classList.remove('light')
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-      document.documentElement.classList.add('light')
-    }
-  }
+  const isDark = computed(() => appearance.resolvedMode === 'dark')
 
-  function persist() {
-    if (followSystem.value) {
-      writeStoredTheme('system')
-    } else {
-      writeStoredTheme(isDark.value ? 'dark' : 'light')
-    }
-  }
+  const followSystem = computed(() => appearance.mode === 'system')
 
-  function handleSystemChange(_event: MediaQueryListEvent) {
-    if (!followSystem.value) {
-      return
-    }
-    applyTheme()
-  }
-
-  function listenToSystemTheme() {
-    if (typeof window === 'undefined') {
-      return
-    }
-    systemMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    systemMediaQuery.addEventListener('change', handleSystemChange)
-  }
+  // ── Actions (delegate to appearance store) ──
 
   function setLightMode() {
-    isDark.value = false
-    followSystem.value = false
-    persist()
-    applyTheme()
+    appearance.setMode('light')
   }
 
   function setDarkMode() {
-    isDark.value = true
-    followSystem.value = false
-    persist()
-    applyTheme()
+    appearance.setMode('dark')
   }
 
   function setFollowSystem(value: boolean) {
-    followSystem.value = value
-    persist()
-    applyTheme()
+    if (value) {
+      appearance.setMode('system')
+    } else {
+      // Keep current resolved mode as explicit choice
+      appearance.setMode(appearance.resolvedMode)
+    }
   }
 
+  /** Migrate old storage key → new key, then initialize appearance store. */
   function initTheme() {
-    const stored = readStoredTheme()
-    if (stored === 'system') {
-      followSystem.value = true
-      isDark.value = getSystemDark()
-    } else {
-      followSystem.value = false
-      isDark.value = stored === 'dark'
+    // One-time migration: if old key exists but new key doesn't, transfer the value
+    if (typeof window !== 'undefined') {
+      try {
+        const oldRaw = window.localStorage.getItem(OLD_STORAGE_KEY)
+        const newRaw = window.localStorage.getItem('garlic-claw:appearance')
+        if (oldRaw && !newRaw) {
+          const old = JSON.parse(oldRaw)
+          const mode =
+            old === 'system'
+              ? 'system'
+              : old === 'light'
+                ? 'light'
+                : 'dark'
+          window.localStorage.setItem(
+            'garlic-claw:appearance',
+            JSON.stringify({
+              presetId: 'moss-cyan',
+              mode,
+              customHue: null,
+              customSaturation: null,
+            }),
+          )
+          // Clean up old key after migration
+          window.localStorage.removeItem(OLD_STORAGE_KEY)
+        }
+      } catch {
+        // Corrupted storage — appearance store handles defaults
+      }
     }
-    applyTheme()
-    listenToSystemTheme()
+
+    // Appearance store handles its own initialization (called from ThemeProvider)
   }
 
   return {

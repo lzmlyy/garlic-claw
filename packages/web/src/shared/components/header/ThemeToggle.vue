@@ -4,12 +4,13 @@ import moonBold from '@iconify-icons/solar/moon-bold'
 import sunBold from '@iconify-icons/solar/sun-bold'
 import { Icon } from '@iconify/vue'
 import { ElButton } from 'element-plus'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import ThemePanel from './ThemePanel.vue'
 
 const theme = useThemeStore()
 
 const wrapperRef = ref<HTMLElement>()
+const triggerRef = ref<typeof ElButton>()
 const panelOpen = ref(false)
 let closeTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -55,6 +56,17 @@ function handleClickOutside(e: MouseEvent) {
 
 onMounted(() => document.addEventListener('click', handleClickOutside, true))
 onBeforeUnmount(() => document.removeEventListener('click', handleClickOutside, true))
+
+const panelStyle = computed(() => {
+  const el = (wrapperRef.value?.querySelector('.theme-trigger') as HTMLElement) ?? wrapperRef.value
+  if (!el) return {}
+  const rect = el.getBoundingClientRect()
+  return {
+    position: 'fixed' as const,
+    top: `${rect.bottom + 8}px`,
+    right: `${window.innerWidth - rect.right}px`,
+  }
+})
 </script>
 
 <template>
@@ -65,6 +77,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleClickOutside, 
     @mouseleave="scheduleClose"
   >
     <ElButton
+      ref="triggerRef"
       class="theme-trigger"
       :title="theme.isDark && !theme.followSystem ? '深色模式' : '浅色模式'"
       @click="toggleTheme"
@@ -72,22 +85,24 @@ onBeforeUnmount(() => document.removeEventListener('click', handleClickOutside, 
       <Icon :icon="theme.isDark ? moonBold : sunBold" />
     </ElButton>
 
-    <Transition name="theme-dropdown">
-      <div
-        v-if="panelOpen"
-        class="theme-panel"
-        @mouseenter="cancelClose"
-        @mouseleave="scheduleClose"
-      >
-        <ThemePanel @select="closePanel()" />
-      </div>
-    </Transition>
+    <Teleport to="body">
+      <Transition name="theme-dropdown">
+        <div
+          v-if="panelOpen"
+          class="theme-panel"
+          :style="panelStyle"
+          @mouseenter="cancelClose"
+          @mouseleave="scheduleClose"
+        >
+          <ThemePanel @select="closePanel()" />
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
 .theme-toggle-wrapper {
-  position: relative;
   display: flex;
   align-items: center;
 }
@@ -98,31 +113,27 @@ onBeforeUnmount(() => document.removeEventListener('click', handleClickOutside, 
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--gc-radius-sm);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--gc-text-muted);
   font-size: 20px;
   padding: 0;
   transition: color 0.15s, background 0.15s;
 }
 
 .theme-trigger:hover {
-  color: var(--text);
-  background: var(--bg-glass-light);
+  color: var(--gc-text);
+  background: var(--gc-surface-base);
 }
 
 .theme-panel {
-  position: absolute;
-  top: calc(100% + 20px);
-  right: 0;
-  z-index: 1100;
+  z-index: 9999;
   min-width: 180px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--bg-glass);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--gc-radius);
+  border: 1px solid var(--gc-border);
+  background: var(--gc-surface-floating);
+  box-shadow: var(--gc-shadow-lg);
 }
 
 /* panel transition */

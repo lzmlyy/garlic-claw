@@ -81,9 +81,9 @@ function handleSelect(value: string, disabled?: boolean) {
   align-items: center;
   min-width: 0;
   max-width: 100%;
-  border: 1px solid var(--el-border-color, var(--border));
-  border-radius: 8px;
-  background: var(--el-fill-color-blank, #fff);
+  border: 1px solid var(--gc-border);
+  border-radius: var(--gc-radius-sm);
+  background: var(--gc-surface-elevated);
 }
 
 .segmented-switch:not(.segmented-switch--full) {
@@ -111,11 +111,11 @@ function handleSelect(value: string, disabled?: boolean) {
   padding: 8px 16px;
   border: none;
   border-radius: 0;
-  border-right: 1px solid var(--el-border-color, var(--border));
+  border-right: 1px solid var(--gc-border);
   background: transparent;
   box-shadow: none;
   margin: 0;
-  color: var(--el-text-color-regular, var(--text-muted));
+  color: var(--gc-text-muted);
   font-size: 14px;
   line-height: 1.2;
   white-space: nowrap;
@@ -145,8 +145,8 @@ function handleSelect(value: string, disabled?: boolean) {
 }
 
 .segmented-switch__option:hover {
-  color: var(--el-color-primary);
-  background: var(--el-fill-color-light, #f5f7fa);
+  color: var(--gc-accent);
+  background: var(--gc-accent-bg);
 }
 
 .segmented-switch__option:focus-visible {
@@ -170,25 +170,5 @@ function handleSelect(value: string, disabled?: boolean) {
   display: block;
   min-width: 0;
   white-space: nowrap;
-}
-
-:global(html.dark .segmented-switch) {
-  background: var(--surface-panel-soft-strong);
-  border-color: var(--border);
-}
-
-:global(html.dark .segmented-switch__option) {
-  border-right-color: var(--border);
-  color: var(--text-muted);
-}
-
-:global(html.dark .segmented-switch__option:hover) {
-  background: var(--surface-panel-hover-soft);
-  color: var(--text);
-}
-
-:global(html.dark .segmented-switch__option.is-active) {
-  color: var(--segmented-active-text-color);
-  background: var(--segmented-active-color);
 }
 </style>
