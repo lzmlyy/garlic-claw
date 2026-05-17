@@ -1,100 +1,144 @@
-/* === Element Plus 暗色模式变量覆写 === */
+/* Element Plus — unified surface overrides */
+/* All El components route through gc-surface tokens */
+
 html.dark {
-  --el-color-primary: var(--accent);
-  --el-color-primary-light-3: #7fd6dc;
-  --el-color-primary-light-5: #9ce8e0;
-  --el-color-primary-light-7: #b8f0ea;
-  --el-color-primary-light-8: #c9f5ef;
-  --el-color-primary-light-9: rgba(103, 199, 207, 0.14);
-  --el-color-primary-dark-2: #4fb7c0;
+  --el-color-primary: var(--gc-accent);
+  --el-color-primary-light-3: var(--gc-accent-hover);
+  --el-color-primary-light-5: var(--gc-accent);
+  --el-color-primary-light-7: var(--gc-accent);
+  --el-color-primary-light-8: var(--gc-accent);
+  --el-color-primary-light-9: var(--gc-accent-bg);
+  --el-color-primary-dark-2: var(--gc-accent-hover);
   --el-color-primary-rgb: 103, 199, 207;
 
-  --el-color-success: var(--success);
-  --el-color-success-light-3: #74d8a8;
-  --el-color-success-light-5: #95e0bc;
-  --el-color-success-light-7: rgba(89, 207, 155, 0.28);
-  --el-color-success-light-8: rgba(89, 207, 155, 0.2);
-  --el-color-success-light-9: var(--surface-success-soft);
-  --el-color-success-dark-2: #43b685;
+  --el-color-success: #59cf9b;
+  --el-color-success-light-9: rgba(89, 207, 155, 0.14);
   --el-color-success-rgb: 89, 207, 155;
 
-  --el-color-warning: var(--warning);
-  --el-color-warning-light-3: #f3d18d;
-  --el-color-warning-light-5: #f6ddb0;
-  --el-color-warning-light-7: rgba(240, 198, 118, 0.3);
-  --el-color-warning-light-8: rgba(240, 198, 118, 0.22);
-  --el-color-warning-light-9: var(--surface-warning-soft);
-  --el-color-warning-dark-2: #ddb161;
+  --el-color-warning: #f0c676;
+  --el-color-warning-light-9: rgba(255, 184, 77, 0.15);
   --el-color-warning-rgb: 240, 198, 118;
 
-  --el-color-danger: var(--danger);
-  --el-color-danger-light-3: #f68f8f;
-  --el-color-danger-light-5: #f8abab;
-  --el-color-danger-light-7: rgba(243, 108, 108, 0.28);
-  --el-color-danger-light-8: rgba(243, 108, 108, 0.2);
-  --el-color-danger-light-9: var(--surface-danger-soft);
-  --el-color-danger-dark-2: #d95f5f;
+  --el-color-danger: #f36c6c;
+  --el-color-danger-light-9: rgba(255, 107, 107, 0.12);
   --el-color-danger-rgb: 243, 108, 108;
-  --el-color-error: var(--danger);
-  --el-color-error-light-3: #f68f8f;
-  --el-color-error-light-5: #f8abab;
-  --el-color-error-light-7: rgba(243, 108, 108, 0.28);
-  --el-color-error-light-8: rgba(243, 108, 108, 0.2);
-  --el-color-error-light-9: var(--surface-danger-soft);
-  --el-color-error-dark-2: #d95f5f;
+
+  --el-color-error: #f36c6c;
   --el-color-error-rgb: 243, 108, 108;
 
-  --el-color-info: #92a6c4;
-  --el-color-info-light-3: #a7b8d0;
-  --el-color-info-light-5: #bdcadb;
-  --el-color-info-light-7: rgba(146, 166, 196, 0.22);
-  --el-color-info-light-8: rgba(146, 166, 196, 0.16);
-  --el-color-info-light-9: rgba(146, 166, 196, 0.1);
-  --el-color-info-dark-2: #7f96b8;
-  --el-color-info-rgb: 146, 166, 196;
+  --el-color-info: var(--gc-text-muted);
+  --el-color-info-rgb: 148, 163, 184;
 
-  --el-bg-color-page: #0f172a;
-  --el-bg-color: var(--surface-panel-strong);
-  --el-bg-color-overlay: var(--bg-glass);
-  --el-fill-color-blank: var(--bg-card);
-  --el-fill-color-extra-light: var(--surface-panel-hover-faint);
-  --el-fill-color-lighter: var(--surface-panel-hover-soft);
-  --el-fill-color-light: var(--surface-panel-soft);
-  --el-fill-color: var(--surface-panel);
-  --el-fill-color-dark: var(--surface-panel-hover);
-  --el-fill-color-darker: rgba(18, 33, 52, 0.96);
+  --el-bg-color-page: var(--gc-surface-base);
+  --el-bg-color: var(--gc-surface-elevated);
+  --el-bg-color-overlay: var(--gc-surface-floating);
+  --el-fill-color-blank: var(--gc-surface-elevated);
+  --el-fill-color-extra-light: var(--gc-surface-base);
+  --el-fill-color-lighter: var(--gc-surface-base);
+  --el-fill-color-light: var(--gc-surface-base);
+  --el-fill-color: var(--gc-surface-elevated);
+  --el-fill-color-dark: var(--gc-surface-elevated);
+  --el-fill-color-darker: var(--gc-surface-elevated);
 
-  --el-text-color-primary: var(--text);
-  --el-text-color-regular: #d8e4f5;
-  --el-text-color-secondary: var(--text-muted);
-  --el-text-color-placeholder: #7f96b8;
-  --el-text-color-disabled: #607692;
+  --el-text-color-primary: var(--gc-text);
+  --el-text-color-regular: var(--gc-text);
+  --el-text-color-secondary: var(--gc-text-muted);
+  --el-text-color-placeholder: var(--gc-text-muted);
+  --el-text-color-disabled: var(--gc-text-muted);
 
-  --el-border-color-extra-light: rgba(133, 163, 199, 0.12);
-  --el-border-color-lighter: rgba(133, 163, 199, 0.14);
-  --el-border-color-light: rgba(133, 163, 199, 0.16);
-  --el-border-color: var(--border);
-  --el-border-color-dark: rgba(133, 163, 199, 0.24);
-  --el-border-color-darker: rgba(133, 163, 199, 0.32);
-  --el-border-color-hover: var(--accent);
+  --el-border-color-extra-light: var(--gc-border-subtle);
+  --el-border-color-lighter: var(--gc-border-subtle);
+  --el-border-color-light: var(--gc-border);
+  --el-border-color: var(--gc-border);
+  --el-border-color-dark: var(--gc-border-strong);
+  --el-border-color-darker: var(--gc-border-strong);
+  --el-border-color-hover: var(--gc-accent);
 
-  --el-box-shadow: var(--shadow);
-  --el-box-shadow-light: var(--shadow-sm);
-  --el-box-shadow-lighter: 0 8px 20px rgba(1, 6, 15, 0.18);
-  --el-box-shadow-dark: 0 28px 64px rgba(1, 6, 15, 0.42);
+  --el-box-shadow: var(--gc-shadow);
+  --el-box-shadow-light: var(--gc-shadow-sm);
+  --el-box-shadow-lighter: var(--gc-shadow-sm);
+  --el-box-shadow-dark: var(--gc-shadow-lg);
 
-  --el-mask-color: var(--surface-overlay-strong);
-  --el-mask-color-extra-light: var(--surface-overlay);
-  --el-overlay-color: var(--surface-overlay-strong);
-  --el-overlay-color-light: rgba(0, 0, 0, 0.52);
-  --el-overlay-color-lighter: rgba(0, 0, 0, 0.38);
+  --el-mask-color: var(--gc-surface-overlay);
+  --el-mask-color-extra-light: var(--gc-surface-overlay);
+  --el-overlay-color: var(--gc-surface-overlay);
+  --el-overlay-color-light: var(--gc-surface-overlay);
+  --el-overlay-color-lighter: var(--gc-surface-overlay);
 
-  --el-disabled-bg-color: var(--surface-panel-muted);
-  --el-disabled-text-color: #6e84a0;
-  --el-disabled-border-color: rgba(133, 163, 199, 0.12);
+  --el-disabled-bg-color: var(--gc-surface-base);
+  --el-disabled-text-color: var(--gc-text-muted);
+  --el-disabled-border-color: var(--gc-border-subtle);
 }
 
-/* 让布局容器拥有按钮间距，而不是 Element Plus 同级边距。 */
+html.light {
+  --el-color-primary: var(--gc-accent);
+  --el-color-primary-light-3: var(--gc-accent-hover);
+  --el-color-primary-light-5: var(--gc-accent);
+  --el-color-primary-light-7: var(--gc-accent);
+  --el-color-primary-light-8: var(--gc-accent);
+  --el-color-primary-light-9: var(--gc-accent-bg);
+  --el-color-primary-dark-2: var(--gc-accent-hover);
+  --el-color-primary-rgb: 8, 145, 178;
+
+  --el-color-success: #16a34a;
+  --el-color-success-light-9: rgba(22, 163, 74, 0.12);
+  --el-color-success-rgb: 22, 163, 74;
+
+  --el-color-warning: #d97706;
+  --el-color-warning-light-9: rgba(217, 119, 6, 0.14);
+  --el-color-warning-rgb: 217, 119, 6;
+
+  --el-color-danger: #dc2626;
+  --el-color-danger-light-9: rgba(220, 38, 38, 0.10);
+  --el-color-danger-rgb: 220, 38, 38;
+
+  --el-color-error: #dc2626;
+  --el-color-error-rgb: 220, 38, 38;
+
+  --el-color-info: var(--gc-text-muted);
+  --el-color-info-rgb: 71, 85, 105;
+
+  --el-bg-color-page: var(--gc-surface-base);
+  --el-bg-color: var(--gc-surface-elevated);
+  --el-bg-color-overlay: var(--gc-surface-floating);
+  --el-fill-color-blank: var(--gc-surface-elevated);
+  --el-fill-color-extra-light: var(--gc-surface-base);
+  --el-fill-color-lighter: var(--gc-surface-base);
+  --el-fill-color-light: var(--gc-surface-base);
+  --el-fill-color: var(--gc-surface-elevated);
+  --el-fill-color-dark: var(--gc-surface-elevated);
+  --el-fill-color-darker: var(--gc-surface-elevated);
+
+  --el-text-color-primary: var(--gc-text);
+  --el-text-color-regular: var(--gc-text);
+  --el-text-color-secondary: var(--gc-text-muted);
+  --el-text-color-placeholder: var(--gc-text-muted);
+  --el-text-color-disabled: var(--gc-text-muted);
+
+  --el-border-color-extra-light: var(--gc-border-subtle);
+  --el-border-color-lighter: var(--gc-border-subtle);
+  --el-border-color-light: var(--gc-border);
+  --el-border-color: var(--gc-border);
+  --el-border-color-dark: var(--gc-border-strong);
+  --el-border-color-darker: var(--gc-border-strong);
+  --el-border-color-hover: var(--gc-accent);
+
+  --el-box-shadow: var(--gc-shadow);
+  --el-box-shadow-light: var(--gc-shadow-sm);
+  --el-box-shadow-lighter: var(--gc-shadow-sm);
+  --el-box-shadow-dark: var(--gc-shadow-lg);
+
+  --el-mask-color: rgba(0, 0, 0, 0.25);
+  --el-mask-color-extra-light: rgba(0, 0, 0, 0.15);
+  --el-overlay-color: rgba(0, 0, 0, 0.25);
+  --el-overlay-color-light: rgba(0, 0, 0, 0.15);
+  --el-overlay-color-lighter: rgba(0, 0, 0, 0.15);
+
+  --el-disabled-bg-color: var(--gc-surface-base);
+  --el-disabled-text-color: var(--gc-text-muted);
+  --el-disabled-border-color: var(--gc-border-subtle);
+}
+
 .el-button + .el-button {
   margin-left: 0;
 }
